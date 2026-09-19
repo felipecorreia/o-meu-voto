@@ -190,10 +190,20 @@ class Election:
     offices: tuple[Office, ...]
     calendar_source: CalendarSource
     notes: tuple[str, ...] = ()
+    divulgacandcontas_election_id: str | None = None
+    """The election id in the DivulgaCandContas URLs, curated by hand: it is not the
+    ``CD_ELEICAO`` of the TSE files. Null while unknown; the candidate page link is then null."""
 
     def __post_init__(self) -> None:
         if not self.id or not self.name:
             raise ValueError("election needs an id and a name")
+        if self.divulgacandcontas_election_id is not None and (
+            not self.divulgacandcontas_election_id.isdigit()
+        ):
+            raise ValueError(
+                f"election {self.id!r} divulgacandcontas_election_id must be digits: "
+                f"{self.divulgacandcontas_election_id!r}"
+            )
         if not self.rounds:
             raise ValueError(f"election {self.id!r} needs at least one round")
         numbers = [r.number for r in self.rounds]

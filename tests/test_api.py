@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 from br_elections_mcp.api import create_api
 from br_elections_mcp.app import ENV_INDEX_DIR, ENV_PORT, Settings, build_app, create_app
 from br_elections_mcp.core import (
+    CandidateAnswer,
     CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
@@ -111,6 +112,8 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
         "/polling-place",
         "/election",
         "/candidates",
+        "/candidates/by-number",
+        "/candidates/{sq_candidato}",
         "/polling-places",
         "/municipalities",
     } <= set(document["paths"])
@@ -120,6 +123,7 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
         PollingPlaceAnswer,
         ElectionInfoAnswer,
         CandidatesAnswer,
+        CandidateAnswer,
         PollingPlacesAnswer,
         MunicipalitiesAnswer,
     ):
@@ -128,6 +132,9 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
         )
     assert not {"gender", "race_color", "marital_status", "education"} & set(
         schemas["CandidateListItem"]["properties"]
+    )
+    assert {"gender", "race_color", "marital_status", "education"} <= set(
+        schemas["CandidateProfile"]["properties"]
     )
 
 
@@ -202,6 +209,75 @@ def test_candidates_query_parameters_are_passed_through(client: TestClient):
         "/api/v1/candidates", params={"uf": "AC", "office": "deputado_estadual", "name": "d'arc"}
     )
     assert [c["number"] for c in by_name.json()["data"]["candidates"]] == [45123]
+
+
+# GET /api/v1/candidates/by-number and /api/v1/candidates/{sq_candidato} (ticket #12)
+
+
+def test_candidate_by_sq_candidato_returns_the_core_envelope(client: TestClient, core: Core):
+    response = client.get("/api/v1/candidates/10000000001")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"data", "not_found", "warnings", "election", "source"}
+    assert body == core.get_candidate(10000000001).model_dump(mode="json")
+    candidate = body["data"]["candidate"]
+    assert candidate["ballot_name"] == "MARIA DA SILVA"
+    assert candidate["running_mates"][0]["office"] == "vice_governador"
+    assert candidate["gender"] == "FEMININO"
+    assert candidate["divulgacandcontas_url"].startswith("https://divulgacandcontas.tse.jus.br/")
+
+
+def test_candidate_by_number_is_matched_before_the_sq_candidato_route(client: TestClient):
+    # Called explicitly, so a regression that lets `{sq_candidato}` swallow the literal
+    # segment shows up as a 422 ("by-number" is not an integer) instead of the profile.
+    response = client.get(
+        "/api/v1/candidates/by-number",
+        params={"uf": "ac", "office": "governador", "number": "45", "round": "1"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["not_found"] is None
+    assert body["data"]["candidate"]["sq_candidato"] == 10000000001
+    assert body["data"]["candidate"]["round"] == 1
+
+    off_ballot = client.get(
+        "/api/v1/candidates/by-number", params={"uf": "AC", "office": "governador", "number": 22}
+    )
+    assert off_ballot.status_code == 200
+    assert off_ballot.json()["not_found"]["reason"] == "candidato_nao_encontrado"
+
+
+def test_candidate_with_a_non_numeric_sq_candidato_is_422(client: TestClient):
+    response = client.get("/api/v1/candidates/abc")
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail[0]["loc"] == ["path", "sq_candidato"]
+
+
+@pytest.mark.parametrize(
+    ("path", "params", "message"),
+    [
+        ("/api/v1/candidates/by-number", {"uf": "AC", "office": "governador"}, None),
+        (
+            "/api/v1/candidates/by-number",
+            {"uf": "AC", "office": "governador", "number": "x"},
+            "número inválido",
+        ),
+        (
+            "/api/v1/candidates/by-number",
+            {"uf": "AC", "office": "vice_governador", "number": "45"},
+            "cargo de chapa",
+        ),
+        ("/api/v1/candidates/10000000001", {"round": "9"}, "turno inválido"),
+    ],
+)
+def test_candidate_invalid_query_is_400_and_missing_parameter_is_422(client, path, params, message):
+    response = client.get(path, params=params)
+    if message is None:
+        assert response.status_code == 422
+        return
+    assert response.status_code == 400
+    assert message in response.json()["detail"]
 
 
 def test_polling_places_returns_the_core_envelope(client: TestClient, core: Core):

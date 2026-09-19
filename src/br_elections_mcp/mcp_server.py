@@ -17,6 +17,7 @@ from pydantic import Field
 
 from br_elections_mcp import __version__
 from br_elections_mcp.core import (
+    CandidateAnswer,
     CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
@@ -33,8 +34,9 @@ SERVER_NAME = "br-elections-mcp"
 
 SERVER_INSTRUCTIONS = (
     "Responde às perguntas do eleitor brasileiro a partir dos dados abertos do TSE: onde votar, "
-    "a partir da UF, zona e seção do título; quem são os candidatos de um cargo numa UF; e quais "
-    "são os locais de votação de uma cidade ou bairro, para quem não sabe a zona e a seção. "
+    "a partir da UF, zona e seção do título; quem são os candidatos de um cargo numa UF e a "
+    "ficha de cada um; e quais são os locais de votação de uma cidade ou bairro, para quem não "
+    "sabe a zona e a seção. "
     "Nunca consulta o cadastro eleitoral: para descobrir a própria zona e seção pelo nome ou "
     "CPF, o eleitor usa o e-Título. Nenhuma resposta traz CPF, título de eleitor, data de "
     "nascimento ou e-mail de candidato. Toda resposta cita a fonte (dataset, arquivo e data de "
@@ -59,6 +61,13 @@ LIST_CANDIDATES_DESCRIPTION = (
     "Lista os candidatos de um cargo numa UF (BR para presidente), com filtro por partido ou por "
     "nome de urna ou nome civil. Nunca inclui CPF, título de eleitor, data de nascimento ou "
     "e-mail."
+)
+
+GET_CANDIDATE_TITLE = "Ficha do candidato"
+GET_CANDIDATE_DESCRIPTION = (
+    "Ficha de um candidato, pelo sq_candidato ou por UF, cargo e número. Inclui vice ou "
+    "suplentes da chapa, redes sociais declaradas ao TSE e o link da página oficial no "
+    "DivulgaCandContas. Nunca inclui CPF, título de eleitor, data de nascimento ou e-mail."
 )
 
 BallotOffice = Literal[
@@ -194,6 +203,43 @@ def create_mcp_server(core: Core) -> MCPServer:
         )
 
     @server.tool(
+        name="get_candidate",
+        title=GET_CANDIDATE_TITLE,
+        description=GET_CANDIDATE_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def get_candidate(
+        sq_candidato: Annotated[
+            int | str | None,
+            Field(description="Número sequencial da candidatura no TSE; ou uf, office e number"),
+        ] = None,
+        uf: Annotated[
+            str | None,
+            Field(description="Sigla da UF, 2 letras: estados, DF ou BR para presidente"),
+        ] = None,
+        office: Annotated[BallotOffice | None, Field(description="Cargo de urna")] = None,
+        number: Annotated[
+            int | str | None, Field(description="Número que o eleitor digita na urna")
+        ] = None,
+        round: Annotated[
+            int | None,
+            Field(description="Turno, opcional; sem ele, o turno mais recente da candidatura"),
+        ] = None,
+    ) -> Annotated[CallToolResult, CandidateAnswer]:
+        try:
+            answer = core.get_candidate(
+                sq_candidato, uf=uf, office=office, number=number, round=round
+            )
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        except IndexUnavailable as exc:
+            raise MCPError(code=INTERNAL_ERROR, message=f"índice indisponível: {exc}") from exc
+        return CallToolResult(
+            content=[TextContent(type="text", text=candidate_text(answer))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
+    @server.tool(
         name="search_polling_places",
         title=SEARCH_POLLING_PLACES_TITLE,
         description=SEARCH_POLLING_PLACES_DESCRIPTION,
@@ -281,6 +327,44 @@ def candidates_text(answer: CandidatesAnswer, uf: str, office: str) -> str:
                 notes.append("fora da urna")
             suffix = f" - {', '.join(notes)}" if notes else ""
             lines.append(f"{c.number} {c.ballot_name} ({c.party.acronym}){suffix};")
+    lines.extend(answer.warnings)
+    lines.append(_source_text(answer.source))
+    return " ".join(lines)
+
+
+def candidate_text(answer: CandidateAnswer) -> str:
+    """The short PT-BR text of a candidate profile, for clients without structured output."""
+    if answer.data is None:
+        assert answer.not_found is not None
+        lines = [f"Candidato não encontrado. {answer.not_found.guidance}"]
+    else:
+        c = answer.data.candidate
+        office_label = c.office.value.replace("_", " ")
+        nomination = c.party.acronym
+        if c.federation is not None:
+            nomination += f", federação {c.federation.name}"
+        if c.coalition is not None:
+            nomination += f", coligação {c.coalition.name}"
+        notes = []
+        if c.adjudication_status != "DEFERIDO":
+            notes.append(c.adjudication_status)
+        if not c.on_ballot:
+            notes.append("fora da urna")
+        suffix = f" - {', '.join(notes)}" if notes else ""
+        lines = [
+            f"{c.number} {c.ballot_name} ({c.name}), {office_label}, turno {c.round}, "
+            f"{nomination}{suffix}."
+        ]
+        if c.running_mates:
+            mates = "; ".join(
+                f"{m.office.value.replace('_', ' ')} {m.ballot_name} ({m.party.acronym})"
+                for m in c.running_mates
+            )
+            lines.append(f"Chapa: {mates}.")
+        if c.social_links:
+            lines.append("Redes sociais: " + ", ".join(c.social_links) + ".")
+        if c.divulgacandcontas_url is not None:
+            lines.append(f"Página oficial: {c.divulgacandcontas_url}")
     lines.extend(answer.warnings)
     lines.append(_source_text(answer.source))
     return " ".join(lines)

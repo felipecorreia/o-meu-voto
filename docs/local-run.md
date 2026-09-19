@@ -35,10 +35,12 @@ uv run python -m br_elections_mcp.app --index-dir data/index --port 8000
 The server prints `Uvicorn running on http://127.0.0.1:8000`. It serves:
 
 - MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
-  tools `find_polling_place`, `election_info` and `list_candidates`.
+  tools `find_polling_place`, `election_info`, `list_candidates` and `get_candidate`.
 - REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=`,
-  `http://localhost:8000/api/v1/election?on=` and
+  `http://localhost:8000/api/v1/election?on=`,
   `http://localhost:8000/api/v1/candidates?uf=&office=&party=&name=&on_ballot_only=&limit=&offset=&round=`,
+  `http://localhost:8000/api/v1/candidates/by-number?uf=&office=&number=&round=` and
+  `http://localhost:8000/api/v1/candidates/{sq_candidato}?round=`,
   with OpenAPI at `http://localhost:8000/api/v1/openapi.json` and Swagger UI at
   `http://localhost:8000/api/v1/docs`.
 
@@ -47,6 +49,7 @@ Quick check in another terminal:
 ```sh
 curl "http://localhost:8000/api/v1/polling-place?uf=ac&zone=009&section=0422"
 curl "http://localhost:8000/api/v1/candidates?uf=ac&office=governador"
+curl "http://localhost:8000/api/v1/candidates/by-number?uf=ac&office=governador&number=45"
 ```
 
 The same app can be started with uvicorn directly, configured by environment variables:
@@ -82,10 +85,11 @@ yet, enable it under Settings > Developer) and restart Claude Desktop:
 
 Node.js is required (`npx` ships with it; verified with Node 25.8.1). The tools appear as
 `find_polling_place` ("Onde voto"), `election_info` ("Quando é a eleição"), `list_candidates`
-("Candidatos"), `search_polling_places` ("Locais de votação da cidade") and
-`resolve_municipality` ("Código do município"). Prompts to try: "Onde voto? Acre, zona 9, seção
-422.", "Quando é a eleição?", "Quem são os candidatos a governador do Acre?" and "Quais são os
-locais de votação no Centro de Rio Branco?"
+("Candidatos"), `get_candidate` ("Ficha do candidato"), `search_polling_places` ("Locais de
+votação da cidade") and `resolve_municipality` ("Código do município"). Prompts to try: "Onde
+voto? Acre, zona 9, seção 422.", "Quando é a eleição?", "Quem são os candidatos a governador do
+Acre?", "Quem é o 45 para governador do Acre?" and "Quais são os locais de votação no Centro de
+Rio Branco?"
 
 ### What was verified, and how
 

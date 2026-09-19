@@ -277,6 +277,61 @@ def test_candidate_without_a_complementary_row_fails_loudly(tmp_path: Path):
         build_fixture_index(tmp_path / "out", candidates_complementary=incomplete)
 
 
+def _duplicate_row(original: bytes, sq_candidato: bytes, new_sq_candidato: bytes) -> bytes:
+    """Append a copy of the row of ``sq_candidato`` under ``new_sq_candidato``."""
+    header, body = original.split(b"\n", 1)
+    row = next(line for line in body.split(b"\n") if b'"' + sq_candidato + b'"' in line)
+    copy = row.replace(b'"' + sq_candidato + b'"', b'"' + new_sq_candidato + b'"')
+    return header + b"\n" + body.rstrip(b"\n") + b"\n" + copy + b"\n"
+
+
+def test_two_on_ballot_heads_with_the_same_number_fail_the_ticket_check(tmp_path: Path):
+    # A second on-ballot governor 45 in AC: the number would no longer identify the ticket.
+    candidates = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    candidates.write_bytes(
+        _duplicate_row(ACRE_CANDIDATES.read_bytes(), b"10000000001", b"10000000099")
+    )
+    complementary = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    complementary.write_bytes(
+        _duplicate_row(ACRE_CANDIDATES_COMPLEMENTARY.read_bytes(), b"10000000001", b"10000000099")
+    )
+    with pytest.raises(BuildError, match=r"exactly one head.*round 1 AC governador 45: 2 heads"):
+        build_fixture_index(
+            tmp_path / "out", candidates=candidates, candidates_complementary=complementary
+        )
+    assert not (tmp_path / "out" / INDEX_FILE_NAME).exists()
+
+
+def test_an_on_ballot_vice_without_a_head_fails_the_ticket_check(tmp_path: Path):
+    # Governor 45 leaves the ballot while the vice 45 stays on it.
+    header, body = ACRE_CANDIDATES_COMPLEMENTARY.read_bytes().split(b"\n", 1)
+    columns = header.decode("latin-1").split(";")
+    position = columns.index('"ST_CANDIDATO_INSERIDO_URNA"')
+    lines = []
+    for line in body.split(b"\n"):
+        if b'"10000000001"' in line:
+            fields = line.decode("latin-1").split(";")
+            fields[position] = '"N"'
+            line = ";".join(fields).encode("latin-1")
+        lines.append(line)
+    complementary = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    complementary.write_bytes(header + b"\n" + b"\n".join(lines))
+    with pytest.raises(BuildError, match=r"round 1 AC governador 45: 0 heads"):
+        build_fixture_index(tmp_path / "out", candidates_complementary=complementary)
+
+
+def test_an_off_ballot_head_never_counts_for_the_ticket_check(acre_index_dir: Path):
+    # Governor 22 is off the ballot in the fixture and has no vice: the build accepts it.
+    conn = duckdb.connect(str(acre_index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        row = conn.execute(
+            "SELECT on_ballot FROM candidates WHERE sq_candidato = 10000000005"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (False,)
+
+
 def _with_round_column(original: bytes, rounds: dict[bytes, list[tuple[bytes, bytes]]]) -> bytes:
     """Append NR_TURNO to the complementary file; ``rounds`` adds extra rows per sq_candidato
     as (round, DS_SITUACAO_JULGAMENTO) pairs, the original rows get round 1."""

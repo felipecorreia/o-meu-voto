@@ -21,10 +21,12 @@ the official e-Titulo app and TSE self-service.
 
 ## Status
 
-Five tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
+Six tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
 vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the election"
 (MCP tool `election_info`, `GET /api/v1/election`), the sanitized candidate list (MCP tool
-`list_candidates`, `GET /api/v1/candidates`), "what is this municipality's TSE code" (MCP tool
+`list_candidates`, `GET /api/v1/candidates`), the candidate profile (MCP tool `get_candidate`,
+`GET /api/v1/candidates/by-number` and `GET /api/v1/candidates/{sq_candidato}`), "what is this
+municipality's TSE code" (MCP tool
 `resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
 neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). To run it
 locally and connect Claude Desktop, see [`docs/local-run.md`](docs/local-run.md). The design

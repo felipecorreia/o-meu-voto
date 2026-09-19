@@ -26,7 +26,18 @@ from br_elections_mcp.domain import (
 SCHEMA_VERSION = 1
 
 _ELECTION_KEYS = frozenset(
-    {"id", "name", "year", "kind", "rounds", "voting_hours", "offices", "calendar_source", "notes"}
+    {
+        "id",
+        "name",
+        "year",
+        "kind",
+        "rounds",
+        "voting_hours",
+        "offices",
+        "calendar_source",
+        "notes",
+        "divulgacandcontas_election_id",
+    }
 )
 _ROUND_KEYS = frozenset({"number", "date", "note"})
 _HOURS_KEYS = frozenset({"start", "end", "timezone"})
@@ -86,6 +97,9 @@ def _election(raw: Any, index: int) -> Election:
             ),
             calendar_source=_source(data.get("calendar_source"), f"{where}.calendar_source"),
             notes=tuple(_str_items(data.get("notes", []), f"{where}.notes")),
+            divulgacandcontas_election_id=_optional_str(
+                data, "divulgacandcontas_election_id", where
+            ),
         )
     except ValueError as exc:
         if isinstance(exc, ElectionsSchemaError):
@@ -147,6 +161,17 @@ def _str(data: Mapping[str, Any], key: str, where: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
         raise ElectionsSchemaError(f"{where}.{key} must be a non-empty string")
+    return value
+
+
+def _optional_str(data: Mapping[str, Any], key: str, where: str) -> str | None:
+    """A key that may be absent or null; when present it is a non-empty string, never a
+    number, so a YAML value like ``20322002026`` must be quoted."""
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ElectionsSchemaError(f"{where}.{key} must be a non-empty string or null")
     return value
 
 

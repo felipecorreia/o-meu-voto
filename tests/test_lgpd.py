@@ -71,6 +71,11 @@ def test_no_forbidden_key_appears_in_any_serialized_answer(lgpd_index_dir: Path)
             core.list_candidates("AC", "senador"),
             core.list_candidates("AC", "deputado_federal"),
             core.list_candidates("AC", "deputado_estadual"),
+            core.get_candidate(10000000001),
+            core.get_candidate(10000000005),
+            core.get_candidate(uf="AC", office="senador", number=456),
+            core.get_candidate(uf="BR", office="presidente", number=45),
+            core.get_candidate(uf="AC", office="governador", number=22),
             core.search_polling_places("AC", "Rio Branco"),
             core.search_polling_places(
                 "AC", "Cruzeiro do Sul", near={"latitude": -7.6, "longitude": -72.7}
@@ -81,6 +86,7 @@ def test_no_forbidden_key_appears_in_any_serialized_answer(lgpd_index_dir: Path)
     finally:
         core.close()
     assert any(a.data is not None and getattr(a.data, "total", 0) > 0 for a in answers)
+    assert any(a.data is not None and hasattr(a.data, "candidate") for a in answers)
     for answer in answers:
         serialized = json.dumps(answer.model_dump(mode="json"), ensure_ascii=False)
         for column in FORBIDDEN_COLUMNS:

@@ -5,10 +5,14 @@ Public surface: ``Core``, the ``IndexSource`` port and the answer models.
 
 from br_elections_mcp.core.answers import (
     CalendarSourceInfo,
+    CandidateAnswer,
+    CandidateData,
     CandidateListItem,
+    CandidateProfile,
     CandidatesAnswer,
     CandidatesData,
     Coalition,
+    CoalitionDetail,
     CuratedSource,
     DatasetHealth,
     ElectionInfo,
@@ -16,6 +20,7 @@ from br_elections_mcp.core.answers import (
     ElectionInfoData,
     ElectionInfoRound,
     Federation,
+    FederationDetail,
     IndexHealth,
     IndexHealthCheckError,
     MunicipalitiesAnswer,
@@ -31,6 +36,7 @@ from br_elections_mcp.core.answers import (
     PollingPlacesAnswer,
     PollingPlacesData,
     PreviousPlace,
+    RunningMate,
     Source,
 )
 from br_elections_mcp.core.clock import Clock, system_clock
@@ -41,11 +47,15 @@ from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailab
 __all__ = [
     "STALE_AFTER_HOURS",
     "CalendarSourceInfo",
+    "CandidateAnswer",
+    "CandidateData",
     "CandidateListItem",
+    "CandidateProfile",
     "CandidatesAnswer",
     "CandidatesData",
     "Clock",
     "Coalition",
+    "CoalitionDetail",
     "Core",
     "CuratedSource",
     "DatasetHealth",
@@ -54,6 +64,7 @@ __all__ = [
     "ElectionInfoData",
     "ElectionInfoRound",
     "Federation",
+    "FederationDetail",
     "IndexHealth",
     "IndexHealthCheckError",
     "IndexSource",
@@ -75,6 +86,7 @@ __all__ = [
     "PollingPlacesAnswer",
     "PollingPlacesData",
     "PreviousPlace",
+    "RunningMate",
     "Source",
     "system_clock",
 ]

@@ -131,6 +131,7 @@ def build_index(
         conn.execute(_INSERT_POLLING_SECTIONS)
         conn.execute(_INSERT_POLLING_PLACES)
         conn.execute(_insert_candidates_sql(office_sql, with_round=complementary_has_round))
+        _check_tickets(conn)
         conn.execute(_INSERT_SOCIAL_LINKS)
         counts = {
             table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # type: ignore[index]
@@ -279,6 +280,35 @@ def _check_candidate_values(conn: duckdb.DuckDBPyConnection) -> None:
     ]
     if nameless_federations:
         raise BuildError(f"SG_FEDERACAO without NM_FEDERACAO: {nameless_federations}")
+
+
+def _check_tickets(conn: duckdb.DuckDBPyConnection) -> None:
+    """Every on-ballot ticket has exactly one head (docs/domain-model.md, 3.5 and 7).
+
+    A ticket is the on-ballot candidacies with the same round, UF and number
+    whose offices share a ``ticket_head``; ``get_candidate`` derives the running
+    mates from it, so two heads with one number or a vice without a head fail
+    the build instead of producing a wrong profile.
+    """
+    head_sql = " ".join(
+        f"WHEN '{office.value}' THEN '{office.ticket_head.value}'" for office in Office
+    )
+    broken = conn.execute(
+        f"""
+        SELECT round, uf, head_office, number, count(*) FILTER (WHERE office = head_office)
+        FROM (
+            SELECT round, uf, number, office, CASE office {head_sql} END AS head_office
+            FROM candidates
+            WHERE on_ballot
+        )
+        GROUP BY round, uf, number, head_office
+        HAVING count(*) FILTER (WHERE office = head_office) <> 1
+        ORDER BY round, uf, head_office, number
+        """
+    ).fetchall()
+    if broken:
+        described = [f"round {row[0]} {row[1]} {row[2]} {row[3]}: {row[4]} heads" for row in broken]
+        raise BuildError(f"on-ballot tickets without exactly one head: {described}")
 
 
 def _prepare_complementary(conn: duckdb.DuckDBPyConnection, *, with_round: bool) -> None:

@@ -36,6 +36,12 @@ class Calendar:
         """
         return self.current_election(today) or self._elections[-1]
 
+    def divulgacandcontas_election_id(self, year: int) -> str | None:
+        """The curated DivulgaCandContas id of the election of ``year`` (at most one per
+        year), or null when the file has no such election or no id for it."""
+        election = next((e for e in self._elections if e.year == year), None)
+        return election.divulgacandcontas_election_id if election is not None else None
+
     def coincident_election(self, today: dt.date, manifest: Manifest) -> Election | None:
         """The current election, when the index was built for it (codebase-design 3.4).
 

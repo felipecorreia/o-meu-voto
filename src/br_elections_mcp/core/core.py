@@ -16,10 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from br_elections_mcp.core.answers import (
     CalendarSourceInfo,
+    CandidateAnswer,
+    CandidateData,
     CandidateListItem,
+    CandidateProfile,
     CandidatesAnswer,
     CandidatesData,
     Coalition,
+    CoalitionDetail,
     CuratedSource,
     DatasetHealth,
     ElectionInfo,
@@ -28,6 +32,7 @@ from br_elections_mcp.core.answers import (
     ElectionInfoRound,
     ElectionRoundInfo,
     Federation,
+    FederationDetail,
     IndexHealth,
     IndexHealthCheckError,
     MunicipalitiesAnswer,
@@ -43,11 +48,13 @@ from br_elections_mcp.core.answers import (
     PollingPlacesAnswer,
     PollingPlacesData,
     PreviousPlace,
+    RunningMate,
     Source,
     VotingHoursInfo,
 )
 from br_elections_mcp.core.calendar import Calendar
 from br_elections_mcp.core.clock import Clock, system_clock
+from br_elections_mcp.core.divulgacandcontas import candidate_page_url
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index import Index, IndexManager
 from br_elections_mcp.core.index_source import IndexSource
@@ -64,7 +71,12 @@ from br_elections_mcp.core.normalize import (
     search_text,
 )
 from br_elections_mcp.core.queries import candidates as candidate_queries
-from br_elections_mcp.core.queries.candidates import CandidateFilter, CandidateRow
+from br_elections_mcp.core.queries.candidates import (
+    CandidateFilter,
+    CandidateProfileRow,
+    CandidateRow,
+    RunningMateRow,
+)
 from br_elections_mcp.core.queries.municipalities import (
     MunicipalityRow,
     get_municipality,
@@ -72,7 +84,7 @@ from br_elections_mcp.core.queries.municipalities import (
 )
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
 from br_elections_mcp.core.queries.search_places import PlaceRow, search_places
-from br_elections_mcp.domain import Election
+from br_elections_mcp.domain import UF, Election, Office
 from br_elections_mcp.domain import ElectionRound as DomainElectionRound
 from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
 
@@ -98,6 +110,16 @@ MUNICIPALITY_AMBIGUOUS_GUIDANCE = (
 )
 
 SEARCH_PLACES_GUIDANCE = "Para saber a sua seção, consulte o e-Título."
+
+CANDIDATE_NOT_FOUND_BY_NUMBER_GUIDANCE = (
+    "Nenhum candidato com esse número está na urna para esse cargo nessa UF. Confira o número "
+    "e o cargo, ou liste os candidatos do cargo com list_candidates."
+)
+
+CANDIDATE_NOT_FOUND_BY_SQ_GUIDANCE = (
+    "Nenhuma candidatura com esse sq_candidato. Confira o número sequencial, ou procure o "
+    "candidato por UF, cargo e número de urna."
+)
 
 SEARCH_PLACES_DEFAULT_LIMIT = 20
 RESOLVE_MUNICIPALITY_DEFAULT_LIMIT = 10
@@ -324,6 +346,89 @@ class Core:
             not_found=None,
             warnings=self._staleness_warnings(source),
             election=_election_info(election, answered_round),
+            source=source,
+        )
+
+    def get_candidate(
+        self,
+        sq_candidato: object = None,
+        *,
+        uf: object = None,
+        office: object = None,
+        number: object = None,
+        round: object = None,
+    ) -> CandidateAnswer:
+        """The profile of one candidate, by ``sq_candidato`` or by UF, office and number.
+
+        Exactly one of the two lookups: ``sq_candidato`` alone, or the whole trio.
+        By ``sq_candidato`` the rounds of the candidacy are the ones it appears in;
+        by the trio only on-ballot candidacies count, at most one per round, so a
+        number held only off the ballot is ``candidato_nao_encontrado``. The
+        profile carries the ticket (vice or substitutes with the same number), the
+        social links declared to the TSE and the DivulgaCandContas link, derived and
+        never fetched. Raises ``InvalidQuery`` for a malformed lookup or a round
+        outside the calendar.
+        """
+        lookup = _candidate_lookup(sq_candidato, uf, office, number)
+        requested_round = None if round is None else normalize_number(round, "turno inválido")
+
+        with self._index_manager.query() as (index, cursor):
+            today = self._today()
+            election = self._calendar.coincident_election(today, index.manifest)
+            _check_round_bound(requested_round, election)
+            source = self._source(index, "candidates")
+
+            # The set of rounds of the candidacy comes first, then the round table
+            # (codebase-design 3.4): by sq_candidato, the rounds it appears in; by the
+            # trio, the rounds with an on-ballot candidacy of that number.
+            if isinstance(lookup, int):
+                rounds = candidate_queries.candidacy_rounds(cursor, lookup)
+            else:
+                rounds = candidate_queries.on_ballot_rounds_by_number(cursor, *lookup)
+            if not rounds:
+                # Not found: the answer still names the round the office (or the index)
+                # is at, so `election` is filled as in every other answer.
+                answered_round = _pick_round(_rounds_for_not_found(cursor, lookup), requested_round)
+                profile = None
+            else:
+                answered_round = _pick_round(rounds, requested_round)
+                profile = _fetch_profile(cursor, lookup, answered_round)
+            mates: list[RunningMateRow] = []
+            links: list[str] = []
+            if profile is not None:
+                mates = candidate_queries.running_mates(
+                    cursor, profile, _ticket_offices(Office(profile.office))
+                )
+                links = candidate_queries.social_links(cursor, profile.sq_candidato)
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
+
+        election_info = _election_info(election, answered_round)
+        if profile is None:
+            guidance = (
+                CANDIDATE_NOT_FOUND_BY_SQ_GUIDANCE
+                if isinstance(lookup, int)
+                else CANDIDATE_NOT_FOUND_BY_NUMBER_GUIDANCE
+            )
+            return CandidateAnswer(
+                data=None,
+                not_found=NotFound(reason="candidato_nao_encontrado", guidance=guidance),
+                warnings=[],
+                election=election_info,
+                source=source,
+            )
+        page_url = candidate_page_url(
+            self._calendar.divulgacandcontas_election_id(profile.election_year),
+            UF(profile.uf),
+            profile.sq_candidato,
+            profile.election_year,
+        )
+        return CandidateAnswer(
+            data=CandidateData(candidate=_candidate_profile(profile, mates, links, page_url)),
+            not_found=None,
+            warnings=[],
+            election=election_info,
             source=source,
         )
 
@@ -571,6 +676,107 @@ def _candidate_list_item(row: CandidateRow) -> CandidateListItem:
         on_ballot=row.on_ballot,
         occupation=row.occupation,
         photo_url=None,
+    )
+
+
+def _candidate_lookup(
+    sq_candidato: object, uf: object, office: object, number: object
+) -> int | tuple[str, str, int]:
+    """Either the ``sq_candidato`` or the normalized trio (``uf``, ``office``, ``number``);
+    both, neither or a partial trio are ``InvalidQuery``."""
+    trio_given = [value is not None for value in (uf, office, number)]
+    if sq_candidato is not None:
+        if any(trio_given):
+            raise InvalidQuery("informe sq_candidato ou o trio uf, office e number, não os dois")
+        return normalize_number(sq_candidato, "sq_candidato inválido")
+    if not all(trio_given):
+        raise InvalidQuery("informe sq_candidato ou o trio completo: uf, office e number")
+    uf_value = normalize_candidate_uf(uf)
+    office_value = normalize_ballot_office(office)
+    check_office_for_uf(office_value, uf_value)
+    return uf_value.value, office_value.value, normalize_number(number, "número inválido")
+
+
+def _fetch_profile(
+    cursor: duckdb.DuckDBPyConnection, lookup: int | tuple[str, str, int], round: int
+) -> CandidateProfileRow | None:
+    if isinstance(lookup, int):
+        return candidate_queries.get_candidate(cursor, lookup, round)
+    return candidate_queries.get_candidate_by_number(cursor, *lookup, round)
+
+
+def _rounds_for_not_found(
+    cursor: duckdb.DuckDBPyConnection, lookup: int | tuple[str, str, int]
+) -> tuple[int, ...]:
+    """The rounds a not-found answer refers to: the office's by the trio, the index's
+    otherwise. Never empty: an index without candidates is ``IndexUnavailable``."""
+    rounds: tuple[int, ...] = ()
+    if isinstance(lookup, tuple):
+        rounds = candidate_queries.office_rounds(cursor, lookup[0], lookup[1])
+    if not rounds:
+        rounds = candidate_queries.candidate_rounds(cursor)
+    if not rounds:
+        raise IndexUnavailable("the index has no candidates in any round")
+    return rounds
+
+
+def _ticket_offices(office: Office) -> tuple[str, ...]:
+    """The offices of the ticket ``office`` belongs to, head first: a ballot office and the
+    ones whose ``ticket_head`` it is. Empty for an office that has no ticket (deputies)."""
+    head = office.ticket_head
+    members = [head, *(o for o in Office if o.ticket_head is head and o is not head)]
+    if len(members) == 1:
+        return ()
+    return tuple(o.value for o in members)
+
+
+def _candidate_profile(
+    row: CandidateProfileRow, mates: list[RunningMateRow], links: list[str], page_url: str | None
+) -> CandidateProfile:
+    federation = None
+    if row.federation_acronym is not None:
+        federation = FederationDetail(
+            acronym=row.federation_acronym,
+            name=row.federation_name or "",
+            composition=row.federation_composition,
+        )
+    coalition = None
+    if row.coalition_name is not None:
+        coalition = CoalitionDetail(name=row.coalition_name, composition=row.coalition_composition)
+    return CandidateProfile(
+        sq_candidato=row.sq_candidato,
+        number=row.number,
+        ballot_name=row.ballot_name,
+        name=row.name,
+        office=row.office,  # type: ignore[arg-type]
+        party=Party(number=row.party_number, acronym=row.party_acronym, name=row.party_name),
+        federation=federation,
+        coalition=coalition,
+        adjudication_status=row.adjudication_status,
+        on_ballot=row.on_ballot,
+        occupation=row.occupation,
+        photo_url=None,
+        round=row.round,
+        social_name=row.social_name,
+        nomination_kind=row.nomination_kind,  # type: ignore[arg-type]
+        gender=row.gender,
+        race_color=row.race_color,
+        marital_status=row.marital_status,
+        education=row.education,
+        running_mates=[
+            RunningMate(
+                sq_candidato=mate.sq_candidato,
+                office=mate.office,  # type: ignore[arg-type]
+                ballot_name=mate.ballot_name,
+                name=mate.name,
+                party=Party(
+                    number=mate.party_number, acronym=mate.party_acronym, name=mate.party_name
+                ),
+            )
+            for mate in mates
+        ],
+        social_links=links,
+        divulgacandcontas_url=page_url,
     )
 
 

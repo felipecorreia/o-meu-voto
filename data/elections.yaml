@@ -33,6 +33,13 @@ elections:
       title: "Resolução TSE nº 23.760, de 2 de março de 2026 (Calendário Eleitoral)"
       url: https://www.tse.jus.br/legislacao/compilada/res/2026/resolucao-no-23-760-de-2-de-marco-de-2026
       verified_at: 2026-09-17
+    # The id of this election in the DivulgaCandContas candidate URLs
+    # (https://divulgacandcontas.tse.jus.br/divulga/#/candidato/...). It is not the CD_ELEICAO
+    # of the TSE files: the site uses the id of its own ordinary-elections endpoint. Value read
+    # on 2026-09-19 from https://github.com/turicas/eleicoes-brasil (divulgacandcontas.py,
+    # commit of 2026-08-10), because the site blocks non-browser clients (ADR 0003); the first
+    # link opened in a browser confirms it. Always quoted: it is an id, not a number.
+    divulgacandcontas_election_id: "20322002026"
     notes:
       - "A votação é simultânea em todo o país e segue o horário de Brasília, inclusive nos estados com fuso horário diferente."
       - "Quem está fora do domicílio eleitoral pode justificar a ausência no dia da votação, das 8h às 17h (horário de Brasília)."

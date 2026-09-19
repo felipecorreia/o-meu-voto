@@ -45,6 +45,19 @@ def test_elections_file_loads_and_describes_the_2026_general_election():
     )
     assert e.calendar_source.verified_at == dt.date(2026, 9, 17)
     assert e.notes, "notes for the voter are expected"
+    assert e.divulgacandcontas_election_id == "20322002026"
+
+
+def test_divulgacandcontas_election_id_is_optional_and_must_be_a_digit_string(document):
+    path = ["elections", 0, "divulgacandcontas_election_id"]
+    without = parse_elections(_mutate(document, path, _DELETE))
+    assert without[0].divulgacandcontas_election_id is None
+    null = parse_elections(_mutate(document, path, None))
+    assert null[0].divulgacandcontas_election_id is None
+    with pytest.raises(ElectionsSchemaError, match="non-empty string or null"):
+        parse_elections(_mutate(document, path, 20322002026))
+    with pytest.raises(ElectionsSchemaError, match="must be digits"):
+        parse_elections(_mutate(document, path, "2026-geral"))
 
 
 def _mutate(document: dict, path: list, value) -> dict:

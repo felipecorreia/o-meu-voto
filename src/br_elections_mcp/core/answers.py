@@ -41,7 +41,12 @@ class MunicipalityMatch(Municipality):
     )
 
 
-NotFoundReason = Literal["secao_nao_encontrada", "municipio_nao_encontrado", "municipio_ambiguo"]
+NotFoundReason = Literal[
+    "secao_nao_encontrada",
+    "municipio_nao_encontrado",
+    "municipio_ambiguo",
+    "candidato_nao_encontrado",
+]
 
 
 class NotFound(_Model):
@@ -245,6 +250,61 @@ class CandidatesAnswer(_Model):
     ``not_found``."""
 
     data: CandidatesData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
+    election: ElectionInfo | None
+    source: Source
+
+
+class FederationDetail(Federation):
+    composition: str | None = Field(description="Partidos da federação, como o TSE publica")
+
+
+class CoalitionDetail(Coalition):
+    composition: str | None = Field(description="Partidos da coligação, como o TSE publica")
+
+
+class RunningMate(_Model):
+    """A vice or substitute of the ticket, with the same ballot number as the head."""
+
+    sq_candidato: int
+    office: Office
+    ballot_name: str
+    name: str
+    party: Party
+
+
+class CandidateProfile(CandidateListItem):
+    """One candidate as ``get_candidate`` shows it (codebase-design 8.4): the list fields
+    plus the ones that exist only in the individual profile. ``gender``, ``race_color``,
+    ``marital_status`` and ``education`` come exactly as the TSE publishes them."""
+
+    round: int = Field(description="Turno a que a ficha se refere")
+    social_name: str | None = Field(description="Nome social, quando declarado")
+    nomination_kind: Literal["partido_isolado", "federacao", "coligacao"]
+    federation: FederationDetail | None
+    coalition: CoalitionDetail | None
+    gender: str | None = Field(description="Como o TSE publica, sem inferência")
+    race_color: str | None = Field(description="Como o TSE publica, sem inferência")
+    marital_status: str | None = Field(description="Como o TSE publica, sem inferência")
+    education: str | None = Field(description="Como o TSE publica, sem inferência")
+    running_mates: list[RunningMate] = Field(
+        description="Vice ou suplentes da chapa (mesmo número); vazia para deputados"
+    )
+    social_links: list[str] = Field(description="Redes sociais declaradas ao TSE")
+    divulgacandcontas_url: str | None = Field(
+        description="Página oficial da candidatura no DivulgaCandContas, para abrir no navegador"
+    )
+
+
+class CandidateData(_Model):
+    candidate: CandidateProfile
+
+
+class CandidateAnswer(_Model):
+    """Answer of ``get_candidate`` (codebase-design 8.4)."""
+
+    data: CandidateData | None
     not_found: NotFound | None
     warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
     election: ElectionInfo | None

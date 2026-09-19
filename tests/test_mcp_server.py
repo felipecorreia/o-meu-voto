@@ -7,6 +7,7 @@ from mcp import Client
 from mcp.shared.exceptions import MCPError
 
 from br_elections_mcp.core import (
+    CandidateAnswer,
     CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
@@ -29,6 +30,7 @@ async def test_tools_are_listed_with_pt_br_texts_annotations_and_generated_schem
         "find_polling_place",
         "election_info",
         "list_candidates",
+        "get_candidate",
         "search_polling_places",
         "resolve_municipality",
     ]
@@ -246,6 +248,85 @@ async def test_list_candidates_invalid_query_is_a_result_with_is_error(core: Cor
         result = await client.call_tool("list_candidates", {"uf": "AC", "office": "presidente"})
     assert result.is_error is True
     assert "presidente só existe com uf = BR" in result.content[0].text
+
+
+async def test_get_candidate_tool_is_listed_with_the_lgpd_promise_and_schemas(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        tools = (await client.list_tools()).tools
+    tool = next(tool for tool in tools if tool.name == "get_candidate")
+
+    assert tool.title == "Ficha do candidato"
+    assert tool.description is not None
+    assert "DivulgaCandContas" in tool.description
+    assert "Nunca inclui CPF, título de eleitor, data de nascimento ou e-mail" in tool.description
+    assert tool.annotations is not None
+    assert tool.annotations.read_only_hint is True
+    assert tool.annotations.open_world_hint is False
+
+    assert set(tool.input_schema["properties"]) == {
+        "sq_candidato",
+        "uf",
+        "office",
+        "number",
+        "round",
+    }
+    assert "required" not in tool.input_schema or tool.input_schema["required"] == []
+    assert tool.output_schema is not None
+    assert set(tool.output_schema["properties"]) == set(
+        CandidateAnswer.model_json_schema()["properties"]
+    )
+    profile_schema = tool.output_schema["$defs"]["CandidateProfile"]["properties"]
+    assert {"gender", "race_color", "marital_status", "education"} <= set(profile_schema)
+
+
+async def test_get_candidate_by_sq_candidato_returns_the_envelope_and_a_pt_br_text(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool("get_candidate", {"sq_candidato": 10000000001})
+
+    assert result.is_error is False
+    assert result.structured_content == core.get_candidate(10000000001).model_dump(mode="json")
+    text = result.content[0].text
+    assert "45 MARIA DA SILVA (MARIA APARECIDA DA SILVA), governador, turno 1" in text
+    assert "coligação ACRE PARA TODOS" in text
+    assert "Chapa: vice governador JOÃO DO ACRE (MDB)." in text
+    assert "https://www.instagram.com/mariadasilva45" in text
+    assert "Página oficial: https://divulgacandcontas.tse.jus.br/" in text
+    assert "Fonte:" in text
+
+
+async def test_get_candidate_by_the_trio_passes_every_argument_through(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "get_candidate", {"uf": "br", "office": "presidente", "number": "13", "round": 1}
+        )
+
+    assert result.is_error is False
+    expected = core.get_candidate(uf="br", office="presidente", number="13", round=1)
+    assert result.structured_content == expected.model_dump(mode="json")
+    assert result.structured_content["data"]["candidate"]["sq_candidato"] == 20000000001
+
+
+async def test_get_candidate_not_found_is_a_normal_result_with_guidance(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "get_candidate", {"uf": "AC", "office": "governador", "number": 22}
+        )
+
+    assert result.is_error is False
+    assert result.structured_content["data"] is None
+    assert result.structured_content["not_found"]["reason"] == "candidato_nao_encontrado"
+    assert result.content[0].text.startswith("Candidato não encontrado.")
+
+
+async def test_get_candidate_invalid_query_is_a_result_with_is_error(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        both = await client.call_tool("get_candidate", {"sq_candidato": 10000000001, "uf": "AC"})
+        neither = await client.call_tool("get_candidate", {})
+
+    assert both.is_error is True
+    assert "não os dois" in both.content[0].text
+    assert neither.is_error is True
+    assert "trio completo" in neither.content[0].text
 
 
 async def test_search_and_resolve_tools_are_listed_with_pt_br_texts_and_schemas(core: Core):

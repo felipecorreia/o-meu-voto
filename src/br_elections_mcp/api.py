@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Path, Query, Request
 from fastapi.responses import JSONResponse
 
 from br_elections_mcp import __version__
 from br_elections_mcp.core import (
+    CandidateAnswer,
     CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
@@ -131,6 +132,61 @@ def create_api(core: Core) -> FastAPI:
             offset=offset,
             round=round,
         )
+
+    # Declaration order is part of the contract (codebase-design 4): `by-number` comes before
+    # `{sq_candidato}`, because the first matching route wins and the `int` annotation only
+    # turns a non-numeric segment into a clear 422, it never keeps the path from matching.
+    @api.get(
+        "/candidates/by-number",
+        response_model=CandidateAnswer,
+        summary="Ficha do candidato por número",
+        description=(
+            "Ficha de um candidato por UF, cargo e número de urna, só entre os candidatos na "
+            "urna. Inclui vice ou suplentes da chapa, redes sociais declaradas ao TSE e o link "
+            "da página oficial no DivulgaCandContas. Nunca inclui CPF, título de eleitor, data "
+            "de nascimento ou e-mail."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def candidate_by_number(
+        uf: Annotated[str, Query(description="Sigla da UF: estados, DF ou BR para presidente")],
+        office: Annotated[
+            str,
+            Query(
+                description=(
+                    "Cargo de urna: presidente, governador, senador, deputado_federal, "
+                    "deputado_estadual ou deputado_distrital"
+                )
+            ),
+        ],
+        number: Annotated[str, Query(description="Número que o eleitor digita na urna")],
+        round: Annotated[str | None, Query(description="Turno, opcional")] = None,
+    ) -> CandidateAnswer:
+        return core.get_candidate(uf=uf, office=office, number=number, round=round)
+
+    @api.get(
+        "/candidates/{sq_candidato}",
+        response_model=CandidateAnswer,
+        summary="Ficha do candidato",
+        description=(
+            "Ficha de um candidato pelo sq_candidato. Inclui vice ou suplentes da chapa, redes "
+            "sociais declaradas ao TSE e o link da página oficial no DivulgaCandContas. Nunca "
+            "inclui CPF, título de eleitor, data de nascimento ou e-mail."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            422: {"description": "sq_candidato não numérico"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def candidate(
+        sq_candidato: Annotated[int, Path(description="Número sequencial da candidatura no TSE")],
+        round: Annotated[str | None, Query(description="Turno, opcional")] = None,
+    ) -> CandidateAnswer:
+        return core.get_candidate(sq_candidato, round=round)
 
     @api.get(
         "/polling-places",
