@@ -51,7 +51,9 @@ BR_ELECTIONS_INDEX_DIR=data/index uv run uvicorn --factory br_elections_mcp.app:
 ```
 
 `BR_ELECTIONS_ELECTIONS_FILE` (default `data/elections.yaml`) and `BR_ELECTIONS_HOST`
-(default `127.0.0.1`) are the other two variables.
+(default `127.0.0.1`) are two of the other variables. Two more configure the per-IP rate
+limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
+default) and `BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS` (default `60`), both must be positive.
 
 ## 3. Connect Claude Desktop
 

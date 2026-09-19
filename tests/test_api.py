@@ -123,6 +123,7 @@ def test_settings_from_env_reads_the_index_dir_and_defaults(
     assert settings.index_dir == acre_index_dir
     assert settings.elections_file == ELECTIONS_FILE
     assert (settings.host, settings.port) == ("127.0.0.1", 8765)
+    assert settings.rate_limit is None
 
     with TestClient(create_app(), base_url="http://localhost") as client:
         response = client.get(
