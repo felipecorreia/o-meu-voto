@@ -21,12 +21,15 @@ from br_elections_mcp.core.answers import (
     CandidatesData,
     Coalition,
     CuratedSource,
+    DatasetHealth,
     ElectionInfo,
     ElectionInfoAnswer,
     ElectionInfoData,
     ElectionInfoRound,
     ElectionRoundInfo,
     Federation,
+    IndexHealth,
+    IndexHealthCheckError,
     MunicipalitiesAnswer,
     MunicipalitiesData,
     Municipality,
@@ -76,6 +79,9 @@ from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
 MAX_LIMIT = 50
 """The largest page any list answers (codebase-design 3.1)."""
 
+STALE_AFTER_HOURS = 48
+"""Above this age the data is stale, still served, with a warning (codebase-design 9)."""
+
 SECTION_NOT_FOUND_GUIDANCE = (
     "Confira a zona e a seção no e-Título ou no título impresso. Sem o título, use o serviço "
     "Onde votar do TSE: https://www.tse.jus.br/servicos-eleitorais/autoatendimento-eleitoral"
@@ -116,6 +122,15 @@ def aggregated_section_warning(main_section: int) -> str:
 
 def place_changed_warning(previous: PreviousPlace) -> str:
     return f"O local de votação mudou. Antes era {previous.name}, endereço {previous.address}."
+
+
+def stale_data_warning(generated_at: dt.datetime, age_hours: float) -> str:
+    local = generated_at.astimezone(ZoneInfo(TSE_TIMEZONE))
+    return (
+        f"Os dados do TSE usados nesta resposta foram gerados em "
+        f"{local.strftime('%d/%m/%Y')} às {local.strftime('%H:%M')} (há {round(age_hours)} "
+        "horas). Confira no e-Título se algo mudou."
+    )
 
 
 class Core:
@@ -183,7 +198,7 @@ class Core:
                 not_found=NotFound(
                     reason="secao_nao_encontrada", guidance=SECTION_NOT_FOUND_GUIDANCE
                 ),
-                warnings=[],
+                warnings=self._staleness_warnings(source),
                 election=election_info,
                 source=source,
             )
@@ -194,6 +209,7 @@ class Core:
             warnings.append(aggregated_section_warning(data.votes_at_section))
         if data.previous_place is not None:
             warnings.append(place_changed_warning(data.previous_place))
+        warnings.extend(self._staleness_warnings(source))
         return PollingPlaceAnswer(
             data=data, not_found=None, warnings=warnings, election=election_info, source=source
         )
@@ -306,7 +322,7 @@ class Core:
                 offset=offset_value,
             ),
             not_found=None,
-            warnings=[],
+            warnings=self._staleness_warnings(source),
             election=_election_info(election, answered_round),
             source=source,
         )
@@ -337,14 +353,14 @@ class Core:
                 not_found=NotFound(
                     reason="municipio_nao_encontrado", guidance=MUNICIPALITY_NOT_FOUND_GUIDANCE
                 ),
-                warnings=[],
+                warnings=self._staleness_warnings(source),
                 election=None,
                 source=source,
             )
         return MunicipalitiesAnswer(
             data=MunicipalitiesData(municipalities=[_municipality_match(row) for row in rows]),
             not_found=None,
-            warnings=[],
+            warnings=self._staleness_warnings(source),
             election=None,
             source=source,
         )
@@ -405,7 +421,7 @@ class Core:
             return PollingPlacesAnswer(
                 data=None,
                 not_found=_municipality_not_found(options),
-                warnings=[],
+                warnings=self._staleness_warnings(source),
                 election=election_info,
                 source=source,
             )
@@ -425,9 +441,35 @@ class Core:
                 guidance=SEARCH_PLACES_GUIDANCE,
             ),
             not_found=None,
-            warnings=[],
+            warnings=self._staleness_warnings(source),
             election=election_info,
             source=source,
+        )
+
+    def health(self) -> IndexHealth:
+        """Freshness of the open index, for the operator, before a voter sees any warning.
+
+        Never ages by itself: every field reflects the open index and the check task as
+        they are right now. Raises ``IndexUnavailable`` when nothing is open.
+        """
+        index = self._index_manager.current()
+        now = self._clock()
+        datasets = {
+            key: _dataset_health(origin.generated_at, now)
+            for key, origin in index.manifest.datasets.items()
+        }
+        last_error = self._index_manager.last_check_error
+        return IndexHealth(
+            datasets=datasets,
+            index_built_at=index.manifest.index_built_at,
+            stale=any(health.stale for health in datasets.values()),
+            index_version=index.version,
+            last_index_check_at=self._index_manager.last_check_at,
+            last_index_check_error=(
+                None
+                if last_error is None
+                else IndexHealthCheckError(at=last_error.at, message=last_error.message)
+            ),
         )
 
     # Helpers
@@ -435,16 +477,35 @@ class Core:
     def _today(self) -> dt.date:
         return self._clock().astimezone(ZoneInfo(TSE_TIMEZONE)).date()
 
-    @staticmethod
-    def _source(index: Index, dataset: DatasetKey) -> Source:
+    def _source(self, index: Index, dataset: DatasetKey) -> Source:
         origin = index.manifest.datasets[dataset]
+        age_hours = _age_hours(origin.generated_at, self._clock())
         return Source(
             dataset=origin.dataset,
             dataset_url=origin.dataset_url,
             file=origin.file,
             generated_at=origin.generated_at,
             index_built_at=index.manifest.index_built_at,
+            age_hours=age_hours,
+            stale=age_hours > STALE_AFTER_HOURS,
         )
+
+    @staticmethod
+    def _staleness_warnings(source: Source) -> list[str]:
+        if not source.stale:
+            return []
+        return [stale_data_warning(source.generated_at, source.age_hours)]
+
+
+def _age_hours(generated_at: dt.datetime, now: dt.datetime) -> float:
+    return (now - generated_at).total_seconds() / 3600
+
+
+def _dataset_health(generated_at: dt.datetime, now: dt.datetime) -> DatasetHealth:
+    age_hours = _age_hours(generated_at, now)
+    return DatasetHealth(
+        generated_at=generated_at, age_hours=age_hours, stale=age_hours > STALE_AFTER_HOURS
+    )
 
 
 def _resolve_round(index: Index, requested: int | None, election: Election | None) -> int:

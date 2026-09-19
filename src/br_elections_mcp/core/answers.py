@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from br_elections_mcp.domain import Office
+from br_elections_mcp.index_schema import DatasetKey
 
 LICENSE = "CC-BY"
 ATTRIBUTION = "Tribunal Superior Eleitoral - Portal de Dados Abertos"
@@ -84,6 +85,10 @@ class Source(_Model):
         description="Instante em que o TSE gerou o arquivo (DT_GERACAO + HH_GERACAO)"
     )
     index_built_at: dt.datetime
+    age_hours: float = Field(
+        description="Idade do dado em horas, calculada a partir de generated_at e do relógio"
+    )
+    stale: bool = Field(description="True quando age_hours > 48 (STALE_AFTER_HOURS)")
     license: str = LICENSE
     attribution: str = ATTRIBUTION
 
@@ -302,3 +307,37 @@ class MunicipalitiesAnswer(_Model):
     warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
     election: ElectionInfo | None
     source: Source
+
+
+class DatasetHealth(_Model):
+    """Freshness of one dataset of the open index, as ``health()`` exposes it (ticket #13)."""
+
+    generated_at: dt.datetime
+    age_hours: float
+    stale: bool
+
+
+class IndexHealthCheckError(_Model):
+    """The last failed check of the ``IndexSource``, or absent when none has failed."""
+
+    at: dt.datetime
+    message: str
+
+
+class IndexHealth(_Model):
+    """Answer of ``Core.health()``, passed through by ``GET /healthz`` (codebase-design 4, 9).
+
+    Lets an operator alert when the index goes more than 24 hours without a build, or when
+    the ``IndexSource`` check keeps failing, before a voter ever sees the 48-hour warning.
+    """
+
+    datasets: dict[DatasetKey, DatasetHealth]
+    index_built_at: dt.datetime
+    stale: bool = Field(description="True when any dataset of the index is older than 48h")
+    index_version: str
+    last_index_check_at: dt.datetime | None = Field(
+        description="Instant of the last successful IndexSource check"
+    )
+    last_index_check_error: IndexHealthCheckError | None = Field(
+        description="Instant and message of the last failed check, or null"
+    )

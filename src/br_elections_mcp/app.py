@@ -1,4 +1,4 @@
-"""Composition root: chooses the IndexSource, builds the Core, mounts /mcp and /api/v1.
+"""Composition root: chooses the IndexSource, builds the Core, mounts /mcp, /api/v1 and /healthz.
 
 Composition only, never logic. The ASGI lifespan opens the index through
 ``Core.start()`` and closes it through ``Core.close()``; the MCP session
@@ -22,10 +22,12 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
-from starlette.routing import Mount
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 from br_elections_mcp.api import create_api
-from br_elections_mcp.core import Core
+from br_elections_mcp.core import Core, IndexUnavailable
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from br_elections_mcp.rate_limit import Clock, RateLimitConfig, RateLimitMiddleware
@@ -106,9 +108,20 @@ def build_app(
         finally:
             core.close()
 
+    async def healthz(_: Request) -> JSONResponse:
+        try:
+            health = core.health()
+        except IndexUnavailable as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=503)
+        return JSONResponse(health.model_dump(mode="json"))
+
     middleware = [Middleware(RateLimitMiddleware, config=rate_limit, clock=rate_limit_clock)]
     return Starlette(
-        routes=[Mount("/api/v1", app=create_api(core)), Mount("/", app=mcp_app)],
+        routes=[
+            Route("/healthz", healthz),
+            Mount("/api/v1", app=create_api(core)),
+            Mount("/", app=mcp_app),
+        ],
         middleware=middleware,
         lifespan=lifespan,
     )

@@ -317,6 +317,39 @@ def test_municipalities_not_found_is_200_with_the_envelope(client: TestClient):
     assert body["not_found"]["reason"] == "municipio_nao_encontrado"
 
 
+# GET /healthz (ticket #13): not an MCP tool and not under /api/v1
+
+
+def test_healthz_returns_the_health_envelope(client: TestClient, core: Core):
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == core.health().model_dump(mode="json")
+    assert set(body) == {
+        "datasets",
+        "index_built_at",
+        "stale",
+        "index_version",
+        "last_index_check_at",
+        "last_index_check_error",
+    }
+    assert body["datasets"]["polling_places"]["generated_at"] is not None
+    assert body["stale"] is False
+
+
+def test_healthz_is_not_under_api_v1(client: TestClient):
+    assert client.get("/api/v1/healthz").status_code == 404
+
+
+def test_healthz_is_503_when_the_index_was_never_opened(acre_index_dir: Path):
+    # No lifespan here (no ``with``), so core.start() never runs and the index stays closed.
+    core = Core(LocalDirectoryIndexSource(acre_index_dir), ELECTIONS_FILE)
+    unstarted_client = TestClient(build_app(core), base_url="http://localhost")
+    response = unstarted_client.get("/healthz")
+    assert response.status_code == 503
+    assert "index is not open" in response.json()["detail"]
+
+
 def test_lifespan_starts_the_check_task_and_shutdown_stops_it(acre_index_dir: Path):
     def check_task_alive() -> bool:
         return any(thread.name == "index-check" for thread in threading.enumerate())

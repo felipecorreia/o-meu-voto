@@ -10,11 +10,14 @@ from br_elections_mcp.core.answers import (
     CandidatesData,
     Coalition,
     CuratedSource,
+    DatasetHealth,
     ElectionInfo,
     ElectionInfoAnswer,
     ElectionInfoData,
     ElectionInfoRound,
     Federation,
+    IndexHealth,
+    IndexHealthCheckError,
     MunicipalitiesAnswer,
     MunicipalitiesData,
     Municipality,
@@ -31,11 +34,12 @@ from br_elections_mcp.core.answers import (
     Source,
 )
 from br_elections_mcp.core.clock import Clock, system_clock
-from br_elections_mcp.core.core import Core, Near
+from br_elections_mcp.core.core import STALE_AFTER_HOURS, Core, Near
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable, IndexVersion
 
 __all__ = [
+    "STALE_AFTER_HOURS",
     "CalendarSourceInfo",
     "CandidateListItem",
     "CandidatesAnswer",
@@ -44,11 +48,14 @@ __all__ = [
     "Coalition",
     "Core",
     "CuratedSource",
+    "DatasetHealth",
     "ElectionInfo",
     "ElectionInfoAnswer",
     "ElectionInfoData",
     "ElectionInfoRound",
     "Federation",
+    "IndexHealth",
+    "IndexHealthCheckError",
     "IndexSource",
     "IndexSourceUnavailable",
     "IndexUnavailable",

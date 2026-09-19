@@ -107,8 +107,7 @@ def test_healthz_is_exempt_from_the_limit(acre_index_dir: Path):
         acre_index_dir, rate_limit=RateLimitConfig(max_requests=1, window_seconds=60), clock=clock
     ) as client:
         for _ in range(5):
-            # Not mounted yet (ticket #13): 404, never 429, proves the exemption.
-            assert client.get("/healthz").status_code == 404
+            assert client.get("/healthz").status_code == 200
 
 
 def test_default_is_disabled(acre_index_dir: Path):
