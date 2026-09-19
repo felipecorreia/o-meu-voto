@@ -1,0 +1,75 @@
+# The datacenter access test of ADR 0003: runs the production fetch (curl_cffi with browser
+# impersonation) from a GitHub-hosted runner and reports the HTTP status per dataset in the
+# job summary. Manual only; the scheduled refresh belongs to another workflow. A 403 here is a
+# result to record on issue #5, never something to work around (ADR 0003, plan B).
+name: TSE access test
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset id to fetch (empty = all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    name: Fetch from the TSE CDN
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+
+      - name: Install the pipeline dependency group
+        run: uv sync --group pipeline
+
+      - name: Report the runner's egress IP and region
+        # Public IP and geolocation of the runner, so the result on issue #5 says where it ran.
+        run: |
+          {
+            echo "## Runner egress"
+            echo
+            echo '```json'
+            curl -sS --max-time 20 https://ipinfo.io/json || echo '{"error": "ipinfo.io unreachable"}'
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the production fetch
+        id: fetch
+        env:
+          DATASET: ${{ inputs.dataset }}
+        run: |
+          OUT="$(mktemp -d)"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          ARGS=()
+          if [ -n "$DATASET" ]; then ARGS+=(--dataset "$DATASET"); fi
+          uv run python -m br_elections_mcp.pipeline fetch --output "$OUT" "${ARGS[@]}"
+
+      - name: Report the HTTP status per dataset
+        if: always()
+        run: |
+          {
+            echo "## HTTP status per dataset"
+            echo
+            if [ -f "$OUT/fetch.json" ]; then
+              echo "| Dataset | Status | Last-Modified | Size (bytes) | Error |"
+              echo "|---|---|---|---|---|"
+              jq -r '.datasets[] | "| \(.dataset) | \(.status // "-") | \(.last_modified // "-") | \(.size // "-") | \(.error // "-") |"' "$OUT/fetch.json"
+              echo
+              echo "Fetched at: $(jq -r .fetched_at "$OUT/fetch.json")"
+            else
+              echo "No fetch record was written: the fetch step failed before recording any status."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the downloaded ZIPs
+        if: always()
+        run: rm -rf "$OUT"

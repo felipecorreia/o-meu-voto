@@ -305,8 +305,8 @@ Toda resposta ── 1 Source, 0..1 Election
 O CSV de candidatos de 2026 traz CPF completo, título de eleitor e data de nascimento de todos
 os 20.984 candidatos, apesar de o próprio `leiame.pdf` declarar o CPF não divulgável
 (Res. TSE 23.609/2019, art. 33, §2º) (§1.2 b, §1.5). Os `leiame.pdf` de cada dataset (CC-BY)
-serão versionados em `docs/tse/` pelo PR do pipeline, que já baixa os ZIPs que os contêm, para
-que estas citações sejam verificáveis. O pipeline descarta as colunas abaixo antes de gravar
+estão versionados em [`docs/tse/`](tse/README.md) pelo estágio `fetch` do pipeline, para que
+estas citações sejam verificáveis. O pipeline descarta as colunas abaixo antes de gravar
 qualquer coisa; elas não existem no índice, e um teste falha se voltarem.
 
 | Coluna | Motivo |
