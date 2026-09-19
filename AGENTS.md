@@ -15,6 +15,22 @@ Pointers only; the content lives in the files below.
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)
   is EN-US; docs committed before that date stay PT-BR until rewritten.
+  Tests build their DuckDB index from `tests/fixtures/` with the pipeline's own `build_index`
+  (`tests/conftest.py`), deliver it through `LocalDirectoryIndexSource` and exercise a real
+  `Core`; MCP tests use the SDK's in-memory `mcp.Client(server)`, REST tests the Starlette
+  `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts).
+  Local run and the Claude Desktop connection: `docs/local-run.md`.
+
+## Sharp edges
+
+- The MCP SDK is `mcp` 2.x: `MCPServer` (not `FastMCP`), `mcp.Client(...)` for clients, and a
+  tool returns `Annotated[CallToolResult, AnswerModel]` to keep a generated `outputSchema` while
+  building its own text content. Pinned `<3` in `pyproject.toml`.
+- Starlette does not run the lifespan of mounted apps: `app.py` runs the MCP session manager
+  inside the root lifespan. Keep it there when adding routes.
+- The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE` and `DS_SITU_LOCAL_VOTACAO` in the
+  fixtures is a guess; `build` fails loudly on unknown texts, so the first real ingestion fixes
+  them (`tests/fixtures/README.md`).
 
 ## Agent skills
 

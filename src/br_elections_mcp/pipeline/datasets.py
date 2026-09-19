@@ -9,6 +9,7 @@ Photos are not here: they belong to the mirror_photos stage.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 CKAN_BASE_URL = "https://dadosabertos.tse.jus.br/dataset"
 CDN_BASE_URL = "https://cdn.tse.jus.br/estatistica/sead/odsele"
@@ -27,6 +28,13 @@ class Dataset:
     title: str
     file_name: str
     url: str
+    election_file: bool = True
+    """True when the file belongs to one election of the calendar (``DT_ELEICAO`` per round).
+
+    False for the monthly ``ATUAL`` snapshot and for reference data such as the
+    crosswalk: they carry no election, so an index built from them has a null
+    election in its manifest (codebase-design 5).
+    """
 
     @property
     def dataset_url(self) -> str:
@@ -72,6 +80,18 @@ MUNICIPALITIES_TSE_IBGE = Dataset(
     title="Códigos oficiais de UF e municípios segundo o TSE e o IBGE",
     file_name="municipio_tse_ibge.zip",
     url=f"{CDN_BASE_URL}/municipio_tse_ibge/municipio_tse_ibge.zip",
+    election_file=False,
+)
+
+# Off-season source (docs/domain-model.md, section 2): deliberately NOT in DATASETS, so
+# `fetch` does not download it during the election year.
+POLLING_PLACES_CURRENT = Dataset(
+    id="polling_places_current",
+    ckan_dataset="eleitorado-atual",
+    title="Eleitorado por local de votação - Atual",
+    file_name="eleitorado_local_votacao_ATUAL.zip",
+    url=f"{CDN_BASE_URL}/eleitorado_locais_votacao/eleitorado_local_votacao_ATUAL.zip",
+    election_file=False,
 )
 
 DATASETS: tuple[Dataset, ...] = (
@@ -91,3 +111,11 @@ def dataset_by_id(dataset_id: str) -> Dataset:
         return _BY_ID[dataset_id]
     except KeyError:
         raise KeyError(f"unknown dataset {dataset_id!r}; known: {sorted(_BY_ID)}") from None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFile:
+    """A CSV on disk together with the dataset it was extracted from."""
+
+    dataset: Dataset
+    path: Path

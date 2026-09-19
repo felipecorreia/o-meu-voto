@@ -1,6 +1,6 @@
 """Command line of the pipeline: `python -m br_elections_mcp.pipeline <stage> ...`.
 
-Only `fetch` exists so far. Each stage reads and writes files, so any one of
+Fetch and build exist so far. Each stage reads and writes files, so any one of
 them can run alone (docs/codebase-design.md, section 5).
 """
 
@@ -10,7 +10,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from br_elections_mcp.pipeline.datasets import DATASETS, dataset_by_id
+from br_elections_mcp.pipeline.build import BuildError, build_index
+from br_elections_mcp.pipeline.datasets import (
+    DATASETS,
+    MUNICIPALITIES_TSE_IBGE,
+    POLLING_PLACES_2026,
+    POLLING_PLACES_CURRENT,
+    SourceFile,
+    dataset_by_id,
+)
 from br_elections_mcp.pipeline.downloader import (
     DEFAULT_IMPERSONATE,
     CurlCffiDownloader,
@@ -45,6 +53,22 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_IMPERSONATE,
         help=f"curl_cffi browser target (default: {DEFAULT_IMPERSONATE})",
     )
+
+    build_parser = stages.add_parser(
+        "build", help="build index.duckdb and manifest.json from CSV files"
+    )
+    build_parser.add_argument(
+        "--polling-places", type=Path, required=True, help="eleitorado_local_votacao CSV"
+    )
+    build_parser.add_argument(
+        "--municipalities", type=Path, required=True, help="municipio_tse_ibge CSV"
+    )
+    build_parser.add_argument("--output-dir", type=Path, required=True)
+    build_parser.add_argument(
+        "--monthly",
+        action="store_true",
+        help="the polling-places file is the monthly ATUAL snapshot, not an election file",
+    )
     return parser
 
 
@@ -72,10 +96,27 @@ def _print_record(record: FetchRecord) -> None:
         print(f"{item.dataset}: {status}{size} {item.url}")
 
 
+def _run_build(args: argparse.Namespace) -> int:
+    polling_dataset = POLLING_PLACES_CURRENT if args.monthly else POLLING_PLACES_2026
+    try:
+        manifest = build_index(
+            SourceFile(polling_dataset, args.polling_places),
+            SourceFile(MUNICIPALITIES_TSE_IBGE, args.municipalities),
+            args.output_dir,
+        )
+    except BuildError as exc:
+        print(f"build failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"index written to {args.output_dir}: {manifest.counts}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.stage == "fetch":
         return _run_fetch(args)
+    if args.stage == "build":
+        return _run_build(args)
     raise AssertionError(f"unhandled stage {args.stage!r}")
 
 

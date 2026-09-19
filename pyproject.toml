@@ -8,8 +8,13 @@ license-files = ["LICENSE"]
 authors = [{ name = "Felipe Correia" }]
 requires-python = ">=3.12"
 dependencies = [
+    "duckdb>=1.5.5",
+    "fastapi>=0.141.1",
+    "mcp>=2.2.0,<3",
+    "pydantic>=2.13.5",
     "pyyaml>=6.0",
     "tzdata>=2024.1",
+    "uvicorn>=0.53.0",
 ]
 classifiers = [
     "Development Status :: 1 - Planning",
@@ -26,6 +31,8 @@ Repository = "https://github.com/felipecorreia/br-elections-mcp"
 
 [dependency-groups]
 dev = [
+    "anyio>=4.15.1",
+    "httpx>=0.28.1",
     "pytest>=8.3",
     "ruff>=0.8",
 ]

@@ -21,7 +21,10 @@ the official e-Titulo app and TSE self-service.
 
 ## Status
 
-Design phase; the first pipeline stage (`fetch`) exists. There is no server code yet. Start with:
+First vertical slice in place: "where do I vote" end to end over an Acre fixture index (pipeline
+`build` stage, `core`, MCP tool `find_polling_place` and `GET /api/v1/polling-place`). To run it
+locally and connect Claude Desktop, see [`docs/local-run.md`](docs/local-run.md). The design
+documents remain the reference:
 
 - [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
@@ -38,8 +41,12 @@ Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 ```sh
 uv sync
 uv run ruff check .
+uv run ruff format --check .
 uv run pytest
 ```
+
+Tests build their index from the CSV fixtures in `tests/fixtures/` with the pipeline's own
+`build` stage; none of them touches the network.
 
 The refresh pipeline has its own dependency group, `pipeline`, which the service image never
 installs (`curl_cffi` lives there; see below):

@@ -19,6 +19,48 @@ from itertools import pairwise
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+class UF(StrEnum):
+    """Unidade da federação, the two-letter code that partitions every TSE dataset.
+
+    ZZ is the electorate abroad; BR appears only on national candidacies
+    (president and vice) and never on a polling section.
+    """
+
+    AC = "AC"
+    AL = "AL"
+    AM = "AM"
+    AP = "AP"
+    BA = "BA"
+    CE = "CE"
+    DF = "DF"
+    ES = "ES"
+    GO = "GO"
+    MA = "MA"
+    MG = "MG"
+    MS = "MS"
+    MT = "MT"
+    PA = "PA"
+    PB = "PB"
+    PE = "PE"
+    PI = "PI"
+    PR = "PR"
+    RJ = "RJ"
+    RN = "RN"
+    RO = "RO"
+    RR = "RR"
+    RS = "RS"
+    SC = "SC"
+    SE = "SE"
+    SP = "SP"
+    TO = "TO"
+    ZZ = "ZZ"
+    BR = "BR"
+
+
+POLLING_UFS: frozenset[UF] = frozenset(UF) - {UF.BR}
+"""The UFs that have polling sections: the 26 states, DF and ZZ (abroad)."""
+
+
 class ElectionKind(StrEnum):
     """Tipo de eleição, que determina quais cargos estão em disputa."""
 
