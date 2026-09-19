@@ -30,7 +30,8 @@ from br_elections_mcp.core.answers import (
     PreviousPlace,
     Source,
 )
-from br_elections_mcp.core.core import Clock, Core, Near, system_clock
+from br_elections_mcp.core.clock import Clock, system_clock
+from br_elections_mcp.core.core import Core, Near
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable, IndexVersion
 

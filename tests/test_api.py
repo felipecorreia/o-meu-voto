@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from br_elections_mcp.core import (
     CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
+    IndexUnavailable,
     MunicipalitiesAnswer,
     PollingPlaceAnswer,
     PollingPlacesAnswer,
@@ -313,3 +315,21 @@ def test_municipalities_not_found_is_200_with_the_envelope(client: TestClient):
     body = response.json()
     assert body["data"] is None
     assert body["not_found"]["reason"] == "municipio_nao_encontrado"
+
+
+def test_lifespan_starts_the_check_task_and_shutdown_stops_it(acre_index_dir: Path):
+    def check_task_alive() -> bool:
+        return any(thread.name == "index-check" for thread in threading.enumerate())
+
+    core = Core(LocalDirectoryIndexSource(acre_index_dir), ELECTIONS_FILE, clock=fixed_clock())
+    assert check_task_alive() is False
+    with TestClient(build_app(core), base_url="http://localhost") as client:
+        assert check_task_alive() is True
+        response = client.get(
+            "/api/v1/polling-place", params={"uf": "AC", "zone": 9, "section": 422}
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["section"] == 422
+    assert check_task_alive() is False
+    with pytest.raises(IndexUnavailable):
+        core.find_polling_place("AC", 9, 422)

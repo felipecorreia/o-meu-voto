@@ -8,7 +8,6 @@ clock is injected so tests can move in time.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Callable
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -45,9 +44,10 @@ from br_elections_mcp.core.answers import (
     VotingHoursInfo,
 )
 from br_elections_mcp.core.calendar import Calendar
+from br_elections_mcp.core.clock import Clock, system_clock
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
-from br_elections_mcp.core.index import Index, open_index
-from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable
+from br_elections_mcp.core.index import Index, IndexManager
+from br_elections_mcp.core.index_source import IndexSource
 from br_elections_mcp.core.normalize import (
     check_office_for_uf,
     normalize_ballot_office,
@@ -72,14 +72,6 @@ from br_elections_mcp.core.queries.search_places import PlaceRow, search_places
 from br_elections_mcp.domain import Election
 from br_elections_mcp.domain import ElectionRound as DomainElectionRound
 from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
-
-Clock = Callable[[], dt.datetime]
-"""Returns the current instant, timezone-aware."""
-
-
-def system_clock() -> dt.datetime:
-    return dt.datetime.now(dt.UTC)
-
 
 MAX_LIMIT = 50
 """The largest page any list answers (codebase-design 3.1)."""
@@ -132,37 +124,32 @@ class Core:
     def __init__(
         self, index_source: IndexSource, elections_file: Path, clock: Clock = system_clock
     ) -> None:
-        self._index_source = index_source
         self._calendar = Calendar.from_file(elections_file)
         self._clock = clock
-        self._index: Index | None = None
+        self._index_manager = IndexManager(index_source, clock)
 
     # Lifecycle
 
     def open_index(self) -> None:
-        """The initial, synchronous open: the one call to ``IndexSource.current()`` here."""
-        try:
-            version = self._index_source.current()
-        except IndexSourceUnavailable as exc:
-            raise IndexUnavailable(str(exc)) from exc
-        new_index = open_index(version)
-        previous, self._index = self._index, new_index
-        if previous is not None:
-            previous.close()
+        """The initial, synchronous open, without the check task: the one call to
+        ``IndexSource.current()`` outside ``refresh()``. Shared by ``start()`` and by tests."""
+        self._index_manager.open()
 
     def start(self) -> None:
-        """Called by the ASGI lifespan: the initial open.
-
-        The background verification task of codebase-design 3.2 (reload without
-        restart) is not part of this tracer bullet; ``start()`` is the initial
-        open only.
-        """
-        self.open_index()
+        """Called by the ASGI lifespan: the initial open, then the check task."""
+        self._index_manager.start()
 
     def close(self) -> None:
-        if self._index is not None:
-            self._index.close()
-            self._index = None
+        """Called by the ASGI lifespan: stop the check task and close the index."""
+        self._index_manager.close()
+
+    def refresh(self) -> None:
+        """Swap to the ``IndexSource``'s current version when it differs from the open one.
+
+        What the check task runs; tests call it directly. Never raises: a failing
+        check is logged and the open version keeps being served.
+        """
+        self._index_manager.refresh()
 
     # Queries
 
@@ -175,20 +162,21 @@ class Core:
         for an unknown UF, a non-numeric zone or section or a round outside the
         calendar; "not found" is an answer, never an exception.
         """
-        index = self._open()
         uf_value = normalize_polling_uf(uf)
         zone_number = normalize_number(zone, "zona inválida")
         section_number = normalize_number(section, "seção inválida")
         requested_round = None if round is None else normalize_number(round, "turno inválido")
 
-        today = self._today()
-        election = self._calendar.coincident_election(today, index.manifest)
-        answered_round = _resolve_round(index, requested_round, election)
-        election_info = _election_info(election, answered_round)
-        source = self._source(index, "polling_places")
-
-        with index.cursor() as cursor:
+        with self._index_manager.query() as (index, cursor):
+            today = self._today()
+            election = self._calendar.coincident_election(today, index.manifest)
+            answered_round = _resolve_round(index, requested_round, election)
+            election_info = _election_info(election, answered_round)
+            source = self._source(index, "polling_places")
             row = find_section(cursor, uf_value, zone_number, section_number, answered_round)
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
         if row is None:
             return PollingPlaceAnswer(
                 data=None,
@@ -272,7 +260,6 @@ class Core:
         impossible for the UF, ``limit`` outside 1..50 or a round outside the
         calendar; an empty list is an answer, never ``not_found``.
         """
-        index = self._open()
         uf_value = normalize_candidate_uf(uf)
         office_value = normalize_ballot_office(office)
         check_office_for_uf(office_value, uf_value)
@@ -282,12 +269,12 @@ class Core:
         party_number, party_acronym = _party_filter(party)
         name_filter = search_text(name) if name is not None and str(name).strip() else None
 
-        today = self._today()
-        election = self._calendar.coincident_election(today, index.manifest)
-        _check_round_bound(requested_round, election)
-        source = self._source(index, "candidates")
+        with self._index_manager.query() as (index, cursor):
+            today = self._today()
+            election = self._calendar.coincident_election(today, index.manifest)
+            _check_round_bound(requested_round, election)
+            source = self._source(index, "candidates")
 
-        with index.cursor() as cursor:
             rounds = candidate_queries.office_rounds(cursor, uf_value, office_value.value)
             if not rounds:
                 rounds = candidate_queries.candidate_rounds(cursor)
@@ -306,6 +293,9 @@ class Core:
             rows, total = candidate_queries.list_candidates(
                 cursor, filters, limit_value, offset_value
             )
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
 
         return CandidatesAnswer(
             data=CandidatesData(
@@ -331,14 +321,16 @@ class Core:
         always null because the list refers to no round. ``source`` is the TSE/IBGE
         crosswalk, even for the municipalities abroad that only the polling-place file lists.
         """
-        index = self._open()
         text = normalize_text(name, "nome inválido")
         uf_value = None if uf is None else normalize_polling_uf(uf)
         limit_value = normalize_limit(limit, MAX_LIMIT, RESOLVE_MUNICIPALITY_DEFAULT_LIMIT)
-        source = self._source(index, "municipalities")
 
-        with index.cursor() as cursor:
+        with self._index_manager.query() as (index, cursor):
+            source = self._source(index, "municipalities")
             rows = search_municipalities(cursor, text, uf_value, limit_value)
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
         if not rows:
             return MunicipalitiesAnswer(
                 data=None,
@@ -378,7 +370,6 @@ class Core:
         that matches several municipalities is ``municipio_ambiguo`` with the options.
         A municipality with no matching place is an empty list, never ``not_found``.
         """
-        index = self._open()
         uf_value = normalize_polling_uf(uf)
         municipality_text = normalize_text(municipality, "município inválido")
         neighborhood_text = (
@@ -389,31 +380,34 @@ class Core:
         limit_value = normalize_limit(limit, MAX_LIMIT, SEARCH_PLACES_DEFAULT_LIMIT)
         requested_round = None if round is None else normalize_number(round, "turno inválido")
 
-        today = self._today()
-        election = self._calendar.coincident_election(today, index.manifest)
-        answered_round = _resolve_round(index, requested_round, election)
-        election_info = _election_info(election, answered_round)
-        source = self._source(index, "polling_places")
-
-        with index.cursor() as cursor:
+        with self._index_manager.query() as (index, cursor):
+            today = self._today()
+            election = self._calendar.coincident_election(today, index.manifest)
+            answered_round = _resolve_round(index, requested_round, election)
+            election_info = _election_info(election, answered_round)
+            source = self._source(index, "polling_places")
             resolved, options = _resolve_municipality_in_uf(cursor, municipality_text, uf_value)
-            if resolved is None:
-                return PollingPlacesAnswer(
-                    data=None,
-                    not_found=_municipality_not_found(options),
-                    warnings=[],
-                    election=election_info,
-                    source=source,
+            if resolved is not None:
+                rows, total = search_places(
+                    cursor,
+                    uf_value,
+                    resolved.tse_code,
+                    answered_round,
+                    neighborhood=neighborhood_text,
+                    query=query_text,
+                    near=near_point,
+                    limit=limit_value,
                 )
-            rows, total = search_places(
-                cursor,
-                uf_value,
-                resolved.tse_code,
-                answered_round,
-                neighborhood=neighborhood_text,
-                query=query_text,
-                near=near_point,
-                limit=limit_value,
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
+        if resolved is None:
+            return PollingPlacesAnswer(
+                data=None,
+                not_found=_municipality_not_found(options),
+                warnings=[],
+                election=election_info,
+                source=source,
             )
         return PollingPlacesAnswer(
             data=PollingPlacesData(
@@ -437,11 +431,6 @@ class Core:
         )
 
     # Helpers
-
-    def _open(self) -> Index:
-        if self._index is None:
-            raise IndexUnavailable("index is not open; call open_index() or start() first")
-        return self._index
 
     def _today(self) -> dt.date:
         return self._clock().astimezone(ZoneInfo(TSE_TIMEZONE)).date()
