@@ -9,7 +9,15 @@ import duckdb
 import pytest
 
 from br_elections_mcp.index_schema import FORBIDDEN_COLUMNS, INDEX_FILE_NAME, TABLES
-from tests.conftest import ACRE_LGPD_POLLING_PLACES, build_fixture_index, open_core
+from tests.conftest import (
+    ACRE_CANDIDATES,
+    ACRE_LGPD_POLLING_PLACES,
+    build_fixture_index,
+    open_core,
+)
+
+# Placeholder values of the forbidden columns in the fixtures; none may reach an answer.
+PLACEHOLDERS = ("00000000000", "000000000000", "01/01/1970", "NÃO DIVULGÁVEL", "1970-01-01")
 
 EXPECTED_FORBIDDEN = {
     "NR_CPF_CANDIDATO",
@@ -27,8 +35,9 @@ def test_the_forbidden_list_is_exactly_the_one_decided_in_adr_0004():
 @pytest.fixture(scope="module")
 def lgpd_index_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     directory = tmp_path_factory.mktemp("lgpd-index")
-    header = ACRE_LGPD_POLLING_PLACES.read_bytes().split(b"\n", 1)[0].decode("latin-1")
-    assert all(column in header for column in FORBIDDEN_COLUMNS), "fixture must carry them"
+    for fixture in (ACRE_LGPD_POLLING_PLACES, ACRE_CANDIDATES):
+        header = fixture.read_bytes().split(b"\n", 1)[0].decode("latin-1")
+        assert all(column in header for column in FORBIDDEN_COLUMNS), "fixture must carry them"
     build_fixture_index(directory, polling_places=ACRE_LGPD_POLLING_PLACES)
     return directory
 
@@ -57,11 +66,18 @@ def test_no_forbidden_key_appears_in_any_serialized_answer(lgpd_index_dir: Path)
             core.find_polling_place("AC", 9, 424),
             core.find_polling_place("AC", 9, 100),
             core.find_polling_place("AC", 1, 99999),
+            core.list_candidates("BR", "presidente"),
+            core.list_candidates("AC", "governador", on_ballot_only=False),
+            core.list_candidates("AC", "senador"),
+            core.list_candidates("AC", "deputado_federal"),
+            core.list_candidates("AC", "deputado_estadual"),
         ]
     finally:
         core.close()
+    assert any(a.data is not None and getattr(a.data, "total", 0) > 0 for a in answers)
     for answer in answers:
         serialized = json.dumps(answer.model_dump(mode="json"), ensure_ascii=False)
         for column in FORBIDDEN_COLUMNS:
             assert column not in serialized.upper()
-        assert "00000000000" not in serialized  # the placeholder CPF of the fixture
+        for placeholder in PLACEHOLDERS:
+            assert placeholder not in serialized

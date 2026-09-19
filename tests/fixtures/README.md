@@ -29,6 +29,35 @@ The vocabulary of `DS_TIPO_SECAO_AGREGADA`, `DS_SITU_SECAO_ACESSIBILIDADE` and
 `NR_SECAO_PRINCIPAL` and fails loudly on an accessibility or status text it cannot map, so the
 first real ingestion fixes the exact texts (domain-model section 7).
 
+### Candidates (`consulta_cand_2026_BRASIL.csv` and companions)
+
+The candidate slice of the same election, round 1 only, in the three files the TSE ships
+under `candidatos-2026`. Every person, party composition, coalition, federation and social
+link is invented; only the party numbers and acronyms and the shape of the TSE vocabulary
+(`#NULO`, `-1`, `PARTIDO ISOLADO`, `DEFERIDO`, `INDEFERIDO EM PRAZO RECURSAL OU COM
+RECURSO`, `S`/`N`) follow the `leiame.pdf` in `docs/tse/`. The file is named `BRASIL`
+because president rows carry `SG_UF = BR` and production ingests the national file.
+
+- `consulta_cand_2026_BRASIL.csv`, 16 rows, one per candidacy, with the full TSE header
+  including the five forbidden columns of ADR 0004 filled with placeholders (CPF
+  `00000000000`, title `000000000000`, `01/01/1970`, `AC`, `NÃO DIVULGÁVEL`), so the LGPD
+  contract test runs over the real seam:
+  - AC governor 45 (coalition "ACRE PARA TODOS") with vice 45; governor 13 (federation
+    "BRASIL DA ESPERANÇA", `NM_COLIGACAO = #NULO`) with vice 13, both `INDEFERIDO ...` and
+    on the ballot (domain-model scenario 10); governor 22 (`PARTIDO ISOLADO`, `RENÚNCIA`,
+    off the ballot).
+  - AC senator 456 with `1º SUPLENTE` and `2º SUPLENTE`; federal deputies 4512 and 1313;
+    state deputies 45123 (`JOANA D'ARC`, an apostrophe in the ballot name) and 22222.
+  - Presidents 13 and 45 with their vices, `SG_UF = BR` (scenario 9).
+- `consulta_cand_complementar_2026_BRASIL.csv`: one row per `SQ_CANDIDATO`, full header,
+  without `NR_TURNO` (as the 2026 `leiame.pdf` documents), so the build deduplicates by
+  `SQ_CANDIDATO`; the tests derive a variant with `NR_TURNO` to cover the other join.
+- `rede_social_candidato_2026_BRASIL.csv`: four links for three candidates.
+
+The `DS_CARGO` texts other than `"DEPUTADO FEDERAL"` are the plausible spellings mapped in
+`pipeline/build.py` (`OFFICE_BY_DS_CARGO`); the build fails loudly on any other text, so the
+first real ingestion fixes them (domain-model section 7).
+
 ## `acre_lgpd/`
 
 The same six rows with the five forbidden personal-data columns of ADR 0004 appended

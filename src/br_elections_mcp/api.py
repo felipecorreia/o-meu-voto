@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from br_elections_mcp import __version__
 from br_elections_mcp.core import (
+    CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
     IndexUnavailable,
@@ -81,5 +82,52 @@ def create_api(core: Core) -> FastAPI:
         ] = None,
     ) -> ElectionInfoAnswer:
         return core.election_info(on)
+
+    @api.get(
+        "/candidates",
+        response_model=CandidatesAnswer,
+        summary="Candidatos",
+        description=(
+            "Candidatos de um cargo numa UF (BR para presidente), com filtro por partido ou por "
+            "nome de urna ou nome civil. Nunca inclui CPF, título de eleitor, data de nascimento "
+            "ou e-mail."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def candidates(
+        uf: Annotated[str, Query(description="Sigla da UF: estados, DF ou BR para presidente")],
+        office: Annotated[
+            str,
+            Query(
+                description=(
+                    "Cargo de urna: presidente, governador, senador, deputado_federal, "
+                    "deputado_estadual ou deputado_distrital"
+                )
+            ),
+        ],
+        party: Annotated[str | None, Query(description="Partido, sigla ou número")] = None,
+        name: Annotated[
+            str | None, Query(description="Trecho do nome de urna ou do nome civil")
+        ] = None,
+        on_ballot_only: Annotated[
+            bool, Query(description="Só candidatos carregados na urna (padrão)")
+        ] = True,
+        limit: Annotated[str, Query(description="Tamanho da página, 1 a 50")] = "50",
+        offset: Annotated[str, Query(description="Início da página")] = "0",
+        round: Annotated[str | None, Query(description="Turno, opcional")] = None,
+    ) -> CandidatesAnswer:
+        return core.list_candidates(
+            uf,
+            office,
+            party=party,
+            name=name,
+            on_ballot_only=on_ballot_only,
+            limit=limit,
+            offset=offset,
+            round=round,
+        )
 
     return api

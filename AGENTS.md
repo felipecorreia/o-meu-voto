@@ -28,9 +28,10 @@ Pointers only; the content lives in the files below.
   building its own text content. Pinned `<3` in `pyproject.toml`.
 - Starlette does not run the lifespan of mounted apps: `app.py` runs the MCP session manager
   inside the root lifespan. Keep it there when adding routes.
-- The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE` and `DS_SITU_LOCAL_VOTACAO` in the
-  fixtures is a guess; `build` fails loudly on unknown texts, so the first real ingestion fixes
-  them (`tests/fixtures/README.md`).
+- The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE`, `DS_SITU_LOCAL_VOTACAO` and every
+  `DS_CARGO` text except `"DEPUTADO FEDERAL"` in the fixtures is a guess; `build` fails loudly
+  on unknown texts (`OFFICE_BY_DS_CARGO` in `pipeline/build.py` for offices), so the first real
+  ingestion fixes them (`tests/fixtures/README.md`).
 
 ## Agent skills
 

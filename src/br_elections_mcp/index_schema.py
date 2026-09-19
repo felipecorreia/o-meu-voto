@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 INDEX_FILE_NAME = "index.duckdb"
 MANIFEST_FILE_NAME = "manifest.json"
@@ -95,6 +95,65 @@ MUNICIPALITIES_CSV_COLUMNS: tuple[str, ...] = (
 )
 """Header of the TSE/IBGE crosswalk ``municipio_tse_ibge.csv`` (docs/domain-model.md, 3.2)."""
 
+CANDIDATES_CSV_COLUMNS: tuple[str, ...] = (
+    "DT_GERACAO",
+    "HH_GERACAO",
+    "ANO_ELEICAO",
+    "NR_TURNO",
+    "DT_ELEICAO",
+    "SG_UF",
+    "DS_CARGO",
+    "SQ_CANDIDATO",
+    "NR_CANDIDATO",
+    "NM_CANDIDATO",
+    "NM_URNA_CANDIDATO",
+    "NM_SOCIAL_CANDIDATO",
+    "TP_AGREMIACAO",
+    "NR_PARTIDO",
+    "SG_PARTIDO",
+    "NM_PARTIDO",
+    "NR_FEDERACAO",
+    "NM_FEDERACAO",
+    "SG_FEDERACAO",
+    "DS_COMPOSICAO_FEDERACAO",
+    "NM_COLIGACAO",
+    "DS_COMPOSICAO_COLIGACAO",
+    "DS_GENERO",
+    "DS_GRAU_INSTRUCAO",
+    "DS_ESTADO_CIVIL",
+    "DS_COR_RACA",
+    "DS_OCUPACAO",
+)
+"""Columns of ``consulta_cand_*.csv`` the build reads (docs/domain-model.md, 3.5).
+
+The file carries more (codes redundant with descriptions, totalization, and the
+five forbidden columns); everything not listed here is ignored, and the
+forbidden ones are dropped at the first read.
+"""
+
+CANDIDATES_COMPLEMENTARY_CSV_COLUMNS: tuple[str, ...] = (
+    "DT_GERACAO",
+    "HH_GERACAO",
+    "SQ_CANDIDATO",
+    "ST_CANDIDATO_INSERIDO_URNA",
+    "DS_SITUACAO_JULGAMENTO",
+)
+"""Columns of ``consulta_cand_complementar_*.csv`` the build reads.
+
+``NR_TURNO`` is optional: when present the join is by (``SQ_CANDIDATO``,
+``NR_TURNO``); when absent the file is deduplicated by ``SQ_CANDIDATO`` and
+applied to every round (docs/domain-model.md, 3.5 and 7).
+"""
+
+CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS: tuple[str, ...] = (
+    "DT_GERACAO",
+    "HH_GERACAO",
+    "SQ_CANDIDATO",
+    "NR_ORDEM_REDE_SOCIAL",
+    "DS_URL",
+)
+"""Columns of ``rede_social_candidato_*.csv`` the build reads."""
+
 TABLES: dict[str, str] = {
     "municipalities": """
         CREATE TABLE municipalities (
@@ -147,10 +206,58 @@ TABLES: dict[str, str] = {
             PRIMARY KEY (uf, zone, section, round)
         )
     """,
+    "candidates": """
+        CREATE TABLE candidates (
+            sq_candidato           BIGINT NOT NULL,
+            round                  INTEGER NOT NULL,
+            uf                     VARCHAR NOT NULL,
+            office                 VARCHAR NOT NULL,
+            number                 INTEGER NOT NULL,
+            ballot_name            VARCHAR NOT NULL,
+            name                   VARCHAR NOT NULL,
+            social_name            VARCHAR,
+            search_ballot_name     VARCHAR NOT NULL,
+            search_name            VARCHAR NOT NULL,
+            party_number           INTEGER NOT NULL,
+            party_acronym          VARCHAR NOT NULL,
+            party_name             VARCHAR NOT NULL,
+            search_party_acronym   VARCHAR NOT NULL,
+            nomination_kind        VARCHAR NOT NULL,
+            federation_acronym     VARCHAR,
+            federation_name        VARCHAR,
+            federation_composition VARCHAR,
+            coalition_name         VARCHAR,
+            coalition_composition  VARCHAR,
+            adjudication_status    VARCHAR NOT NULL,
+            on_ballot              BOOLEAN NOT NULL,
+            occupation             VARCHAR,
+            gender                 VARCHAR,
+            race_color             VARCHAR,
+            marital_status         VARCHAR,
+            education              VARCHAR,
+            election_year          INTEGER NOT NULL,
+            election_date          DATE NOT NULL,
+            PRIMARY KEY (sq_candidato, round)
+        )
+    """,
+    "candidate_social_links": """
+        CREATE TABLE candidate_social_links (
+            sq_candidato BIGINT NOT NULL,
+            position     INTEGER NOT NULL,
+            url          VARCHAR NOT NULL,
+            PRIMARY KEY (sq_candidato, position)
+        )
+    """,
 }
 """DDL of every table in ``index.duckdb``, keyed by table name."""
 
-DatasetKey = Literal["polling_places", "municipalities"]
+DatasetKey = Literal[
+    "polling_places",
+    "municipalities",
+    "candidates",
+    "candidates_complementary",
+    "candidate_social_links",
+]
 
 
 class DatasetSource(BaseModel):

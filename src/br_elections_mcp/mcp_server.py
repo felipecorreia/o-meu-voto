@@ -8,7 +8,7 @@ result with ``isError``; ``IndexUnavailable`` becomes a server error.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.shared.exceptions import MCPError
@@ -17,20 +17,24 @@ from pydantic import Field
 
 from br_elections_mcp import __version__
 from br_elections_mcp.core import (
+    CandidatesAnswer,
     Core,
     ElectionInfoAnswer,
     IndexUnavailable,
     InvalidQuery,
     PollingPlaceAnswer,
+    Source,
 )
 
 SERVER_NAME = "br-elections-mcp"
 
 SERVER_INSTRUCTIONS = (
     "Responde às perguntas do eleitor brasileiro a partir dos dados abertos do TSE: onde votar, "
-    "a partir da UF, zona e seção do título. Nunca consulta o cadastro eleitoral: para descobrir "
-    "a própria zona e seção pelo nome ou CPF, o eleitor usa o e-Título. Toda resposta cita a "
-    "fonte (dataset, arquivo e data de geração) e a licença CC-BY do TSE."
+    "a partir da UF, zona e seção do título, e quem são os candidatos de um cargo numa UF. "
+    "Nunca consulta o cadastro eleitoral: para descobrir a própria zona e seção pelo nome ou "
+    "CPF, o eleitor usa o e-Título. Nenhuma resposta traz CPF, título de eleitor, data de "
+    "nascimento ou e-mail de candidato. Toda resposta cita a fonte (dataset, arquivo e data de "
+    "geração) e a licença CC-BY do TSE."
 )
 
 FIND_POLLING_PLACE_TITLE = "Onde voto"
@@ -45,6 +49,22 @@ ELECTION_INFO_DESCRIPTION = (
     "Data e horário da votação, turnos, cargos em disputa e a fonte oficial. Responde 'quando é "
     "a eleição' e 'até que horas posso votar'."
 )
+
+LIST_CANDIDATES_TITLE = "Candidatos"
+LIST_CANDIDATES_DESCRIPTION = (
+    "Lista os candidatos de um cargo numa UF (BR para presidente), com filtro por partido ou por "
+    "nome de urna ou nome civil. Nunca inclui CPF, título de eleitor, data de nascimento ou "
+    "e-mail."
+)
+
+BallotOffice = Literal[
+    "presidente",
+    "governador",
+    "senador",
+    "deputado_federal",
+    "deputado_estadual",
+    "deputado_distrital",
+]
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
@@ -109,7 +129,83 @@ def create_mcp_server(core: Core) -> MCPServer:
             structured_content=answer.model_dump(mode="json"),
         )
 
+    @server.tool(
+        name="list_candidates",
+        title=LIST_CANDIDATES_TITLE,
+        description=LIST_CANDIDATES_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def list_candidates(
+        uf: Annotated[
+            str, Field(description="Sigla da UF, 2 letras: estados, DF ou BR para presidente")
+        ],
+        office: Annotated[BallotOffice, Field(description="Cargo de urna")],
+        party: Annotated[
+            str | int | None, Field(description="Partido, sigla ou número; opcional")
+        ] = None,
+        name: Annotated[
+            str | None,
+            Field(description="Trecho do nome de urna ou do nome civil, sem acento; opcional"),
+        ] = None,
+        on_ballot_only: Annotated[
+            bool, Field(description="Só candidatos carregados na urna (padrão)")
+        ] = True,
+        limit: Annotated[int, Field(description="Tamanho da página, 1 a 50", ge=1, le=50)] = 50,
+        offset: Annotated[int, Field(description="Início da página", ge=0)] = 0,
+        round: Annotated[
+            int | None, Field(description="Turno, opcional; sem ele, o turno mais recente do cargo")
+        ] = None,
+    ) -> Annotated[CallToolResult, CandidatesAnswer]:
+        try:
+            answer = core.list_candidates(
+                uf,
+                office,
+                party=party,
+                name=name,
+                on_ballot_only=on_ballot_only,
+                limit=limit,
+                offset=offset,
+                round=round,
+            )
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        except IndexUnavailable as exc:
+            raise MCPError(code=INTERNAL_ERROR, message=f"índice indisponível: {exc}") from exc
+        return CallToolResult(
+            content=[TextContent(type="text", text=candidates_text(answer, uf, office))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
     return server
+
+
+def candidates_text(answer: CandidatesAnswer, uf: str, office: str) -> str:
+    """The short PT-BR text of a candidate list, for clients without structured output."""
+    assert answer.data is not None
+    d = answer.data
+    office_label = office.replace("_", " ")
+    uf_label = uf.strip().upper()
+    if d.total == 0:
+        lines = [
+            f"Nenhum candidato a {office_label} no {uf_label} (turno {d.round}) com esse filtro."
+        ]
+    else:
+        first, last = d.offset + 1, d.offset + len(d.candidates)
+        lines = [
+            f"{d.total} candidatos a {office_label} no {uf_label} (turno {d.round}), "
+            f"mostrando {first} a {last}:"
+        ]
+        for c in d.candidates:
+            notes = []
+            if c.adjudication_status != "DEFERIDO":
+                notes.append(c.adjudication_status)
+            if not c.on_ballot:
+                notes.append("fora da urna")
+            suffix = f" - {', '.join(notes)}" if notes else ""
+            lines.append(f"{c.number} {c.ballot_name} ({c.party.acronym}){suffix};")
+    lines.extend(answer.warnings)
+    lines.append(_source_text(answer.source))
+    return " ".join(lines)
 
 
 def polling_place_text(answer: PollingPlaceAnswer) -> str:
@@ -134,10 +230,7 @@ def polling_place_text(answer: PollingPlaceAnswer) -> str:
             f"{p.accessible_section_count} com acessibilidade."
         )
     lines.extend(answer.warnings)
-    lines.append(
-        f"Fonte: {answer.source.dataset} ({answer.source.file}), gerado pelo TSE em "
-        f"{answer.source.generated_at.strftime('%d/%m/%Y %H:%M')}. Licença {answer.source.license}."
-    )
+    lines.append(_source_text(answer.source))
     return " ".join(lines)
 
 
@@ -155,3 +248,10 @@ def election_info_text(answer: ElectionInfoAnswer) -> str:
     lines.extend(d.notes)
     lines.append(f"Fonte: {d.calendar_source.title}.")
     return " ".join(lines)
+
+
+def _source_text(source: Source) -> str:
+    return (
+        f"Fonte: {source.dataset} ({source.file}), gerado pelo TSE em "
+        f"{source.generated_at.strftime('%d/%m/%Y %H:%M')}. Licença {source.license}."
+    )

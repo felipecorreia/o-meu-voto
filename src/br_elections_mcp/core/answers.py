@@ -169,3 +169,62 @@ class ElectionInfoAnswer(_Model):
     warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; sempre vazia aqui")
     election: ElectionInfo | None
     source: CuratedSource
+
+
+class Party(_Model):
+    number: int
+    acronym: str
+    name: str
+
+
+class Federation(_Model):
+    acronym: str
+    name: str
+
+
+class Coalition(_Model):
+    name: str
+
+
+class CandidateListItem(_Model):
+    """One candidate as ``list_candidates`` shows it (codebase-design 8.3).
+
+    Deliberately without ``gender``, ``race_color``, ``marital_status`` and
+    ``education``: those exist only in the individual profile of ``get_candidate``.
+    """
+
+    sq_candidato: int = Field(description="Número sequencial da candidatura no TSE")
+    number: int = Field(description="Número que o eleitor digita na urna")
+    ballot_name: str = Field(description="Nome de urna")
+    name: str = Field(description="Nome civil")
+    office: Office
+    party: Party
+    federation: Federation | None
+    coalition: Coalition | None
+    adjudication_status: str = Field(
+        description="Situação de julgamento do registro, como o TSE publica"
+    )
+    on_ballot: bool = Field(description="Se o candidato está carregado na urna eletrônica")
+    occupation: str | None
+    photo_url: str | None = Field(
+        description="Foto oficial espelhada; nula enquanto não há espelho"
+    )
+
+
+class CandidatesData(_Model):
+    round: int = Field(description="Turno a que a resposta se refere")
+    candidates: list[CandidateListItem]
+    total: int = Field(description="Total de candidatos que casam com o filtro, sem paginação")
+    limit: int
+    offset: int
+
+
+class CandidatesAnswer(_Model):
+    """Answer of ``list_candidates`` (codebase-design 8.3). An empty list is data, never
+    ``not_found``."""
+
+    data: CandidatesData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
+    election: ElectionInfo | None
+    source: Source

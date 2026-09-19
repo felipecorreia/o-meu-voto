@@ -10,13 +10,16 @@ uv sync
 uv run python -m br_elections_mcp.pipeline build \
   --polling-places tests/fixtures/acre/eleitorado_local_votacao_2026_AC.csv \
   --municipalities tests/fixtures/acre/municipio_tse_ibge.csv \
+  --candidates tests/fixtures/acre/consulta_cand_2026_BRASIL.csv \
+  --candidates-complementary tests/fixtures/acre/consulta_cand_complementar_2026_BRASIL.csv \
+  --social-links tests/fixtures/acre/rede_social_candidato_2026_BRASIL.csv \
   --output-dir data/index
 ```
 
 Expected output:
 
 ```
-index written to data/index: {'municipalities': 2, 'polling_places': 3, 'polling_sections': 6}
+index written to data/index: {'municipalities': 2, 'polling_places': 3, 'polling_sections': 6, 'candidates': 16, 'candidate_social_links': 4}
 ```
 
 `data/index/` (`index.duckdb` and `manifest.json`) is git-ignored. The fixture rows are
@@ -32,16 +35,18 @@ uv run python -m br_elections_mcp.app --index-dir data/index --port 8000
 The server prints `Uvicorn running on http://127.0.0.1:8000`. It serves:
 
 - MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
-  tools `find_polling_place` and `election_info`.
-- REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=` and
-  `http://localhost:8000/api/v1/election?on=`, with OpenAPI at
-  `http://localhost:8000/api/v1/openapi.json` and Swagger UI at
+  tools `find_polling_place`, `election_info` and `list_candidates`.
+- REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=`,
+  `http://localhost:8000/api/v1/election?on=` and
+  `http://localhost:8000/api/v1/candidates?uf=&office=&party=&name=&on_ballot_only=&limit=&offset=&round=`,
+  with OpenAPI at `http://localhost:8000/api/v1/openapi.json` and Swagger UI at
   `http://localhost:8000/api/v1/docs`.
 
 Quick check in another terminal:
 
 ```sh
 curl "http://localhost:8000/api/v1/polling-place?uf=ac&zone=009&section=0422"
+curl "http://localhost:8000/api/v1/candidates?uf=ac&office=governador"
 ```
 
 The same app can be started with uvicorn directly, configured by environment variables:
@@ -75,8 +80,10 @@ yet, enable it under Settings > Developer) and restart Claude Desktop:
 }
 ```
 
-Node.js is required (`npx` ships with it; verified with Node 25.8.1). The tool appears as
-`find_polling_place` ("Onde voto"). A prompt to try: "Onde voto? Acre, zona 9, seção 422."
+Node.js is required (`npx` ships with it; verified with Node 25.8.1). The tools appear as
+`find_polling_place` ("Onde voto"), `election_info` ("Quando é a eleição") and
+`list_candidates` ("Candidatos"). Prompts to try: "Onde voto? Acre, zona 9, seção 422.", "Quando
+é a eleição?" and "Quem são os candidatos a governador do Acre?"
 
 ### What was verified, and how
 

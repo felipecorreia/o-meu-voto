@@ -12,6 +12,9 @@ from pathlib import Path
 
 from br_elections_mcp.pipeline.build import BuildError, build_index
 from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_SOCIAL_LINKS_2026,
+    CANDIDATES_2026,
+    CANDIDATES_COMPLEMENTARY_2026,
     DATASETS,
     MUNICIPALITIES_TSE_IBGE,
     POLLING_PLACES_2026,
@@ -63,6 +66,18 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument(
         "--municipalities", type=Path, required=True, help="municipio_tse_ibge CSV"
     )
+    build_parser.add_argument(
+        "--candidates", type=Path, required=True, help="consulta_cand CSV (main file)"
+    )
+    build_parser.add_argument(
+        "--candidates-complementary",
+        type=Path,
+        required=True,
+        help="consulta_cand_complementar CSV (adjudication status and on-ballot flag)",
+    )
+    build_parser.add_argument(
+        "--social-links", type=Path, required=True, help="rede_social_candidato CSV"
+    )
     build_parser.add_argument("--output-dir", type=Path, required=True)
     build_parser.add_argument(
         "--monthly",
@@ -102,6 +117,9 @@ def _run_build(args: argparse.Namespace) -> int:
         manifest = build_index(
             SourceFile(polling_dataset, args.polling_places),
             SourceFile(MUNICIPALITIES_TSE_IBGE, args.municipalities),
+            SourceFile(CANDIDATES_2026, args.candidates),
+            SourceFile(CANDIDATES_COMPLEMENTARY_2026, args.candidates_complementary),
+            SourceFile(CANDIDATE_SOCIAL_LINKS_2026, args.social_links),
             args.output_dir,
         )
     except BuildError as exc:

@@ -16,8 +16,20 @@ from br_elections_mcp.index_schema import (
     read_manifest,
 )
 from br_elections_mcp.pipeline.build import BuildError
-from br_elections_mcp.pipeline.datasets import POLLING_PLACES_2026, POLLING_PLACES_CURRENT
-from tests.conftest import ACRE_POLLING_PLACES, BUILT_AT, build_fixture_index
+from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_SOCIAL_LINKS_2026,
+    CANDIDATES_2026,
+    CANDIDATES_COMPLEMENTARY_2026,
+    POLLING_PLACES_2026,
+    POLLING_PLACES_CURRENT,
+)
+from tests.conftest import (
+    ACRE_CANDIDATES,
+    ACRE_CANDIDATES_COMPLEMENTARY,
+    ACRE_POLLING_PLACES,
+    BUILT_AT,
+    build_fixture_index,
+)
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
@@ -28,7 +40,13 @@ def test_build_writes_index_and_manifest_from_the_acre_fixtures(acre_index_dir: 
     manifest = read_manifest(acre_index_dir / MANIFEST_FILE_NAME)
 
     assert manifest.index_built_at == BUILT_AT
-    assert manifest.counts == {"municipalities": 2, "polling_places": 3, "polling_sections": 6}
+    assert manifest.counts == {
+        "municipalities": 2,
+        "polling_places": 3,
+        "polling_sections": 6,
+        "candidates": 16,
+        "candidate_social_links": 4,
+    }
     assert manifest.election_year == 2026
     assert manifest.election_dates == {1: dt.date(2026, 10, 4)}
     assert len(manifest.index_sha256) == 64
@@ -82,3 +100,225 @@ def test_unknown_accessibility_text_fails_loudly(tmp_path: Path):
     )
     with pytest.raises(BuildError, match="TALVEZ"):
         build_fixture_index(tmp_path / "out", polling_places=broken)
+
+
+# Candidates (ticket #8): three files in, two tables out, nothing personal written.
+
+
+def test_manifest_cites_the_three_candidate_files(acre_index_dir: Path):
+    manifest = read_manifest(acre_index_dir / MANIFEST_FILE_NAME)
+
+    candidates = manifest.datasets["candidates"]
+    assert candidates.dataset == CANDIDATES_2026.title
+    assert candidates.dataset_url == CANDIDATES_2026.dataset_url
+    assert candidates.file == "consulta_cand_2026_BRASIL.csv"
+    assert candidates.generated_at == dt.datetime(2026, 9, 18, 22, 30, 5, tzinfo=SAO_PAULO)
+    complementary = manifest.datasets["candidates_complementary"]
+    assert complementary.dataset == CANDIDATES_COMPLEMENTARY_2026.title
+    assert complementary.file == "consulta_cand_complementar_2026_BRASIL.csv"
+    assert complementary.generated_at == dt.datetime(2026, 9, 18, 22, 30, 11, tzinfo=SAO_PAULO)
+    social = manifest.datasets["candidate_social_links"]
+    assert social.dataset == CANDIDATE_SOCIAL_LINKS_2026.title
+    assert social.file == "rede_social_candidato_2026_BRASIL.csv"
+    # The candidate file carries the same election as the polling places: still one election.
+    assert manifest.election_year == 2026
+    assert manifest.election_dates == {1: dt.date(2026, 10, 4)}
+
+
+def _candidate(index_dir: Path, sq_candidato: int) -> dict:
+    conn = duckdb.connect(str(index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM candidates WHERE sq_candidato = ? AND round = 1", [sq_candidato]
+        )
+        columns = [column[0] for column in cursor.description]
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    return dict(zip(columns, row, strict=True))
+
+
+def test_candidate_row_maps_office_by_text_and_joins_the_complementary_file(acre_index_dir):
+    governor = _candidate(acre_index_dir, 10000000003)
+    assert governor["uf"] == "AC"
+    assert governor["office"] == "governador"
+    assert governor["number"] == 13
+    assert governor["ballot_name"] == "ZÉ ANTÔNIO"
+    assert governor["name"] == "JOSÉ ANTÔNIO DOS SANTOS"
+    assert governor["social_name"] is None  # #NULO
+    assert (governor["party_number"], governor["party_acronym"]) == (13, "PT")
+    assert governor["party_name"] == "PARTIDO DOS TRABALHADORES"
+    assert governor["nomination_kind"] == "federacao"
+    assert governor["federation_acronym"] == "PT/PC do B/PV"
+    assert governor["federation_name"] == "BRASIL DA ESPERANÇA"
+    assert governor["federation_composition"] == "PT / PC do B / PV"
+    assert governor["coalition_name"] is None  # #NULO
+    assert governor["adjudication_status"] == "INDEFERIDO EM PRAZO RECURSAL OU COM RECURSO"
+    assert governor["on_ballot"] is True
+    assert governor["occupation"] == "PROFESSOR DE ENSINO SUPERIOR"
+    assert governor["gender"] == "MASCULINO"
+    assert governor["education"] == "SUPERIOR COMPLETO"
+    assert governor["marital_status"] == "DIVORCIADO(A)"
+    assert governor["race_color"] == "PRETA"
+    assert governor["election_year"] == 2026
+    assert governor["election_date"] == dt.date(2026, 10, 4)
+
+    isolated = _candidate(acre_index_dir, 10000000005)
+    assert isolated["nomination_kind"] == "partido_isolado"
+    assert isolated["federation_acronym"] is None  # NR_FEDERACAO = -1, SG_FEDERACAO = #NULO
+    assert isolated["coalition_name"] is None  # "PARTIDO ISOLADO"
+    assert isolated["coalition_composition"] is None
+    assert isolated["adjudication_status"] == "RENÚNCIA"
+    assert isolated["on_ballot"] is False
+
+    coalition = _candidate(acre_index_dir, 10000000001)
+    assert coalition["nomination_kind"] == "coligacao"
+    assert coalition["coalition_name"] == "ACRE PARA TODOS"
+    assert coalition["coalition_composition"] == "PSDB, MDB"
+    assert coalition["federation_acronym"] is None
+
+    offices = {
+        10000000002: "vice_governador",
+        10000000006: "senador",
+        10000000007: "primeiro_suplente",
+        10000000008: "segundo_suplente",
+        10000000009: "deputado_federal",
+        10000000011: "deputado_estadual",
+        20000000001: "presidente",
+        20000000002: "vice_presidente",
+    }
+    for sq_candidato, office in offices.items():
+        assert _candidate(acre_index_dir, sq_candidato)["office"] == office
+    assert _candidate(acre_index_dir, 20000000001)["uf"] == "BR"
+
+
+def test_social_links_are_loaded_by_candidate_and_order(acre_index_dir: Path):
+    conn = duckdb.connect(str(acre_index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute(
+            "SELECT sq_candidato, position, url FROM candidate_social_links ORDER BY 1, 2"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [
+        (10000000001, 1, "https://www.instagram.com/mariadasilva45"),
+        (10000000001, 2, "https://www.facebook.com/mariadasilva45"),
+        (10000000003, 1, "https://www.instagram.com/zeantonio13"),
+        (20000000001, 1, "https://www.instagram.com/fernando13"),
+    ]
+
+
+def test_unknown_ds_cargo_text_fails_loudly(tmp_path: Path):
+    broken = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    broken.write_bytes(ACRE_CANDIDATES.read_bytes().replace(b'"SENADOR"', b'"SENADORA"', 1))
+    with pytest.raises(BuildError, match=r"DS_CARGO.*SENADORA"):
+        build_fixture_index(tmp_path / "out", candidates=broken)
+    assert not (tmp_path / "out" / INDEX_FILE_NAME).exists()
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (b'"Partido Isolado"', b'"Chapa Avulsa"', "TP_AGREMIACAO"),
+        (b'"MDB, PL"', b'"MDB, PL"', None),  # control: the file builds
+    ],
+)
+def test_unknown_nomination_kind_fails_loudly(tmp_path: Path, old, new, message):
+    broken = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    broken.write_bytes(ACRE_CANDIDATES.read_bytes().replace(old, new, 1))
+    if message is None:
+        build_fixture_index(tmp_path / "out", candidates=broken)
+        return
+    with pytest.raises(BuildError, match=message):
+        build_fixture_index(tmp_path / "out", candidates=broken)
+
+
+def test_unknown_on_ballot_flag_fails_loudly(tmp_path: Path):
+    broken = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    original = ACRE_CANDIDATES_COMPLEMENTARY.read_bytes()
+    header, body = original.split(b"\n", 1)
+    columns = header.decode("latin-1").split(";")
+    position = columns.index('"ST_CANDIDATO_INSERIDO_URNA"')
+    first, rest = body.split(b"\n", 1)
+    fields = first.decode("latin-1").split(";")
+    fields[position] = '"TALVEZ"'
+    broken.write_bytes(header + b"\n" + ";".join(fields).encode("latin-1") + b"\n" + rest)
+    with pytest.raises(BuildError, match=r"ST_CANDIDATO_INSERIDO_URNA.*TALVEZ"):
+        build_fixture_index(tmp_path / "out", candidates_complementary=broken)
+
+
+def test_candidate_without_a_complementary_row_fails_loudly(tmp_path: Path):
+    header, body = ACRE_CANDIDATES_COMPLEMENTARY.read_bytes().split(b"\n", 1)
+    lines = body.split(b"\n")
+    lines = [line for line in lines if b'"10000000011"' not in line]
+    incomplete = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    incomplete.write_bytes(header + b"\n" + b"\n".join(lines))
+    with pytest.raises(BuildError, match="10000000011"):
+        build_fixture_index(tmp_path / "out", candidates_complementary=incomplete)
+
+
+def _with_round_column(original: bytes, rounds: dict[bytes, list[tuple[bytes, bytes]]]) -> bytes:
+    """Append NR_TURNO to the complementary file; ``rounds`` adds extra rows per sq_candidato
+    as (round, DS_SITUACAO_JULGAMENTO) pairs, the original rows get round 1."""
+    header, body = original.split(b"\n", 1)
+    out = [header + b';"NR_TURNO"']
+    for line in body.split(b"\n"):
+        if not line:
+            continue
+        out.append(line + b';"1"')
+        sq = line.split(b";")[4]
+        for round_number, status in rounds.get(sq, []):
+            extra = line.replace(b'"DEFERIDO"', b'"' + status + b'"')
+            out.append(extra + b';"' + round_number + b'"')
+    return b"\n".join(out) + b"\n"
+
+
+def test_complementary_with_nr_turno_is_joined_by_candidate_and_round(tmp_path: Path):
+    # A round-2 row for the president must not leak into the round-1 candidate.
+    with_rounds = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    with_rounds.write_bytes(
+        _with_round_column(
+            ACRE_CANDIDATES_COMPLEMENTARY.read_bytes(),
+            {b'"20000000001"': [(b"2", b"CASSADO")]},
+        )
+    )
+    build_fixture_index(tmp_path / "out", candidates_complementary=with_rounds)
+    assert _candidate(tmp_path / "out", 20000000001)["adjudication_status"] == "DEFERIDO"
+
+
+def test_complementary_without_nr_turno_with_conflicting_duplicates_fails_loudly(tmp_path: Path):
+    original = ACRE_CANDIDATES_COMPLEMENTARY.read_bytes()
+    header, body = original.split(b"\n", 1)
+    first = body.split(b"\n", 1)[0]
+    conflicting = first.replace(b'"DEFERIDO"', b'"CASSADO"')
+    assert conflicting != first
+    duplicated = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    duplicated.write_bytes(header + b"\n" + body + conflicting + b"\n")
+    with pytest.raises(BuildError, match="SQ_CANDIDATO"):
+        build_fixture_index(tmp_path / "out", candidates_complementary=duplicated)
+
+
+def test_complementary_without_nr_turno_with_exact_duplicates_is_deduplicated(tmp_path: Path):
+    original = ACRE_CANDIDATES_COMPLEMENTARY.read_bytes()
+    header, body = original.split(b"\n", 1)
+    first = body.split(b"\n", 1)[0]
+    duplicated = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
+    duplicated.write_bytes(header + b"\n" + body + first + b"\n")
+    manifest = build_fixture_index(tmp_path / "out", candidates_complementary=duplicated)
+    assert manifest.counts["candidates"] == 16
+
+
+def test_election_is_null_when_the_candidate_file_disagrees_with_the_polling_places(tmp_path):
+    shifted = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    shifted.write_bytes(ACRE_CANDIDATES.read_bytes().replace(b"04/10/2026", b"11/10/2026"))
+    manifest = build_fixture_index(tmp_path / "out", candidates=shifted)
+    assert manifest.election_year is None
+    assert manifest.election_dates is None
+
+
+def test_missing_candidate_column_fails_loudly(tmp_path: Path):
+    broken = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    broken.write_bytes(ACRE_CANDIDATES.read_bytes().replace(b'"DS_CARGO"', b'"DS_CARGO_X"', 1))
+    with pytest.raises(BuildError, match="DS_CARGO"):
+        build_fixture_index(tmp_path / "out", candidates=broken)

@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.app import ENV_INDEX_DIR, ENV_PORT, Settings, build_app, create_app
-from br_elections_mcp.core import Core, ElectionInfoAnswer, PollingPlaceAnswer
+from br_elections_mcp.core import CandidatesAnswer, Core, ElectionInfoAnswer, PollingPlaceAnswer
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from tests.conftest import ELECTIONS_FILE, fixed_clock
 
@@ -100,6 +100,7 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
     document = response.json()
     assert "/polling-place" in document["paths"]
     assert "/election" in document["paths"]
+    assert "/candidates" in document["paths"]
     assert document["servers"] == [{"url": "/api/v1"}]
     schemas = document["components"]["schemas"]
     assert set(PollingPlaceAnswer.model_json_schema()["properties"]) == set(
@@ -107,6 +108,12 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
     )
     assert set(ElectionInfoAnswer.model_json_schema()["properties"]) == set(
         schemas["ElectionInfoAnswer"]["properties"]
+    )
+    assert set(CandidatesAnswer.model_json_schema()["properties"]) == set(
+        schemas["CandidatesAnswer"]["properties"]
+    )
+    assert not {"gender", "race_color", "marital_status", "education"} & set(
+        schemas["CandidateListItem"]["properties"]
     )
 
 
@@ -140,3 +147,59 @@ def test_index_unavailable_is_503(acre_index_dir: Path):
         response = client.get("/polling-place", params={"uf": "AC", "zone": 9, "section": 422})
     assert response.status_code == 503
     assert "index is not open" in response.json()["detail"]
+
+
+# GET /api/v1/candidates (ticket #8)
+
+
+def test_candidates_returns_the_core_envelope(client: TestClient, core: Core):
+    response = client.get("/api/v1/candidates", params={"uf": "br", "office": "presidente"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"data", "not_found", "warnings", "election", "source"}
+    assert body == core.list_candidates("br", "presidente").model_dump(mode="json")
+    assert body["data"]["total"] == 2
+    assert [c["number"] for c in body["data"]["candidates"]] == [13, 45]
+    assert body["source"]["file"] == "consulta_cand_2026_BRASIL.csv"
+    assert body["election"]["id"] == "general-2026"
+
+
+def test_candidates_query_parameters_are_passed_through(client: TestClient):
+    response = client.get(
+        "/api/v1/candidates",
+        params={
+            "uf": "AC",
+            "office": "governador",
+            "party": "22",
+            "on_ballot_only": "false",
+            "limit": "1",
+            "offset": "0",
+            "round": "1",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total"] == 1
+    assert data["candidates"][0]["ballot_name"] == "ANA LÚCIA"
+    assert data["candidates"][0]["on_ballot"] is False
+    assert (data["limit"], data["offset"], data["round"]) == (1, 0, 1)
+
+    by_name = client.get(
+        "/api/v1/candidates", params={"uf": "AC", "office": "deputado_estadual", "name": "d'arc"}
+    )
+    assert [c["number"] for c in by_name.json()["data"]["candidates"]] == [45123]
+
+
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [
+        ({"uf": "AC", "office": "prefeito"}, "cargo desconhecido"),
+        ({"uf": "AC", "office": "presidente"}, "presidente só existe com uf = BR"),
+        ({"uf": "AC", "office": "governador", "limit": "51"}, "limite inválido"),
+        ({"uf": "AC", "office": "governador", "round": "3"}, "turno inválido"),
+    ],
+)
+def test_candidates_invalid_query_is_400_with_the_core_message(client, params, message):
+    response = client.get("/api/v1/candidates", params=params)
+    assert response.status_code == 400
+    assert message in response.json()["detail"]

@@ -14,14 +14,20 @@ from zoneinfo import ZoneInfo
 
 from br_elections_mcp.core.answers import (
     CalendarSourceInfo,
+    CandidateListItem,
+    CandidatesAnswer,
+    CandidatesData,
+    Coalition,
     CuratedSource,
     ElectionInfo,
     ElectionInfoAnswer,
     ElectionInfoData,
     ElectionInfoRound,
     ElectionRoundInfo,
+    Federation,
     Municipality,
     NotFound,
+    Party,
     PollingPlace,
     PollingPlaceAnswer,
     PollingPlaceData,
@@ -33,7 +39,19 @@ from br_elections_mcp.core.calendar import Calendar
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index import Index, open_index
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable
-from br_elections_mcp.core.normalize import normalize_date, normalize_number, normalize_polling_uf
+from br_elections_mcp.core.normalize import (
+    check_office_for_uf,
+    normalize_ballot_office,
+    normalize_candidate_uf,
+    normalize_date,
+    normalize_limit,
+    normalize_number,
+    normalize_offset,
+    normalize_polling_uf,
+    search_text,
+)
+from br_elections_mcp.core.queries import candidates as candidate_queries
+from br_elections_mcp.core.queries.candidates import CandidateFilter, CandidateRow
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
 from br_elections_mcp.domain import Election
 from br_elections_mcp.domain import ElectionRound as DomainElectionRound
@@ -46,6 +64,9 @@ Clock = Callable[[], dt.datetime]
 def system_clock() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
 
+
+MAX_LIMIT = 50
+"""The largest page any list answers (codebase-design 3.1)."""
 
 SECTION_NOT_FOUND_GUIDANCE = (
     "Confira a zona e a seção no e-Título ou no título impresso. Sem o título, use o serviço "
@@ -189,6 +210,74 @@ class Core:
             ),
         )
 
+    def list_candidates(
+        self,
+        uf: object,
+        office: object,
+        party: object = None,
+        name: object = None,
+        on_ballot_only: bool = True,
+        limit: object = MAX_LIMIT,
+        offset: object = 0,
+        round: object = None,
+    ) -> CandidatesAnswer:
+        """The candidates of a ballot office in a UF (``BR`` for president).
+
+        ``party`` is an acronym or a number; ``name`` matches the ballot or
+        the civil name without accents or case. Only on-ballot candidates by
+        default. Raises ``InvalidQuery`` for an unknown office, an office
+        impossible for the UF, ``limit`` outside 1..50 or a round outside the
+        calendar; an empty list is an answer, never ``not_found``.
+        """
+        index = self._open()
+        uf_value = normalize_candidate_uf(uf)
+        office_value = normalize_ballot_office(office)
+        check_office_for_uf(office_value, uf_value)
+        limit_value = normalize_limit(limit, MAX_LIMIT)
+        offset_value = normalize_offset(offset)
+        requested_round = None if round is None else normalize_number(round, "turno inválido")
+        party_number, party_acronym = _party_filter(party)
+        name_filter = search_text(name) if name is not None and str(name).strip() else None
+
+        today = self._today()
+        election = self._calendar.coincident_election(today, index.manifest)
+        _check_round_bound(requested_round, election)
+        source = self._source(index, "candidates")
+
+        with index.cursor() as cursor:
+            rounds = candidate_queries.office_rounds(cursor, uf_value, office_value.value)
+            if not rounds:
+                rounds = candidate_queries.candidate_rounds(cursor)
+            if not rounds:
+                raise IndexUnavailable("the index has no candidates in any round")
+            answered_round = _pick_round(rounds, requested_round)
+            filters = CandidateFilter(
+                uf=uf_value,
+                office=office_value.value,
+                round=answered_round,
+                on_ballot_only=bool(on_ballot_only),
+                party_number=party_number,
+                party_acronym=party_acronym,
+                name=name_filter,
+            )
+            rows, total = candidate_queries.list_candidates(
+                cursor, filters, limit_value, offset_value
+            )
+
+        return CandidatesAnswer(
+            data=CandidatesData(
+                round=answered_round,
+                candidates=[_candidate_list_item(row) for row in rows],
+                total=total,
+                limit=limit_value,
+                offset=offset_value,
+            ),
+            not_found=None,
+            warnings=[],
+            election=_election_info(election, answered_round),
+            source=source,
+        )
+
     # Helpers
 
     def _open(self) -> Index:
@@ -218,14 +307,63 @@ def _resolve_round(index: Index, requested: int | None, election: Election | Non
     published = index.published_rounds
     if not published:
         raise IndexUnavailable("the index has no polling sections in any round")
+    _check_round_bound(requested, election)
+    return _pick_round(published, requested)
+
+
+def _check_round_bound(requested: int | None, election: Election | None) -> None:
+    """A round outside 1..n of the calendar (1..2 without a coincident election) is
+    ``InvalidQuery`` (codebase-design 3.4, common rules)."""
     if requested is None:
-        return published[-1]
+        return
     last = len(election.rounds) if election is not None else 2
     if requested > last:
         raise InvalidQuery(f"turno inválido: {requested}; os turnos possíveis vão de 1 a {last}")
-    if requested in published:
+
+
+def _pick_round(present: tuple[int, ...], requested: int | None) -> int:
+    """Absent -> highest present; explicit and present -> that one; explicit and absent ->
+    highest present. ``present`` is never empty."""
+    if requested is not None and requested in present:
         return requested
-    return published[-1]
+    return present[-1]
+
+
+def _party_filter(party: object) -> tuple[int | None, str | None]:
+    """``"45"`` and ``45`` filter by number; ``"psdb"`` by acronym, without accents or case."""
+    if party is None:
+        return None, None
+    if isinstance(party, bool):
+        raise InvalidQuery(f"partido inválido: {party!r}")
+    if isinstance(party, int):
+        return party, None
+    text = str(party).strip()
+    if not text:
+        return None, None
+    if text.isdigit():
+        return int(text), None
+    return None, search_text(text)
+
+
+def _candidate_list_item(row: CandidateRow) -> CandidateListItem:
+    federation = None
+    if row.federation_acronym is not None:
+        federation = Federation(acronym=row.federation_acronym, name=row.federation_name or "")
+    coalition = Coalition(name=row.coalition_name) if row.coalition_name is not None else None
+    return CandidateListItem(
+        sq_candidato=row.sq_candidato,
+        number=row.number,
+        ballot_name=row.ballot_name,
+        name=row.name,
+        office=row.office,  # type: ignore[arg-type]
+        party=Party(number=row.party_number, acronym=row.party_acronym, name=row.party_name),
+        federation=federation,
+        coalition=coalition,
+        adjudication_status=row.adjudication_status,
+        on_ballot=row.on_ballot,
+        occupation=row.occupation,
+        photo_url=None,
+    )
 
 
 def _election_info(election: Election | None, answered_round: int) -> ElectionInfo | None:
