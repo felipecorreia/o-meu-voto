@@ -1,0 +1,40 @@
+# br-elections-mcp
+
+Pointers only; the content lives in the files below.
+
+- **Start at `wiki/index.md`**, then the top entry of `wiki/log.md` for the current state and
+  the decisions still open with the captain.
+- **`CONTEXT.md`**: the ubiquitous language. Use its English identifiers in code and its terms
+  in prose; each entry lists synonyms to avoid.
+- **`docs/domain-model.md`**, **`docs/codebase-design.md`**, **`docs/adr/`**: entities and
+  invariants, module boundaries and tool contracts, accepted decisions. Design is settled
+  there; a change that contradicts them needs a new ADR, not a silent override.
+- **Guardrails**: no personal data in the index or in any response (ADR 0004); PostHog
+  telemetry anonymous.
+- **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
+  `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
+  Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)
+  is EN-US; docs committed before that date stay PT-BR until rewritten.
+
+## Agent skills
+
+### Issue tracker
+
+Issues, specs and tickets live in this repo's GitHub Issues, driven with `gh`; tickets block
+each other through native issue dependencies. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical labels, unchanged: `needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
