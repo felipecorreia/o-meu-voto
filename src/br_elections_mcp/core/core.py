@@ -13,7 +13,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from br_elections_mcp.core.answers import (
+    CalendarSourceInfo,
+    CuratedSource,
     ElectionInfo,
+    ElectionInfoAnswer,
+    ElectionInfoData,
+    ElectionInfoRound,
     ElectionRoundInfo,
     Municipality,
     NotFound,
@@ -28,9 +33,10 @@ from br_elections_mcp.core.calendar import Calendar
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index import Index, open_index
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable
-from br_elections_mcp.core.normalize import normalize_number, normalize_polling_uf
+from br_elections_mcp.core.normalize import normalize_date, normalize_number, normalize_polling_uf
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
 from br_elections_mcp.domain import Election
+from br_elections_mcp.domain import ElectionRound as DomainElectionRound
 from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
 
 Clock = Callable[[], dt.datetime]
@@ -140,6 +146,49 @@ class Core:
             data=data, not_found=None, warnings=warnings, election=election_info, source=source
         )
 
+    def election_info(self, on: object = None) -> ElectionInfoAnswer:
+        """Rounds, voting hours, next round and offices of the current election.
+
+        ``on`` defaults to today in America/Sao_Paulo. Reads only
+        ``data/elections.yaml``, never the index, so this answer never ages:
+        ``source.kind`` is ``curated`` and there is no staleness warning.
+        After the last round of the last election in the file, ``data`` still
+        describes that election, with ``next_round`` null; never ``not_found``.
+        """
+        day = self._today() if on is None else normalize_date(on, "data inválida")
+        election = self._calendar.current_or_last_election(day)
+        hours = election.voting_hours
+        next_round = election.next_round_on(day)
+        return ElectionInfoAnswer(
+            data=ElectionInfoData(
+                rounds=[_election_info_round(r) for r in election.rounds],
+                voting_hours=VotingHoursInfo(
+                    start=hours.start.strftime("%H:%M"),
+                    end=hours.end.strftime("%H:%M"),
+                    timezone=hours.timezone,
+                    label=hours.label,
+                ),
+                next_round=_election_info_round(next_round) if next_round is not None else None,
+                days_until_next_round=(
+                    (next_round.date - day).days if next_round is not None else None
+                ),
+                offices=list(election.offices),
+                notes=list(election.notes),
+                calendar_source=CalendarSourceInfo(
+                    title=election.calendar_source.title,
+                    url=election.calendar_source.url,
+                    verified_at=election.calendar_source.verified_at,
+                ),
+            ),
+            not_found=None,
+            warnings=[],
+            election=None,
+            source=CuratedSource(
+                calendar_source=election.calendar_source.title,
+                verified_at=election.calendar_source.verified_at,
+            ),
+        )
+
     # Helpers
 
     def _open(self) -> Index:
@@ -197,6 +246,10 @@ def _election_info(election: Election | None, answered_round: int) -> ElectionIn
             label=hours.label,
         ),
     )
+
+
+def _election_info_round(round_: DomainElectionRound) -> ElectionInfoRound:
+    return ElectionInfoRound(number=round_.number, date=round_.date, note=round_.note)
 
 
 def _polling_place_data(row: SectionRow) -> PollingPlaceData:

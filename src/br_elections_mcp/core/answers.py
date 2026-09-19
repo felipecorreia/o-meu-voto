@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from br_elections_mcp.domain import Office
+
 LICENSE = "CC-BY"
 ATTRIBUTION = "Tribunal Superior Eleitoral - Portal de Dados Abertos"
 
@@ -116,3 +118,54 @@ class PollingPlaceAnswer(_Model):
     warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
     election: ElectionInfo | None
     source: Source
+
+
+class ElectionInfoRound(_Model):
+    number: int
+    date: dt.date
+    note: str | None = None
+
+
+class CalendarSourceInfo(_Model):
+    """The normative act the calendar was curated from (domain-model 3.1)."""
+
+    title: str
+    url: str
+    verified_at: dt.date
+
+
+class CuratedSource(_Model):
+    """Source for answers curated from ``data/elections.yaml`` (domain-model 3.6):
+    ``calendar_source`` replaces ``dataset`` and ``verified_at`` replaces ``generated_at``.
+    Never ages, so ``stale`` and ``age_hours`` are absent.
+    """
+
+    kind: Literal["curated"] = "curated"
+    calendar_source: str = Field(description="Título da fonte curada, ex.: a resolução do TSE")
+    verified_at: dt.date
+    license: str = LICENSE
+    attribution: str = ATTRIBUTION
+
+
+class ElectionInfoData(_Model):
+    rounds: list[ElectionInfoRound]
+    voting_hours: VotingHoursInfo
+    next_round: ElectionInfoRound | None = Field(
+        description="Próximo turno a partir da data consultada, ou nulo após o último turno"
+    )
+    days_until_next_round: int | None = Field(
+        description="Dias até next_round, ou nulo quando não há próximo turno"
+    )
+    offices: list[Office]
+    notes: list[str] = Field(description="Avisos curados ao eleitor, em PT-BR; pode ser vazia")
+    calendar_source: CalendarSourceInfo
+
+
+class ElectionInfoAnswer(_Model):
+    """Answer of ``election_info`` (codebase-design 8.5). Never ``not_found`` and never stale."""
+
+    data: ElectionInfoData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; sempre vazia aqui")
+    election: ElectionInfo | None
+    source: CuratedSource

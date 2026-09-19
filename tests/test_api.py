@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.app import ENV_INDEX_DIR, ENV_PORT, Settings, build_app, create_app
-from br_elections_mcp.core import Core, PollingPlaceAnswer
+from br_elections_mcp.core import Core, ElectionInfoAnswer, PollingPlaceAnswer
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from tests.conftest import ELECTIONS_FILE, fixed_clock
 
@@ -68,6 +68,30 @@ def test_invalid_query_is_400_with_the_core_message(client: TestClient, params, 
     assert message in response.json()["detail"]
 
 
+def test_election_returns_the_core_envelope(client: TestClient, core: Core):
+    response = client.get("/api/v1/election", params={"on": "2026-09-18"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"data", "not_found", "warnings", "election", "source"}
+    assert body == core.election_info("2026-09-18").model_dump(mode="json")
+    assert body["data"]["next_round"]["number"] == 1
+    assert body["source"]["kind"] == "curated"
+    assert body["not_found"] is None
+    assert "stale" not in body["source"]
+
+
+def test_election_default_on_is_today(client: TestClient):
+    response = client.get("/api/v1/election")
+    assert response.status_code == 200
+    assert response.json()["data"] is not None
+
+
+def test_election_invalid_on_is_400(client: TestClient):
+    response = client.get("/api/v1/election", params={"on": "not-a-date"})
+    assert response.status_code == 400
+    assert "data inválida" in response.json()["detail"]
+
+
 def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
     client: TestClient,
 ):
@@ -75,10 +99,14 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
     assert response.status_code == 200
     document = response.json()
     assert "/polling-place" in document["paths"]
+    assert "/election" in document["paths"]
     assert document["servers"] == [{"url": "/api/v1"}]
     schemas = document["components"]["schemas"]
     assert set(PollingPlaceAnswer.model_json_schema()["properties"]) == set(
         schemas["PollingPlaceAnswer"]["properties"]
+    )
+    assert set(ElectionInfoAnswer.model_json_schema()["properties"]) == set(
+        schemas["ElectionInfoAnswer"]["properties"]
     )
 
 

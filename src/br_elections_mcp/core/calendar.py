@@ -27,6 +27,15 @@ class Calendar:
         """The first election of the file whose last round is on or after ``today``."""
         return next((e for e in self._elections if e.last_round.date >= today), None)
 
+    def current_or_last_election(self, today: dt.date) -> Election:
+        """``current_election``, or the last election of the file once every one is over.
+
+        The file is never empty (``elections.py`` rejects it), so this always
+        returns an election: ``election_info`` describes a past election
+        instead of answering ``not_found``.
+        """
+        return self.current_election(today) or self._elections[-1]
+
     def coincident_election(self, today: dt.date, manifest: Manifest) -> Election | None:
         """The current election, when the index was built for it (codebase-design 3.4).
 

@@ -4,7 +4,12 @@ Public surface: ``Core``, the ``IndexSource`` port and the answer models.
 """
 
 from br_elections_mcp.core.answers import (
+    CalendarSourceInfo,
+    CuratedSource,
     ElectionInfo,
+    ElectionInfoAnswer,
+    ElectionInfoData,
+    ElectionInfoRound,
     Municipality,
     NotFound,
     PollingPlace,
@@ -18,9 +23,14 @@ from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable, IndexVersion
 
 __all__ = [
+    "CalendarSourceInfo",
     "Clock",
     "Core",
+    "CuratedSource",
     "ElectionInfo",
+    "ElectionInfoAnswer",
+    "ElectionInfoData",
+    "ElectionInfoRound",
     "IndexSource",
     "IndexSourceUnavailable",
     "IndexUnavailable",

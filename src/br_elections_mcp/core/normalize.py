@@ -5,6 +5,8 @@ Normalization belongs to the core; adapters pass input through untouched.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from br_elections_mcp.core.errors import InvalidQuery
 from br_elections_mcp.domain import POLLING_UFS, UF
 
@@ -38,3 +40,18 @@ def normalize_number(value: object, label: str) -> int:
     if number < 1:
         raise InvalidQuery(f"{label}: {value!r}")
     return number
+
+
+def normalize_date(value: object, label: str) -> dt.date:
+    """``dt.date`` is passed through; a string is parsed as ISO ``AAAA-MM-DD``.
+
+    ``label`` is the PT-BR error prefix, e.g. ``"data inválida"``.
+    """
+    if isinstance(value, dt.datetime) or not isinstance(value, dt.date | str):
+        raise InvalidQuery(f"{label}: {value!r}")
+    if isinstance(value, dt.date):
+        return value
+    try:
+        return dt.date.fromisoformat(value.strip())
+    except ValueError:
+        raise InvalidQuery(f"{label}: {value!r}") from None

@@ -6,7 +6,7 @@ import pytest
 from mcp import Client
 from mcp.shared.exceptions import MCPError
 
-from br_elections_mcp.core import Core, PollingPlaceAnswer
+from br_elections_mcp.core import Core, ElectionInfoAnswer, PollingPlaceAnswer
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from tests.conftest import ELECTIONS_FILE
@@ -14,12 +14,12 @@ from tests.conftest import ELECTIONS_FILE
 pytestmark = pytest.mark.anyio
 
 
-async def test_tool_is_listed_with_pt_br_texts_annotations_and_generated_schemas(core: Core):
+async def test_tools_are_listed_with_pt_br_texts_annotations_and_generated_schemas(core: Core):
     async with Client(create_mcp_server(core)) as client:
         tools = (await client.list_tools()).tools
 
-    assert [tool.name for tool in tools] == ["find_polling_place"]
-    tool = tools[0]
+    assert {tool.name for tool in tools} == {"find_polling_place", "election_info"}
+    tool = next(tool for tool in tools if tool.name == "find_polling_place")
     assert tool.title == "Onde voto"
     assert tool.description is not None
     assert "Não aceita nome, CPF ou número do título" in tool.description
@@ -93,3 +93,45 @@ async def test_index_unavailable_is_a_server_error(acre_index_dir):
     async with Client(create_mcp_server(unopened)) as client:
         with pytest.raises(MCPError, match="índice indisponível"):
             await client.call_tool("find_polling_place", {"uf": "AC", "zone": 9, "section": 422})
+
+
+async def test_election_info_tool_schema_and_annotations(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        tools = (await client.list_tools()).tools
+
+    tool = next(tool for tool in tools if tool.name == "election_info")
+    assert tool.title == "Quando é a eleição"
+    assert tool.description is not None
+    assert "quando é a eleição" in tool.description
+    assert tool.annotations is not None
+    assert tool.annotations.read_only_hint is True
+    assert set(tool.input_schema["properties"]) == {"on"}
+    assert tool.input_schema.get("required", []) == []
+    assert tool.output_schema is not None
+    assert set(tool.output_schema["properties"]) == set(
+        ElectionInfoAnswer.model_json_schema()["properties"]
+    )
+
+
+async def test_election_info_call_returns_the_envelope_and_a_pt_br_text(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool("election_info", {"on": "2026-09-18"})
+
+    assert result.is_error is False
+    expected = core.election_info("2026-09-18").model_dump(mode="json")
+    assert result.structured_content == expected
+    assert result.structured_content["source"]["kind"] == "curated"
+    assert result.structured_content["not_found"] is None
+    assert result.structured_content["warnings"] == []
+    text = result.content[0].text
+    assert "turno" in text
+    assert "Fonte:" in text
+
+
+async def test_election_info_invalid_on_is_a_result_with_is_error(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool("election_info", {"on": "not-a-date"})
+
+    assert result.is_error is True
+    assert "data inválida" in result.content[0].text
+    assert result.structured_content is None

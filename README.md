@@ -21,10 +21,11 @@ the official e-Titulo app and TSE self-service.
 
 ## Status
 
-First vertical slice in place: "where do I vote" end to end over an Acre fixture index (pipeline
-`build` stage, `core`, MCP tool `find_polling_place` and `GET /api/v1/polling-place`). To run it
-locally and connect Claude Desktop, see [`docs/local-run.md`](docs/local-run.md). The design
-documents remain the reference:
+Two tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
+vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`) and "when is the election"
+(MCP tool `election_info`, `GET /api/v1/election`). To run it locally and connect Claude
+Desktop, see [`docs/local-run.md`](docs/local-run.md). The design documents remain the
+reference:
 
 - [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from

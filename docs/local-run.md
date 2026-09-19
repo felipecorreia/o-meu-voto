@@ -31,9 +31,11 @@ uv run python -m br_elections_mcp.app --index-dir data/index --port 8000
 
 The server prints `Uvicorn running on http://127.0.0.1:8000`. It serves:
 
-- MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses).
-- REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=`, with OpenAPI
-  at `http://localhost:8000/api/v1/openapi.json` and Swagger UI at
+- MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
+  tools `find_polling_place` and `election_info`.
+- REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=` and
+  `http://localhost:8000/api/v1/election?on=`, with OpenAPI at
+  `http://localhost:8000/api/v1/openapi.json` and Swagger UI at
   `http://localhost:8000/api/v1/docs`.
 
 Quick check in another terminal:

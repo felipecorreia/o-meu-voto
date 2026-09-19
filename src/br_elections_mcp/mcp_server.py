@@ -16,7 +16,13 @@ from mcp.types import INTERNAL_ERROR, CallToolResult, TextContent, ToolAnnotatio
 from pydantic import Field
 
 from br_elections_mcp import __version__
-from br_elections_mcp.core import Core, IndexUnavailable, InvalidQuery, PollingPlaceAnswer
+from br_elections_mcp.core import (
+    Core,
+    ElectionInfoAnswer,
+    IndexUnavailable,
+    InvalidQuery,
+    PollingPlaceAnswer,
+)
 
 SERVER_NAME = "br-elections-mcp"
 
@@ -32,6 +38,12 @@ FIND_POLLING_PLACE_DESCRIPTION = (
     "Encontra o local de votação a partir da UF, da zona e da seção impressas no título de "
     "eleitor ou no e-Título. Não aceita nome, CPF ou número do título: para descobrir a própria "
     "zona e seção, o eleitor usa o e-Título."
+)
+
+ELECTION_INFO_TITLE = "Quando é a eleição"
+ELECTION_INFO_DESCRIPTION = (
+    "Data e horário da votação, turnos, cargos em disputa e a fonte oficial. Responde 'quando é "
+    "a eleição' e 'até que horas posso votar'."
 )
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
@@ -76,6 +88,27 @@ def create_mcp_server(core: Core) -> MCPServer:
             structured_content=answer.model_dump(mode="json"),
         )
 
+    @server.tool(
+        name="election_info",
+        title=ELECTION_INFO_TITLE,
+        description=ELECTION_INFO_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def election_info(
+        on: Annotated[
+            str | None,
+            Field(description="Data no formato AAAA-MM-DD; padrão: hoje, horário de Brasília"),
+        ] = None,
+    ) -> Annotated[CallToolResult, ElectionInfoAnswer]:
+        try:
+            answer = core.election_info(on)
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        return CallToolResult(
+            content=[TextContent(type="text", text=election_info_text(answer))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
     return server
 
 
@@ -105,4 +138,20 @@ def polling_place_text(answer: PollingPlaceAnswer) -> str:
         f"Fonte: {answer.source.dataset} ({answer.source.file}), gerado pelo TSE em "
         f"{answer.source.generated_at.strftime('%d/%m/%Y %H:%M')}. Licença {answer.source.license}."
     )
+    return " ".join(lines)
+
+
+def election_info_text(answer: ElectionInfoAnswer) -> str:
+    """The short PT-BR text of an election-info answer, for clients without structured output."""
+    assert answer.data is not None
+    d = answer.data
+    rounds = "; ".join(f"{r.number}º turno em {r.date.strftime('%d/%m/%Y')}" for r in d.rounds)
+    lines = [f"Eleição com {len(d.rounds)} turno(s): {rounds}. Votação {d.voting_hours.label}."]
+    if d.next_round is not None:
+        lines.append(
+            f"Próximo turno: {d.next_round.number}º em "
+            f"{d.next_round.date.strftime('%d/%m/%Y')} (faltam {d.days_until_next_round} dia(s))."
+        )
+    lines.extend(d.notes)
+    lines.append(f"Fonte: {d.calendar_source.title}.")
     return " ".join(lines)

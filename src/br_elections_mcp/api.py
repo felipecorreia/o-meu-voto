@@ -14,7 +14,13 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
 from br_elections_mcp import __version__
-from br_elections_mcp.core import Core, IndexUnavailable, InvalidQuery, PollingPlaceAnswer
+from br_elections_mcp.core import (
+    Core,
+    ElectionInfoAnswer,
+    IndexUnavailable,
+    InvalidQuery,
+    PollingPlaceAnswer,
+)
 
 
 def create_api(core: Core) -> FastAPI:
@@ -58,5 +64,22 @@ def create_api(core: Core) -> FastAPI:
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> PollingPlaceAnswer:
         return core.find_polling_place(uf, zone, section, round)
+
+    @api.get(
+        "/election",
+        response_model=ElectionInfoAnswer,
+        summary="Quando é a eleição",
+        description=(
+            "Data e horário da votação, turnos, cargos em disputa e a fonte oficial. Responde "
+            "'quando é a eleição' e 'até que horas posso votar'."
+        ),
+        responses={400: {"description": "Entrada fora do domínio"}},
+    )
+    def election(
+        on: Annotated[
+            str | None, Query(description="Data no formato AAAA-MM-DD; padrão: hoje")
+        ] = None,
+    ) -> ElectionInfoAnswer:
+        return core.election_info(on)
 
     return api
