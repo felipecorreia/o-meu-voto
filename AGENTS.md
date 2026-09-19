@@ -26,6 +26,9 @@ Pointers only; the content lives in the files below.
 - The MCP SDK is `mcp` 2.x: `MCPServer` (not `FastMCP`), `mcp.Client(...)` for clients, and a
   tool returns `Annotated[CallToolResult, AnswerModel]` to keep a generated `outputSchema` while
   building its own text content. Pinned `<3` in `pyproject.toml`.
+- A pydantic model used as an MCP tool input (e.g. `Near`) puts its class docstring into the
+  generated `inputSchema` description, which must be PT-BR: keep the EN-US docstring as a
+  comment and set the description through `json_schema_extra`.
 - Starlette does not run the lifespan of mounted apps: `app.py` runs the MCP session manager
   inside the root lifespan. Keep it there when adding routes.
 - The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE`, `DS_SITU_LOCAL_VOTACAO` and every

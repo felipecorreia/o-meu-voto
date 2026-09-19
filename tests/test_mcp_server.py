@@ -6,7 +6,14 @@ import pytest
 from mcp import Client
 from mcp.shared.exceptions import MCPError
 
-from br_elections_mcp.core import CandidatesAnswer, Core, ElectionInfoAnswer, PollingPlaceAnswer
+from br_elections_mcp.core import (
+    CandidatesAnswer,
+    Core,
+    ElectionInfoAnswer,
+    MunicipalitiesAnswer,
+    PollingPlaceAnswer,
+    PollingPlacesAnswer,
+)
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from tests.conftest import ELECTIONS_FILE
@@ -22,6 +29,8 @@ async def test_tools_are_listed_with_pt_br_texts_annotations_and_generated_schem
         "find_polling_place",
         "election_info",
         "list_candidates",
+        "search_polling_places",
+        "resolve_municipality",
     ]
     tool = next(tool for tool in tools if tool.name == "find_polling_place")
     assert tool.title == "Onde voto"
@@ -237,3 +246,122 @@ async def test_list_candidates_invalid_query_is_a_result_with_is_error(core: Cor
         result = await client.call_tool("list_candidates", {"uf": "AC", "office": "presidente"})
     assert result.is_error is True
     assert "presidente só existe com uf = BR" in result.content[0].text
+
+
+async def test_search_and_resolve_tools_are_listed_with_pt_br_texts_and_schemas(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+
+    search = tools["search_polling_places"]
+    assert search.title == "Locais de votação da cidade"
+    assert search.description is not None
+    assert "Para quem não sabe a zona e a seção" in search.description
+    assert search.annotations is not None and search.annotations.read_only_hint is True
+    assert set(search.input_schema["properties"]) == {
+        "uf",
+        "municipality",
+        "neighborhood",
+        "query",
+        "near",
+        "limit",
+        "round",
+    }
+    assert search.input_schema["required"] == ["uf", "municipality"]
+    assert search.output_schema is not None
+    assert set(search.output_schema["properties"]) == set(
+        PollingPlacesAnswer.model_json_schema()["properties"]
+    )
+
+    resolve = tools["resolve_municipality"]
+    assert resolve.title == "Código do município"
+    assert resolve.description is not None
+    assert "com ou sem acento" in resolve.description
+    assert set(resolve.input_schema["properties"]) == {"name", "uf", "limit"}
+    assert resolve.input_schema["required"] == ["name"]
+    assert resolve.output_schema is not None
+    assert set(resolve.output_schema["properties"]) == set(
+        MunicipalitiesAnswer.model_json_schema()["properties"]
+    )
+
+
+async def test_search_polling_places_returns_the_envelope_and_a_pt_br_text(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "search_polling_places",
+            {"uf": "ac", "municipality": "Rio Branco", "neighborhood": "centro"},
+        )
+
+    assert result.is_error is False
+    expected = core.search_polling_places("ac", "Rio Branco", neighborhood="centro")
+    assert result.structured_content == expected.model_dump(mode="json")
+    assert "distance_km" not in result.structured_content["data"]["places"][0]
+    text = result.content[0].text
+    assert "2 locais" in text
+    assert "COLÉGIO ACREANO" in text
+    assert "Para saber a sua seção, consulte o e-Título." in text
+    assert "Fonte:" in text
+
+
+async def test_search_polling_places_with_near_carries_the_distance(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "search_polling_places",
+            {
+                "uf": "AC",
+                "municipality": "Cruzeiro do Sul",
+                "near": {"latitude": -7.6, "longitude": -72.7},
+                "limit": 5,
+            },
+        )
+
+    assert result.is_error is False
+    places = result.structured_content["data"]["places"]
+    assert [p["number"] for p in places] == [1020, 1015]
+    assert places[0]["distance_km"] > 0
+    assert places[1]["distance_km"] is None
+    assert "km" in result.content[0].text
+
+
+async def test_search_polling_places_ambiguous_municipality_lists_options(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "search_polling_places", {"uf": "AC", "municipality": "porto"}
+        )
+
+    assert result.is_error is False
+    not_found = result.structured_content["not_found"]
+    assert not_found["reason"] == "municipio_ambiguo"
+    assert [o["name"] for o in not_found["options"]] == ["PORTO ACRE", "PORTO WALTER"]
+    assert "PORTO ACRE" in result.content[0].text
+
+
+async def test_search_polling_places_invalid_limit_is_a_result_with_is_error(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "search_polling_places", {"uf": "AC", "municipality": "Rio Branco", "limit": 51}
+        )
+    assert result.is_error is True
+    assert "limite inválido" in result.content[0].text
+
+
+async def test_resolve_municipality_returns_the_envelope_and_a_pt_br_text(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool("resolve_municipality", {"name": "colonia"})
+
+    assert result.is_error is False
+    expected = core.resolve_municipality("colonia")
+    assert result.structured_content == expected.model_dump(mode="json")
+    assert result.structured_content["data"]["municipalities"][0]["ibge_code"] is None
+    text = result.content[0].text
+    assert "COLÔNIA" in text and "ZZ" in text and "30015" in text
+    assert "Fonte:" in text
+
+
+async def test_resolve_municipality_not_found_is_a_normal_result_with_guidance(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool("resolve_municipality", {"name": "Xanadu", "uf": "AC"})
+
+    assert result.is_error is False
+    assert result.structured_content["data"] is None
+    assert result.structured_content["not_found"]["reason"] == "municipio_nao_encontrado"
+    assert "Nenhum município" in result.content[0].text

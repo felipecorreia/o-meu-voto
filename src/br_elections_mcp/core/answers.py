@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from br_elections_mcp.domain import Office
 
@@ -24,9 +24,32 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class Municipality(_Model):
+    tse_code: str = Field(description="Código TSE, 5 dígitos")
+    ibge_code: int | None = Field(description="Código IBGE de 7 dígitos; nulo no exterior")
+    name: str
+    uf: str
+
+
+class MunicipalityMatch(Municipality):
+    """One candidate of ``resolve_municipality``: a municipality with how well it matched."""
+
+    score: float = Field(
+        description="1.0 para o nome exato (sem acento e sem diferenciar maiúsculas), menor "
+        "para nome parcial ou parecido"
+    )
+
+
+NotFoundReason = Literal["secao_nao_encontrada", "municipio_nao_encontrado", "municipio_ambiguo"]
+
+
 class NotFound(_Model):
-    reason: Literal["secao_nao_encontrada"] = Field(description="Motivo, em PT-BR")
+    reason: NotFoundReason = Field(description="Motivo, em PT-BR")
     guidance: str = Field(description="Orientação ao eleitor, em PT-BR")
+    options: list[MunicipalityMatch] | None = Field(
+        default=None,
+        description="Os municípios que casaram, quando o motivo é municipio_ambiguo",
+    )
 
 
 class ElectionRoundInfo(_Model):
@@ -63,13 +86,6 @@ class Source(_Model):
     index_built_at: dt.datetime
     license: str = LICENSE
     attribution: str = ATTRIBUTION
-
-
-class Municipality(_Model):
-    tse_code: str = Field(description="Código TSE, 5 dígitos")
-    ibge_code: int | None = Field(description="Código IBGE de 7 dígitos; nulo no exterior")
-    name: str
-    uf: str
 
 
 class PollingPlace(_Model):
@@ -224,6 +240,64 @@ class CandidatesAnswer(_Model):
     ``not_found``."""
 
     data: CandidatesData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
+    election: ElectionInfo | None
+    source: Source
+
+
+class PollingPlaceListItem(PollingPlace):
+    """One place of ``search_polling_places``: the place, its zone, its voters and, only when
+    the client sent ``near``, its distance. ``distance_km`` is absent (not null) otherwise."""
+
+    zone: int
+    voters: int = Field(description="Soma dos eleitores das seções do local, no turno")
+    distance_km: float | None = Field(
+        default=None,
+        description="Distância em km ao ponto informado em `near`; nula para local sem "
+        "coordenadas; ausente sem `near`",
+    )
+
+    @model_serializer(mode="wrap")
+    def _omit_distance_without_near(self, handler: SerializerFunctionWrapHandler) -> dict:
+        serialized = handler(self)
+        if "distance_km" in self.model_fields_set:
+            return serialized
+        serialized.pop("distance_km", None)
+        return serialized
+
+
+class PollingPlacesData(_Model):
+    round: int = Field(description="Turno a que a resposta se refere")
+    municipality: Municipality
+    places: list[PollingPlaceListItem]
+    total: int = Field(description="Total de locais que casam com o filtro, antes do limite")
+    guidance: str = Field(description="Orientação ao eleitor, em PT-BR")
+
+
+class PollingPlacesAnswer(_Model):
+    """Answer of ``search_polling_places`` (codebase-design 8.2)."""
+
+    data: PollingPlacesData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
+    election: ElectionInfo | None
+    source: Source
+
+
+class MunicipalitiesData(_Model):
+    municipalities: list[MunicipalityMatch] = Field(
+        description="Do melhor para o pior `score`; nunca vazia (sem candidato é not_found)"
+    )
+
+
+class MunicipalitiesAnswer(_Model):
+    """Answer of ``resolve_municipality`` (codebase-design 8.6).
+
+    ``election`` is always null: the municipality list refers to no round.
+    """
+
+    data: MunicipalitiesData | None
     not_found: NotFound | None
     warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
     election: ElectionInfo | None

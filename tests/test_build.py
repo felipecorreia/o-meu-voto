@@ -41,9 +41,9 @@ def test_build_writes_index_and_manifest_from_the_acre_fixtures(acre_index_dir: 
 
     assert manifest.index_built_at == BUILT_AT
     assert manifest.counts == {
-        "municipalities": 2,
-        "polling_places": 3,
-        "polling_sections": 6,
+        "municipalities": 5,
+        "polling_places": 6,
+        "polling_sections": 10,
         "candidates": 16,
         "candidate_social_links": 4,
     }
@@ -76,6 +76,25 @@ def test_index_has_exactly_the_shared_schema_tables(acre_index_dir: Path):
         assert no_coordinates == (None, None, None, "bloqueado")
     finally:
         conn.close()
+
+
+def test_municipalities_come_from_the_crosswalk_with_the_abroad_fallback(acre_index_dir: Path):
+    conn = duckdb.connect(str(acre_index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute(
+            "SELECT tse_code, ibge_code, name, uf, search_name FROM municipalities "
+            "ORDER BY tse_code"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [
+        ("01120", 1200203, "CRUZEIRO DO SUL", "AC", "CRUZEIRO DO SUL"),
+        ("01392", 1200401, "RIO BRANCO", "AC", "RIO BRANCO"),
+        ("01481", 1200807, "PORTO ACRE", "AC", "PORTO ACRE"),
+        ("01503", 1200609, "PORTO WALTER", "AC", "PORTO WALTER"),
+        # Abroad: missing from the crosswalk, so the name the TSE prints and no IBGE code.
+        ("30015", None, "COLÔNIA", "ZZ", "COLONIA"),
+    ]
 
 
 def test_monthly_snapshot_has_no_election_in_the_manifest(tmp_path: Path):

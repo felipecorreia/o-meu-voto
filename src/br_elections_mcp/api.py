@@ -20,7 +20,9 @@ from br_elections_mcp.core import (
     ElectionInfoAnswer,
     IndexUnavailable,
     InvalidQuery,
+    MunicipalitiesAnswer,
     PollingPlaceAnswer,
+    PollingPlacesAnswer,
 )
 
 
@@ -129,5 +131,55 @@ def create_api(core: Core) -> FastAPI:
             offset=offset,
             round=round,
         )
+
+    @api.get(
+        "/polling-places",
+        response_model=PollingPlacesAnswer,
+        summary="Locais de votação da cidade",
+        description=(
+            "Locais de votação de um município, com filtro por bairro, nome do local ou endereço, "
+            "e ordenados pela distância a (lat, lon) quando informados. Para quem não sabe a zona "
+            "e a seção."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def polling_places(
+        uf: Annotated[str, Query(description="Sigla da UF: estados, DF ou ZZ")],
+        municipality: Annotated[str, Query(description="Nome do município ou código TSE")],
+        neighborhood: Annotated[str | None, Query(description="Bairro, opcional")] = None,
+        query: Annotated[
+            str | None, Query(description="Texto que casa com o nome do local ou o endereço")
+        ] = None,
+        lat: Annotated[str | None, Query(description="Latitude do eleitor, com lon")] = None,
+        lon: Annotated[str | None, Query(description="Longitude do eleitor, com lat")] = None,
+        limit: Annotated[str | None, Query(description="1 a 50; padrão 20")] = None,
+        round: Annotated[str | None, Query(description="Turno, opcional")] = None,
+    ) -> PollingPlacesAnswer:
+        # lat/lon are the REST spelling of `near`; the core validates the pair.
+        near = None if lat is None and lon is None else {"latitude": lat, "longitude": lon}
+        return core.search_polling_places(uf, municipality, neighborhood, query, near, limit, round)
+
+    @api.get(
+        "/municipalities",
+        response_model=MunicipalitiesAnswer,
+        summary="Código do município",
+        description=(
+            "Código TSE de um município a partir do nome, com ou sem acento, para usar nas "
+            "outras rotas."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def municipalities(
+        name: Annotated[str, Query(description="Nome do município, com ou sem acento")],
+        uf: Annotated[str | None, Query(description="Sigla da UF, opcional")] = None,
+        limit: Annotated[str | None, Query(description="1 a 50; padrão 10")] = None,
+    ) -> MunicipalitiesAnswer:
+        return core.resolve_municipality(name, uf, limit)
 
     return api

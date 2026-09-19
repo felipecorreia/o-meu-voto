@@ -10,7 +10,14 @@ from starlette.testclient import TestClient
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.app import ENV_INDEX_DIR, ENV_PORT, Settings, build_app, create_app
-from br_elections_mcp.core import CandidatesAnswer, Core, ElectionInfoAnswer, PollingPlaceAnswer
+from br_elections_mcp.core import (
+    CandidatesAnswer,
+    Core,
+    ElectionInfoAnswer,
+    MunicipalitiesAnswer,
+    PollingPlaceAnswer,
+    PollingPlacesAnswer,
+)
 from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from tests.conftest import ELECTIONS_FILE, fixed_clock
 
@@ -98,20 +105,25 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
     response = client.get("/api/v1/openapi.json")
     assert response.status_code == 200
     document = response.json()
-    assert "/polling-place" in document["paths"]
-    assert "/election" in document["paths"]
-    assert "/candidates" in document["paths"]
+    assert {
+        "/polling-place",
+        "/election",
+        "/candidates",
+        "/polling-places",
+        "/municipalities",
+    } <= set(document["paths"])
     assert document["servers"] == [{"url": "/api/v1"}]
     schemas = document["components"]["schemas"]
-    assert set(PollingPlaceAnswer.model_json_schema()["properties"]) == set(
-        schemas["PollingPlaceAnswer"]["properties"]
-    )
-    assert set(ElectionInfoAnswer.model_json_schema()["properties"]) == set(
-        schemas["ElectionInfoAnswer"]["properties"]
-    )
-    assert set(CandidatesAnswer.model_json_schema()["properties"]) == set(
-        schemas["CandidatesAnswer"]["properties"]
-    )
+    for model in (
+        PollingPlaceAnswer,
+        ElectionInfoAnswer,
+        CandidatesAnswer,
+        PollingPlacesAnswer,
+        MunicipalitiesAnswer,
+    ):
+        assert set(model.model_json_schema()["properties"]) == set(
+            schemas[model.__name__]["properties"]
+        )
     assert not {"gender", "race_color", "marital_status", "education"} & set(
         schemas["CandidateListItem"]["properties"]
     )
@@ -190,6 +202,58 @@ def test_candidates_query_parameters_are_passed_through(client: TestClient):
     assert [c["number"] for c in by_name.json()["data"]["candidates"]] == [45123]
 
 
+def test_polling_places_returns_the_core_envelope(client: TestClient, core: Core):
+    response = client.get(
+        "/api/v1/polling-places",
+        params={"uf": "ac", "municipality": "Rio Branco", "neighborhood": "centro"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"data", "not_found", "warnings", "election", "source"}
+    expected = core.search_polling_places("ac", "Rio Branco", neighborhood="centro")
+    assert body == expected.model_dump(mode="json")
+    assert [p["number"] for p in body["data"]["places"]] == [1050, 1035]
+    assert "distance_km" not in body["data"]["places"][0]
+    assert body["data"]["guidance"] == "Para saber a sua seção, consulte o e-Título."
+    assert body["election"]["id"] == "general-2026"
+
+
+def test_polling_places_lat_lon_become_near_and_order_by_distance(client: TestClient):
+    response = client.get(
+        "/api/v1/polling-places",
+        params={
+            "uf": "AC",
+            "municipality": "Cruzeiro do Sul",
+            "lat": "-7.6",
+            "lon": "-72.7",
+            "limit": "5",
+            "round": "1",
+        },
+    )
+    assert response.status_code == 200
+    places = response.json()["data"]["places"]
+    assert [p["number"] for p in places] == [1020, 1015]
+    assert places[0]["distance_km"] > 0
+    assert places[1]["distance_km"] is None
+
+
+def test_polling_places_with_only_one_coordinate_is_400(client: TestClient):
+    response = client.get(
+        "/api/v1/polling-places", params={"uf": "AC", "municipality": "Rio Branco", "lat": "-9.9"}
+    )
+    assert response.status_code == 400
+    assert "coordenadas" in response.json()["detail"]
+
+
+def test_polling_places_ambiguous_municipality_is_200_with_options(client: TestClient):
+    response = client.get("/api/v1/polling-places", params={"uf": "AC", "municipality": "porto"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"] is None
+    assert body["not_found"]["reason"] == "municipio_ambiguo"
+    assert [o["name"] for o in body["not_found"]["options"]] == ["PORTO ACRE", "PORTO WALTER"]
+
+
 @pytest.mark.parametrize(
     ("params", "message"),
     [
@@ -203,3 +267,49 @@ def test_candidates_invalid_query_is_400_with_the_core_message(client, params, m
     response = client.get("/api/v1/candidates", params=params)
     assert response.status_code == 400
     assert message in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [
+        ({"uf": "AC", "municipality": "Rio Branco", "limit": "51"}, "limite inválido"),
+        ({"uf": "AC", "municipality": "Rio Branco", "limit": "x"}, "limite inválido"),
+        ({"uf": "AC", "municipality": "Rio Branco", "round": "3"}, "turno inválido"),
+        ({"uf": "XX", "municipality": "Rio Branco"}, "UF desconhecida"),
+    ],
+)
+def test_polling_places_invalid_query_is_400(client: TestClient, params, message):
+    response = client.get("/api/v1/polling-places", params=params)
+    assert response.status_code == 400
+    assert message in response.json()["detail"]
+
+
+def test_municipalities_returns_the_core_envelope(client: TestClient, core: Core):
+    response = client.get("/api/v1/municipalities", params={"name": "colonia"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body == core.resolve_municipality("colonia").model_dump(mode="json")
+    assert body["data"]["municipalities"][0]["tse_code"] == "30015"
+    assert body["data"]["municipalities"][0]["ibge_code"] is None
+    assert body["election"] is None
+    assert body["source"]["file"] == "municipio_tse_ibge.csv"
+
+
+def test_municipalities_uf_and_limit_are_passed_through(client: TestClient):
+    response = client.get(
+        "/api/v1/municipalities", params={"name": "porto", "uf": "ac", "limit": "1"}
+    )
+    assert response.status_code == 200
+    assert [m["name"] for m in response.json()["data"]["municipalities"]] == ["PORTO ACRE"]
+
+    response = client.get("/api/v1/municipalities", params={"name": "porto", "limit": "0"})
+    assert response.status_code == 400
+    assert "limite inválido" in response.json()["detail"]
+
+
+def test_municipalities_not_found_is_200_with_the_envelope(client: TestClient):
+    response = client.get("/api/v1/municipalities", params={"name": "Xanadu"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"] is None
+    assert body["not_found"]["reason"] == "municipio_nao_encontrado"

@@ -12,6 +12,9 @@ from collections.abc import Callable
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import duckdb
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 from br_elections_mcp.core.answers import (
     CalendarSourceInfo,
     CandidateListItem,
@@ -25,12 +28,18 @@ from br_elections_mcp.core.answers import (
     ElectionInfoRound,
     ElectionRoundInfo,
     Federation,
+    MunicipalitiesAnswer,
+    MunicipalitiesData,
     Municipality,
+    MunicipalityMatch,
     NotFound,
     Party,
     PollingPlace,
     PollingPlaceAnswer,
     PollingPlaceData,
+    PollingPlaceListItem,
+    PollingPlacesAnswer,
+    PollingPlacesData,
     PreviousPlace,
     Source,
     VotingHoursInfo,
@@ -48,11 +57,18 @@ from br_elections_mcp.core.normalize import (
     normalize_number,
     normalize_offset,
     normalize_polling_uf,
+    normalize_text,
     search_text,
 )
 from br_elections_mcp.core.queries import candidates as candidate_queries
 from br_elections_mcp.core.queries.candidates import CandidateFilter, CandidateRow
+from br_elections_mcp.core.queries.municipalities import (
+    MunicipalityRow,
+    get_municipality,
+    search_municipalities,
+)
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
+from br_elections_mcp.core.queries.search_places import PlaceRow, search_places
 from br_elections_mcp.domain import Election
 from br_elections_mcp.domain import ElectionRound as DomainElectionRound
 from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
@@ -73,6 +89,33 @@ SECTION_NOT_FOUND_GUIDANCE = (
     "Onde votar do TSE: https://www.tse.jus.br/servicos-eleitorais/autoatendimento-eleitoral"
     "#/atendimento-eleitor/onde-votar"
 )
+
+MUNICIPALITY_NOT_FOUND_GUIDANCE = (
+    "Nenhum município com esse nome. Confira a grafia e a UF, ou use o código TSE do município."
+)
+
+MUNICIPALITY_AMBIGUOUS_GUIDANCE = (
+    "Mais de um município casa com esse nome. Escolha um dos listados e repita a busca com o "
+    "nome completo ou o código TSE."
+)
+
+SEARCH_PLACES_GUIDANCE = "Para saber a sua seção, consulte o e-Título."
+
+SEARCH_PLACES_DEFAULT_LIMIT = 20
+RESOLVE_MUNICIPALITY_DEFAULT_LIMIT = 10
+
+
+# A point the client already has; the server never geocodes (codebase-design 8.2). The
+# schema description is PT-BR because it reaches the MCP inputSchema.
+class Near(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        json_schema_extra={"description": "Latitude e longitude do eleitor, em graus decimais"},
+    )
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
 
 
 def aggregated_section_warning(main_section: int) -> str:
@@ -233,7 +276,7 @@ class Core:
         uf_value = normalize_candidate_uf(uf)
         office_value = normalize_ballot_office(office)
         check_office_for_uf(office_value, uf_value)
-        limit_value = normalize_limit(limit, MAX_LIMIT)
+        limit_value = normalize_limit(limit, MAX_LIMIT, MAX_LIMIT)
         offset_value = normalize_offset(offset)
         requested_round = None if round is None else normalize_number(round, "turno inválido")
         party_number, party_acronym = _party_filter(party)
@@ -275,6 +318,121 @@ class Core:
             not_found=None,
             warnings=[],
             election=_election_info(election, answered_round),
+            source=source,
+        )
+
+    def resolve_municipality(
+        self, name: object, uf: object = None, limit: object = None
+    ) -> MunicipalitiesAnswer:
+        """The TSE code of a municipality from its name, accent- and case-insensitive.
+
+        Candidates come best ``score`` first (1.0 for the exact name). ``uf`` narrows,
+        ``limit`` is 1..50 (default 10). No candidate is ``not_found``; ``election`` is
+        always null because the list refers to no round. ``source`` is the TSE/IBGE
+        crosswalk, even for the municipalities abroad that only the polling-place file lists.
+        """
+        index = self._open()
+        text = normalize_text(name, "nome inválido")
+        uf_value = None if uf is None else normalize_polling_uf(uf)
+        limit_value = normalize_limit(limit, MAX_LIMIT, RESOLVE_MUNICIPALITY_DEFAULT_LIMIT)
+        source = self._source(index, "municipalities")
+
+        with index.cursor() as cursor:
+            rows = search_municipalities(cursor, text, uf_value, limit_value)
+        if not rows:
+            return MunicipalitiesAnswer(
+                data=None,
+                not_found=NotFound(
+                    reason="municipio_nao_encontrado", guidance=MUNICIPALITY_NOT_FOUND_GUIDANCE
+                ),
+                warnings=[],
+                election=None,
+                source=source,
+            )
+        return MunicipalitiesAnswer(
+            data=MunicipalitiesData(municipalities=[_municipality_match(row) for row in rows]),
+            not_found=None,
+            warnings=[],
+            election=None,
+            source=source,
+        )
+
+    def search_polling_places(
+        self,
+        uf: object,
+        municipality: object,
+        neighborhood: object = None,
+        query: object = None,
+        near: object = None,
+        limit: object = None,
+        round: object = None,
+    ) -> PollingPlacesAnswer:
+        """The polling places of a municipality, for a voter without zone and section.
+
+        ``municipality`` is a name (resolved as ``resolve_municipality`` does, within
+        ``uf``) or a TSE code. ``neighborhood`` and ``query`` (place name or address) are
+        accent- and case-insensitive substrings. With ``near`` (``{latitude, longitude}``)
+        the places come by distance, the ones without coordinates last, each with
+        ``distance_km``; without it the field is absent. ``limit`` is 1..50 (default 20).
+        A municipality that matches nothing is ``municipio_nao_encontrado``; one name
+        that matches several municipalities is ``municipio_ambiguo`` with the options.
+        A municipality with no matching place is an empty list, never ``not_found``.
+        """
+        index = self._open()
+        uf_value = normalize_polling_uf(uf)
+        municipality_text = normalize_text(municipality, "município inválido")
+        neighborhood_text = (
+            None if neighborhood is None else normalize_text(neighborhood, "bairro inválido")
+        )
+        query_text = None if query is None else normalize_text(query, "busca inválida")
+        near_point = _normalize_near(near)
+        limit_value = normalize_limit(limit, MAX_LIMIT, SEARCH_PLACES_DEFAULT_LIMIT)
+        requested_round = None if round is None else normalize_number(round, "turno inválido")
+
+        today = self._today()
+        election = self._calendar.coincident_election(today, index.manifest)
+        answered_round = _resolve_round(index, requested_round, election)
+        election_info = _election_info(election, answered_round)
+        source = self._source(index, "polling_places")
+
+        with index.cursor() as cursor:
+            resolved, options = _resolve_municipality_in_uf(cursor, municipality_text, uf_value)
+            if resolved is None:
+                return PollingPlacesAnswer(
+                    data=None,
+                    not_found=_municipality_not_found(options),
+                    warnings=[],
+                    election=election_info,
+                    source=source,
+                )
+            rows, total = search_places(
+                cursor,
+                uf_value,
+                resolved.tse_code,
+                answered_round,
+                neighborhood=neighborhood_text,
+                query=query_text,
+                near=near_point,
+                limit=limit_value,
+            )
+        return PollingPlacesAnswer(
+            data=PollingPlacesData(
+                round=answered_round,
+                municipality=Municipality(
+                    tse_code=resolved.tse_code,
+                    ibge_code=resolved.ibge_code,
+                    name=resolved.name,
+                    uf=resolved.uf,
+                ),
+                places=[
+                    _place_list_item(row, with_distance=near_point is not None) for row in rows
+                ],
+                total=total,
+                guidance=SEARCH_PLACES_GUIDANCE,
+            ),
+            not_found=None,
+            warnings=[],
+            election=election_info,
             source=source,
         )
 
@@ -428,3 +586,74 @@ def _polling_place_data(row: SectionRow) -> PollingPlaceData:
         ),
         previous_place=previous,
     )
+
+
+def _normalize_near(value: object) -> tuple[float, float] | None:
+    if value is None:
+        return None
+    try:
+        point = value if isinstance(value, Near) else Near.model_validate(value)
+    except ValidationError as exc:
+        raise InvalidQuery(
+            "coordenadas inválidas: near precisa de latitude (-90 a 90) e longitude (-180 a 180)"
+        ) from exc
+    return point.latitude, point.longitude
+
+
+def _resolve_municipality_in_uf(
+    cursor: duckdb.DuckDBPyConnection, text: str, uf: str
+) -> tuple[MunicipalityRow | None, list[MunicipalityRow]]:
+    """One municipality of ``uf`` from a TSE code or a name, or the candidates when ambiguous.
+
+    A code is digits only. A name resolves when it matches exactly once, or when it
+    matches a single candidate at all; several candidates without an exact match are
+    the ambiguity the caller reports with ``options``.
+    """
+    if text.isdigit():
+        return get_municipality(cursor, text.zfill(5), uf), []
+    candidates = search_municipalities(cursor, text, uf, MAX_LIMIT)
+    exact = [row for row in candidates if row.score == 1.0]
+    if len(exact) == 1:
+        return exact[0], []
+    if len(candidates) == 1:
+        return candidates[0], []
+    return None, candidates
+
+
+def _municipality_not_found(options: list[MunicipalityRow]) -> NotFound:
+    if not options:
+        return NotFound(reason="municipio_nao_encontrado", guidance=MUNICIPALITY_NOT_FOUND_GUIDANCE)
+    return NotFound(
+        reason="municipio_ambiguo",
+        guidance=MUNICIPALITY_AMBIGUOUS_GUIDANCE,
+        options=[_municipality_match(row) for row in options],
+    )
+
+
+def _municipality_match(row: MunicipalityRow) -> MunicipalityMatch:
+    return MunicipalityMatch(
+        tse_code=row.tse_code, ibge_code=row.ibge_code, name=row.name, uf=row.uf, score=row.score
+    )
+
+
+def _place_list_item(row: PlaceRow, *, with_distance: bool) -> PollingPlaceListItem:
+    fields: dict[str, object] = dict(
+        number=row.number,
+        zone=row.zone,
+        name=row.name,
+        kind=row.kind,
+        address=row.address,
+        neighborhood=row.neighborhood,
+        postal_code=row.postal_code,
+        phone=row.phone,
+        latitude=row.latitude,
+        longitude=row.longitude,
+        status=row.status,
+        section_count=row.section_count,
+        accessible_section_count=row.accessible_section_count,
+        voters=row.voters,
+    )
+    if with_distance:
+        # Set explicitly, even when null, so the field is serialized only with `near`.
+        fields["distance_km"] = row.distance_km
+    return PollingPlaceListItem(**fields)  # type: ignore[arg-type]

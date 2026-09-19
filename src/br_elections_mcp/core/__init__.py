@@ -15,16 +15,22 @@ from br_elections_mcp.core.answers import (
     ElectionInfoData,
     ElectionInfoRound,
     Federation,
+    MunicipalitiesAnswer,
+    MunicipalitiesData,
     Municipality,
+    MunicipalityMatch,
     NotFound,
     Party,
     PollingPlace,
     PollingPlaceAnswer,
     PollingPlaceData,
+    PollingPlaceListItem,
+    PollingPlacesAnswer,
+    PollingPlacesData,
     PreviousPlace,
     Source,
 )
-from br_elections_mcp.core.core import Clock, Core, system_clock
+from br_elections_mcp.core.core import Clock, Core, Near, system_clock
 from br_elections_mcp.core.errors import IndexUnavailable, InvalidQuery
 from br_elections_mcp.core.index_source import IndexSource, IndexSourceUnavailable, IndexVersion
 
@@ -47,12 +53,19 @@ __all__ = [
     "IndexUnavailable",
     "IndexVersion",
     "InvalidQuery",
+    "MunicipalitiesAnswer",
+    "MunicipalitiesData",
     "Municipality",
+    "MunicipalityMatch",
+    "Near",
     "NotFound",
     "Party",
     "PollingPlace",
     "PollingPlaceAnswer",
     "PollingPlaceData",
+    "PollingPlaceListItem",
+    "PollingPlacesAnswer",
+    "PollingPlacesData",
     "PreviousPlace",
     "Source",
     "system_clock",

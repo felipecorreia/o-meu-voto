@@ -22,7 +22,10 @@ from br_elections_mcp.core import (
     ElectionInfoAnswer,
     IndexUnavailable,
     InvalidQuery,
+    MunicipalitiesAnswer,
+    Near,
     PollingPlaceAnswer,
+    PollingPlacesAnswer,
     Source,
 )
 
@@ -30,7 +33,8 @@ SERVER_NAME = "br-elections-mcp"
 
 SERVER_INSTRUCTIONS = (
     "Responde às perguntas do eleitor brasileiro a partir dos dados abertos do TSE: onde votar, "
-    "a partir da UF, zona e seção do título, e quem são os candidatos de um cargo numa UF. "
+    "a partir da UF, zona e seção do título; quem são os candidatos de um cargo numa UF; e quais "
+    "são os locais de votação de uma cidade ou bairro, para quem não sabe a zona e a seção. "
     "Nunca consulta o cadastro eleitoral: para descobrir a própria zona e seção pelo nome ou "
     "CPF, o eleitor usa o e-Título. Nenhuma resposta traz CPF, título de eleitor, data de "
     "nascimento ou e-mail de candidato. Toda resposta cita a fonte (dataset, arquivo e data de "
@@ -65,6 +69,19 @@ BallotOffice = Literal[
     "deputado_estadual",
     "deputado_distrital",
 ]
+
+SEARCH_POLLING_PLACES_TITLE = "Locais de votação da cidade"
+SEARCH_POLLING_PLACES_DESCRIPTION = (
+    "Lista os locais de votação de um município, com filtro por bairro, nome do local ou "
+    "endereço, e ordenados pela distância a um ponto quando o cliente informa coordenadas. Para "
+    "quem não sabe a zona e a seção."
+)
+
+RESOLVE_MUNICIPALITY_TITLE = "Código do município"
+RESOLVE_MUNICIPALITY_DESCRIPTION = (
+    "Encontra o código de um município a partir do nome, com ou sem acento, para usar nas "
+    "outras ferramentas."
+)
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
@@ -176,6 +193,67 @@ def create_mcp_server(core: Core) -> MCPServer:
             structured_content=answer.model_dump(mode="json"),
         )
 
+    @server.tool(
+        name="search_polling_places",
+        title=SEARCH_POLLING_PLACES_TITLE,
+        description=SEARCH_POLLING_PLACES_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def search_polling_places(
+        uf: Annotated[
+            str, Field(description="Sigla da UF, 2 letras: estados, DF ou ZZ para o exterior")
+        ],
+        municipality: Annotated[
+            str, Field(description="Nome do município (com ou sem acento) ou código TSE")
+        ],
+        neighborhood: Annotated[str | None, Field(description="Bairro, opcional")] = None,
+        query: Annotated[
+            str | None, Field(description="Texto que casa com o nome do local ou o endereço")
+        ] = None,
+        near: Annotated[
+            Near | None,
+            Field(description="Coordenadas do eleitor; ordena por distância. Sem geocodificação"),
+        ] = None,
+        limit: Annotated[int | None, Field(description="1 a 50; padrão 20")] = None,
+        round: Annotated[
+            int | None, Field(description="Turno, opcional; sem ele, o turno mais recente")
+        ] = None,
+    ) -> Annotated[CallToolResult, PollingPlacesAnswer]:
+        try:
+            answer = core.search_polling_places(
+                uf, municipality, neighborhood, query, near, limit, round
+            )
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        except IndexUnavailable as exc:
+            raise MCPError(code=INTERNAL_ERROR, message=f"índice indisponível: {exc}") from exc
+        return CallToolResult(
+            content=[TextContent(type="text", text=polling_places_text(answer))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
+    @server.tool(
+        name="resolve_municipality",
+        title=RESOLVE_MUNICIPALITY_TITLE,
+        description=RESOLVE_MUNICIPALITY_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def resolve_municipality(
+        name: Annotated[str, Field(description="Nome do município, com ou sem acento")],
+        uf: Annotated[str | None, Field(description="Sigla da UF, opcional")] = None,
+        limit: Annotated[int | None, Field(description="1 a 50; padrão 10")] = None,
+    ) -> Annotated[CallToolResult, MunicipalitiesAnswer]:
+        try:
+            answer = core.resolve_municipality(name, uf, limit)
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        except IndexUnavailable as exc:
+            raise MCPError(code=INTERNAL_ERROR, message=f"índice indisponível: {exc}") from exc
+        return CallToolResult(
+            content=[TextContent(type="text", text=municipalities_text(answer))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
     return server
 
 
@@ -247,6 +325,58 @@ def election_info_text(answer: ElectionInfoAnswer) -> str:
         )
     lines.extend(d.notes)
     lines.append(f"Fonte: {d.calendar_source.title}.")
+    return " ".join(lines)
+
+
+def polling_places_text(answer: PollingPlacesAnswer) -> str:
+    """The short PT-BR text of a place list, for clients without structured output."""
+    if answer.data is None:
+        assert answer.not_found is not None
+        lines = [answer.not_found.guidance]
+        if answer.not_found.options:
+            lines.append(
+                "Opções: "
+                + "; ".join(
+                    f"{o.name} - {o.uf} (código TSE {o.tse_code})" for o in answer.not_found.options
+                )
+                + "."
+            )
+    else:
+        d = answer.data
+        m = d.municipality
+        lines = [
+            f"{d.total} locais em {m.name} - {m.uf}, turno {d.round}"
+            + (f" (mostrando {len(d.places)})." if len(d.places) < d.total else ".")
+        ]
+        for p in d.places:
+            distance = f", a {p.distance_km:.1f} km" if p.distance_km is not None else ""
+            lines.append(
+                f"{p.name}, {p.address}, {p.neighborhood} (zona {p.zone}, {p.section_count} "
+                f"seções, {p.accessible_section_count} com acessibilidade{distance})."
+            )
+        lines.append(d.guidance)
+    lines.extend(answer.warnings)
+    lines.append(_source_text(answer.source))
+    return " ".join(lines)
+
+
+def municipalities_text(answer: MunicipalitiesAnswer) -> str:
+    """The short PT-BR text of a municipality list, for clients without structured output."""
+    if answer.data is None:
+        assert answer.not_found is not None
+        lines = [answer.not_found.guidance]
+    else:
+        lines = [
+            "; ".join(
+                f"{m.name} - {m.uf} (código TSE {m.tse_code}"
+                + (f", IBGE {m.ibge_code}" if m.ibge_code is not None else ", exterior")
+                + ")"
+                for m in answer.data.municipalities
+            )
+            + "."
+        ]
+    lines.extend(answer.warnings)
+    lines.append(_source_text(answer.source))
     return " ".join(lines)
 
 

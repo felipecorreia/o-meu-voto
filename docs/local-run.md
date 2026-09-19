@@ -81,9 +81,11 @@ yet, enable it under Settings > Developer) and restart Claude Desktop:
 ```
 
 Node.js is required (`npx` ships with it; verified with Node 25.8.1). The tools appear as
-`find_polling_place` ("Onde voto"), `election_info` ("Quando é a eleição") and
-`list_candidates` ("Candidatos"). Prompts to try: "Onde voto? Acre, zona 9, seção 422.", "Quando
-é a eleição?" and "Quem são os candidatos a governador do Acre?"
+`find_polling_place` ("Onde voto"), `election_info` ("Quando é a eleição"), `list_candidates`
+("Candidatos"), `search_polling_places` ("Locais de votação da cidade") and
+`resolve_municipality` ("Código do município"). Prompts to try: "Onde voto? Acre, zona 9, seção
+422.", "Quando é a eleição?", "Quem são os candidatos a governador do Acre?" and "Quais são os
+locais de votação no Centro de Rio Branco?"
 
 ### What was verified, and how
 

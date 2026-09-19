@@ -6,10 +6,12 @@ quoted, ISO-8859-1 encoding, headers exactly as named in `docs/domain-model.md` 
 
 ## `acre/`
 
-A slice of Acre for the "where do I vote" tracer bullet, round 1 only (as the TSE
-published it in 2026-09).
+A slice of Acre for the "where do I vote" tracer bullet and the "places by city or
+neighborhood" search, round 1 only (as the TSE published it in 2026-09). The file keeps the
+`_AC` name of the per-UF ZIP entry but also carries two rows of `ZZ`, so one fixture covers
+the electorate abroad without a second file.
 
-- `eleitorado_local_votacao_2026_AC.csv`: six sections. Zone 9, section 422 (Rio Branco,
+- `eleitorado_local_votacao_2026_AC.csv`: ten sections. Zone 9, section 422 (Rio Branco,
   IEPTEC, voters, coordinates and CEP) reproduces the values the scout verified and
   `docs/codebase-design.md` 8.1 shows; every other row (section numbers, the other places,
   addresses, phone, voter counts, the moved place) is invented to exercise one scenario each:
@@ -20,8 +22,17 @@ published it in 2026-09).
     (scenario 3).
   - 1/7 and 1/8 in Cruzeiro do Sul: a place with no coordinates (`-1`) and status
     `BLOQUEADO`, reported as it comes.
-- `municipio_tse_ibge.csv`: the two municipalities above. The IBGE codes are the real ones;
-  the TSE code of Rio Branco (`01392`) is the one in the design document, the rest of the
+  - 9/150 in Rio Branco: a second place in the neighborhood `CENTRO`, next to 1035, so the
+    neighborhood filter lists two of the three places (domain-model scenario 7).
+  - 1/20 in Cruzeiro do Sul: a place with coordinates, so `near` puts the place without
+    coordinates (1015) last.
+  - ZZ 1/1 and 1/2: a municipality abroad (`COLÔNIA`, code `30015`, not in the crosswalk)
+    whose place is the consulate in Cologne, Germany (scenario 4); two sections, one
+    accessible. The postal code is a German one, kept as the TSE would print it.
+- `municipio_tse_ibge.csv`: Rio Branco and Cruzeiro do Sul, plus Porto Acre and Porto Walter
+  without any section, so "porto" is ambiguous within AC and an exact name can resolve to a
+  municipality with no places. The IBGE codes are the real ones; the TSE code of Rio Branco
+  (`01392`) is the one in the design document, the other TSE codes and the rest of the
   crosswalk columns are illustrative.
 
 The vocabulary of `DS_TIPO_SECAO_AGREGADA`, `DS_SITU_SECAO_ACESSIBILIDADE` and

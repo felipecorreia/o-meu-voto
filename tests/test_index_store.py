@@ -10,7 +10,7 @@ from br_elections_mcp.index_store import LocalDirectoryIndexSource
 def test_local_directory_source_delivers_path_manifest_and_version(acre_index_dir: Path):
     version = LocalDirectoryIndexSource(acre_index_dir).current()
     assert version.path == acre_index_dir / INDEX_FILE_NAME
-    assert version.manifest.counts["polling_sections"] == 6
+    assert version.manifest.counts["polling_sections"] == 10
     assert version.version == manifest_version((acre_index_dir / MANIFEST_FILE_NAME).read_bytes())
 
 

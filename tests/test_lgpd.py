@@ -71,6 +71,12 @@ def test_no_forbidden_key_appears_in_any_serialized_answer(lgpd_index_dir: Path)
             core.list_candidates("AC", "senador"),
             core.list_candidates("AC", "deputado_federal"),
             core.list_candidates("AC", "deputado_estadual"),
+            core.search_polling_places("AC", "Rio Branco"),
+            core.search_polling_places(
+                "AC", "Cruzeiro do Sul", near={"latitude": -7.6, "longitude": -72.7}
+            ),
+            core.search_polling_places("AC", "Xanadu"),
+            core.resolve_municipality("rio"),
         ]
     finally:
         core.close()

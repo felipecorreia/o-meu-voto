@@ -1,4 +1,5 @@
-"""Normalization of voter input: leading zeros, whitespace, UF case, office names, accents.
+"""Normalization of voter input: leading zeros, whitespace, UF case, office names, accents,
+free text.
 
 Normalization belongs to the core; adapters pass input through untouched.
 """
@@ -102,14 +103,6 @@ def check_office_for_uf(office: Office, uf: UF) -> None:
         raise InvalidQuery("no DF o cargo é deputado_distrital, não deputado_estadual")
 
 
-def normalize_limit(value: object, maximum: int) -> int:
-    """``limit`` in 1..``maximum``; anything else is ``InvalidQuery``."""
-    number = normalize_number(value, "limite inválido")
-    if number > maximum:
-        raise InvalidQuery(f"limite inválido: {value!r}; o máximo é {maximum}")
-    return number
-
-
 def normalize_offset(value: object) -> int:
     """``offset`` is a non-negative integer, also accepted as text."""
     if isinstance(value, bool):
@@ -134,3 +127,25 @@ def strip_accents(text: str) -> str:
 def search_text(value: object) -> str:
     """The form the index stores names in: accents stripped, upper case, single spaces."""
     return " ".join(strip_accents(str(value)).upper().split())
+
+
+def normalize_text(value: object, label: str) -> str:
+    """Free text for a search: trimmed, inner whitespace collapsed; empty is InvalidQuery.
+
+    Accents and case are removed by the query itself, with the same DuckDB expression
+    that built ``search_name``, so both sides normalize identically.
+    """
+    text = " ".join(str(value).split()) if value is not None else ""
+    if not text:
+        raise InvalidQuery(f"{label}: {value!r}")
+    return text
+
+
+def normalize_limit(value: object, maximum: int, default: int) -> int:
+    """``limit`` within 1..``maximum``; absent is ``default``; anything else is InvalidQuery."""
+    if value is None:
+        return default
+    limit = normalize_number(value, "limite inválido")
+    if limit > maximum:
+        raise InvalidQuery(f"limite inválido: {value!r}; o máximo é {maximum}")
+    return limit

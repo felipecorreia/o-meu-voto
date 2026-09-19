@@ -21,11 +21,14 @@ the official e-Titulo app and TSE self-service.
 
 ## Status
 
-Three tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
+Five tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
 vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the election"
-(MCP tool `election_info`, `GET /api/v1/election`) and the sanitized candidate list (MCP tool
-`list_candidates`, `GET /api/v1/candidates`). To run it locally and connect Claude Desktop, see
-[`docs/local-run.md`](docs/local-run.md). The design documents remain the reference:
+(MCP tool `election_info`, `GET /api/v1/election`), the sanitized candidate list (MCP tool
+`list_candidates`, `GET /api/v1/candidates`), "what is this municipality's TSE code" (MCP tool
+`resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
+neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). To run it
+locally and connect Claude Desktop, see [`docs/local-run.md`](docs/local-run.md). The design
+documents remain the reference:
 
 - [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
