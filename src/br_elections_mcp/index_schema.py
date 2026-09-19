@@ -25,6 +25,9 @@ MANIFEST_FILE_NAME = "manifest.json"
 TSE_TIMEZONE = "America/Sao_Paulo"
 """Timezone in which the TSE writes ``DT_GERACAO`` and ``HH_GERACAO``."""
 
+CSV_READ_OPTIONS = "delim=';', header=true, quote='\"', encoding='latin-1', all_varchar=true"
+"""``read_csv`` options matching how the TSE distributes every CSV; shared by build and validate."""
+
 FORBIDDEN_COLUMNS: frozenset[str] = frozenset(
     {
         "NR_CPF_CANDIDATO",

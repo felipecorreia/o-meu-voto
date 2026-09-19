@@ -23,6 +23,7 @@ from br_elections_mcp.index_schema import (
     CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS,
     CANDIDATES_COMPLEMENTARY_CSV_COLUMNS,
     CANDIDATES_CSV_COLUMNS,
+    CSV_READ_OPTIONS,
     FORBIDDEN_COLUMNS,
     INDEX_FILE_NAME,
     MANIFEST_FILE_NAME,
@@ -37,8 +38,7 @@ from br_elections_mcp.index_schema import (
 )
 from br_elections_mcp.pipeline.datasets import SourceFile
 
-# The TSE distributes every CSV with ';' as separator, every field quoted and ISO-8859-1.
-_CSV_OPTIONS = "delim=';', header=true, quote='\"', encoding='latin-1', all_varchar=true"
+_CSV_OPTIONS = CSV_READ_OPTIONS
 
 # Values the TSE uses for "no value" in otherwise textual or numeric fields.
 _NULL_MARKERS = ("", "-1", "#NULO", "#NULO#", "#NE")

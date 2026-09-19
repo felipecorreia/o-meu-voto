@@ -14,6 +14,7 @@ from tests.conftest import (
     ACRE_MUNICIPALITIES,
     ACRE_POLLING_PLACES,
     ACRE_SOCIAL_LINKS,
+    ELECTIONS_FILE,
 )
 
 
@@ -64,3 +65,42 @@ def test_build_command_reports_a_build_error_and_returns_1(tmp_path: Path, capsy
     args[args.index("--candidates") + 1] = str(broken)
     assert main(args) == 1
     assert "SENADORA" in capsys.readouterr().err
+
+
+def _validate_args(index_dir: Path, output: Path) -> list[str]:
+    return [
+        "validate",
+        "--polling-places",
+        str(ACRE_POLLING_PLACES),
+        "--municipalities",
+        str(ACRE_MUNICIPALITIES),
+        "--candidates",
+        str(ACRE_CANDIDATES),
+        "--candidates-complementary",
+        str(ACRE_CANDIDATES_COMPLEMENTARY),
+        "--social-links",
+        str(ACRE_SOCIAL_LINKS),
+        "--index-dir",
+        str(index_dir),
+        "--elections",
+        str(ELECTIONS_FILE),
+        "--output-dir",
+        str(output),
+    ]
+
+
+def test_validate_command_passes_every_gate_over_a_clean_index(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    assert main(_validate_args(tmp_path / "out", tmp_path / "out")) == 0
+    assert (tmp_path / "out" / "validation_report.json").is_file()
+    assert "every gate passed" in capsys.readouterr().out
+
+
+def test_validate_command_reports_a_failed_gate_and_returns_1(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    broken = tmp_path / "consulta_cand_2026_BRASIL.csv"
+    broken.write_bytes(ACRE_CANDIDATES.read_bytes().replace(b'"SENADOR"', b'"SENADORA"', 1))
+    args = _validate_args(tmp_path / "out", tmp_path / "out")
+    args[args.index("--candidates") + 1] = str(broken)
+    assert main(args) == 1
+    assert "office_text_known" in capsys.readouterr().err

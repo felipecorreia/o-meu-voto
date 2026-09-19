@@ -10,6 +10,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from br_elections_mcp.index_schema import read_manifest
 from br_elections_mcp.pipeline.build import BuildError, build_index
 from br_elections_mcp.pipeline.datasets import (
     CANDIDATE_SOCIAL_LINKS_2026,
@@ -29,6 +30,7 @@ from br_elections_mcp.pipeline.downloader import (
     LocalFilesDownloader,
 )
 from br_elections_mcp.pipeline.fetch import FetchError, FetchRecord, fetch
+from br_elections_mcp.pipeline.validate import ValidationError, validate
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -84,6 +86,46 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="the polling-places file is the monthly ATUAL snapshot, not an election file",
     )
+
+    validate_parser = stages.add_parser(
+        "validate", help="run every gate over a built index and write validation_report.json"
+    )
+    validate_parser.add_argument(
+        "--polling-places", type=Path, required=True, help="eleitorado_local_votacao CSV"
+    )
+    validate_parser.add_argument(
+        "--municipalities", type=Path, required=True, help="municipio_tse_ibge CSV"
+    )
+    validate_parser.add_argument(
+        "--candidates", type=Path, required=True, help="consulta_cand CSV (main file)"
+    )
+    validate_parser.add_argument(
+        "--candidates-complementary",
+        type=Path,
+        required=True,
+        help="consulta_cand_complementar CSV (adjudication status and on-ballot flag)",
+    )
+    validate_parser.add_argument(
+        "--social-links", type=Path, required=True, help="rede_social_candidato CSV"
+    )
+    validate_parser.add_argument(
+        "--index-dir",
+        type=Path,
+        required=True,
+        help="directory with index.duckdb and manifest.json",
+    )
+    validate_parser.add_argument(
+        "--elections", type=Path, required=True, help="data/elections.yaml"
+    )
+    validate_parser.add_argument("--output-dir", type=Path, required=True)
+    validate_parser.add_argument(
+        "--monthly",
+        action="store_true",
+        help="the polling-places file is the monthly ATUAL snapshot, not an election file",
+    )
+    validate_parser.add_argument(
+        "--previous-manifest", type=Path, help="manifest.json of the previously published index"
+    )
     return parser
 
 
@@ -129,12 +171,38 @@ def _run_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_validate(args: argparse.Namespace) -> int:
+    polling_dataset = POLLING_PLACES_CURRENT if args.monthly else POLLING_PLACES_2026
+    previous_manifest = read_manifest(args.previous_manifest) if args.previous_manifest else None
+    try:
+        report = validate(
+            SourceFile(polling_dataset, args.polling_places),
+            SourceFile(MUNICIPALITIES_TSE_IBGE, args.municipalities),
+            SourceFile(CANDIDATES_2026, args.candidates),
+            SourceFile(CANDIDATES_COMPLEMENTARY_2026, args.candidates_complementary),
+            SourceFile(CANDIDATE_SOCIAL_LINKS_2026, args.social_links),
+            args.index_dir,
+            args.elections,
+            args.output_dir,
+            previous_manifest=previous_manifest,
+        )
+    except ValidationError as exc:
+        for gate in exc.report.failed:
+            print(f"{gate.name}: {gate.message}", file=sys.stderr)
+        return 1
+    gate_names = [gate.name for gate in report.gates]
+    print(f"every gate passed, report written to {args.output_dir}: {gate_names}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.stage == "fetch":
         return _run_fetch(args)
     if args.stage == "build":
         return _run_build(args)
+    if args.stage == "validate":
+        return _run_validate(args)
     raise AssertionError(f"unhandled stage {args.stage!r}")
 
 
