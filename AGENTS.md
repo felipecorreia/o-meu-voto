@@ -40,6 +40,11 @@ Pointers only; the content lives in the files below.
   `DS_CARGO` text except `"DEPUTADO FEDERAL"` in the fixtures is a guess; `build` fails loudly
   on unknown texts (`OFFICE_BY_DS_CARGO` in `pipeline/build.py` for offices), so the first real
   ingestion fixes them (`tests/fixtures/README.md`).
+- The CDN URL for the per-UF candidate photo ZIPs (`foto_cand<year>_<UF>_div.zip`) was never
+  verified against the TSE portal; only the CKAN dataset and file name are documented
+  (`docs/domain-model.md`, section 2). `pipeline/mirror_photos.py` takes the ZIPs as file input
+  (`PhotoZip`) rather than guessing the URL; wiring the download is a follow-up left for the
+  scheduled workflow (README, "Mirroring candidate photos to R2").
 
 ## Agent skills
 

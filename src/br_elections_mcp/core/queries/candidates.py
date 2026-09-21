@@ -23,6 +23,7 @@ class CandidateRow:
     adjudication_status: str
     on_ballot: bool
     occupation: str | None
+    photo_url: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +47,7 @@ _COLUMNS = """
     sq_candidato, number, ballot_name, name, office,
     party_number, party_acronym, party_name,
     federation_acronym, federation_name, coalition_name,
-    adjudication_status, on_ballot, occupation
+    adjudication_status, on_ballot, occupation, photo_url
 """
 
 

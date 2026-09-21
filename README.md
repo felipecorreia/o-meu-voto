@@ -116,6 +116,36 @@ in the repo and are set by the maintainer: `INDEX_BUCKET` (the GCS bucket name) 
 use an in-memory fake of the same port. The off-season run over the monthly `ATUAL` file is
 not wired into the workflow yet.
 
+### Mirroring candidate photos to R2
+
+The `mirror-photos` stage syncs the per-UF candidate photo ZIPs
+(`foto_cand<year>_<UF>_div.zip`) to an R2 bucket and writes `photo_url` into an already-built
+`index.duckdb` (ADR 0004, ADR 0005):
+
+```sh
+uv run python -m br_elections_mcp.pipeline mirror-photos \
+  --zips-dir /tmp/tse-photos \
+  --index-dir data/index \
+  --public-domain https://fotos.example.org \
+  --r2-endpoint https://<account>.r2.cloudflarestorage.com \
+  --r2-bucket <bucket> \
+  --r2-access-key-id <id> \
+  --r2-secret-access-key <secret>
+```
+
+Two things a real run still needs, both follow-ups for the captain, not something this change
+guesses at:
+
+- **R2 credentials and bucket.** No credential is requested or exercised by this change; the
+  four `--r2-*` flags above (bucket, endpoint, access key ID and secret access key) need to be
+  provisioned and passed in, e.g. as GitHub Actions secrets, when the scheduled workflow
+  (ticket #19) wires this stage in.
+- **Where the photo ZIPs come from.** `--zips-dir` expects the ZIPs already on disk; unlike the
+  other datasets in `pipeline/datasets.py`, the exact CDN URL for
+  `foto_cand<year>_<UF>_div.zip` was not verified against the TSE portal for this change (only
+  the CKAN dataset and file name pattern are documented, docs/domain-model.md section 2), so
+  downloading them is left to whoever wires the scheduled workflow.
+
 ## How the pipeline downloads from the TSE
 
 The TSE's web infrastructure, including the open-data portal and the CDN that serves the ZIPs,

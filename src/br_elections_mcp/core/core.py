@@ -726,7 +726,7 @@ def _candidate_list_item(row: CandidateRow) -> CandidateListItem:
         adjudication_status=row.adjudication_status,
         on_ballot=row.on_ballot,
         occupation=row.occupation,
-        photo_url=None,
+        photo_url=row.photo_url,
     )
 
 
@@ -803,7 +803,7 @@ def _candidate_profile(
         adjudication_status=row.adjudication_status,
         on_ballot=row.on_ballot,
         occupation=row.occupation,
-        photo_url=None,
+        photo_url=row.photo_url,
         round=row.round,
         social_name=row.social_name,
         nomination_kind=row.nomination_kind,  # type: ignore[arg-type]

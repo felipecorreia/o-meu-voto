@@ -1,6 +1,6 @@
 """Command line of the pipeline: `python -m br_elections_mcp.pipeline <stage> ...`.
 
-Stages `fetch`, `build`, `validate` and `publish`, plus two helpers the
+Stages `fetch`, `build`, `validate`, `publish` and `mirror-photos`, plus two helpers the
 scheduled workflow chains them with: `extract` (the CSV out of a fetched ZIP)
 and `current-manifest` (the published manifest, for the count-stability gate
 of `validate`). Each stage reads and writes files, so any one of them can run
@@ -10,6 +10,7 @@ alone (docs/codebase-design.md, section 5).
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -18,8 +19,9 @@ from br_elections_mcp.pipeline.bucket import (
     BucketClient,
     GcsBucketClient,
     LocalDirectoryBucketClient,
+    R2BucketClient,
 )
-from br_elections_mcp.pipeline.build import BuildError, build_index
+from br_elections_mcp.pipeline.build import BuildError, apply_photo_urls, build_index
 from br_elections_mcp.pipeline.datasets import (
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
@@ -39,8 +41,11 @@ from br_elections_mcp.pipeline.downloader import (
 )
 from br_elections_mcp.pipeline.extract import ExtractError, extract_csv
 from br_elections_mcp.pipeline.fetch import FetchError, FetchRecord, fetch
+from br_elections_mcp.pipeline.mirror_photos import MirrorError, PhotoZip, mirror_photos
 from br_elections_mcp.pipeline.publish import PublishError, download_current_manifest, publish
 from br_elections_mcp.pipeline.validate import ValidationError, validate
+
+_PHOTO_ZIP_NAME_RE = re.compile(r"^foto_cand\d+_(?P<uf>[A-Za-z]{2})_div\.zip$")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -160,6 +165,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="directory with index.duckdb and manifest.json (build output, validated)",
     )
     _add_bucket_arguments(publish_parser)
+
+    mirror_parser = stages.add_parser(
+        "mirror-photos",
+        help="sync candidate photo ZIPs to R2 and write photo_url into the index",
+    )
+    mirror_parser.add_argument(
+        "--zips-dir",
+        type=Path,
+        required=True,
+        help="directory of already-downloaded foto_cand<year>_<UF>_div.zip files",
+    )
+    mirror_parser.add_argument(
+        "--index-dir",
+        type=Path,
+        required=True,
+        help="directory with the already-built index.duckdb to write photo_url into",
+    )
+    mirror_parser.add_argument(
+        "--public-domain",
+        required=True,
+        help="public base URL of the R2 bucket, e.g. https://fotos.example.org",
+    )
+    mirror_parser.add_argument("--r2-endpoint", required=True, help="R2 account S3 endpoint URL")
+    mirror_parser.add_argument("--r2-bucket", required=True, help="R2 bucket name")
+    mirror_parser.add_argument("--r2-access-key-id", required=True)
+    mirror_parser.add_argument("--r2-secret-access-key", required=True)
+    mirror_parser.add_argument("--r2-prefix", default="", help="key prefix inside the bucket")
     return parser
 
 
@@ -285,6 +317,38 @@ def _run_publish(args: argparse.Namespace) -> int:
     return 0
 
 
+def _iter_photo_zips(zips_dir: Path) -> list[PhotoZip]:
+    """Every `foto_cand<year>_<UF>_div.zip` under `zips_dir`, UF taken from the file name."""
+    zips = []
+    for path in sorted(zips_dir.iterdir()):
+        match = _PHOTO_ZIP_NAME_RE.match(path.name)
+        if match is not None:
+            zips.append(PhotoZip(uf=match.group("uf").upper(), path=path))
+    return zips
+
+
+def _run_mirror_photos(args: argparse.Namespace) -> int:
+    zips = _iter_photo_zips(args.zips_dir)
+    bucket = R2BucketClient(
+        endpoint_url=args.r2_endpoint,
+        bucket=args.r2_bucket,
+        access_key_id=args.r2_access_key_id,
+        secret_access_key=args.r2_secret_access_key,
+        prefix=args.r2_prefix,
+    )
+    try:
+        result = mirror_photos(zips, bucket, public_domain=args.public_domain)
+    except MirrorError as exc:
+        print(f"mirror-photos failed: {exc}", file=sys.stderr)
+        return 1
+    apply_photo_urls(args.index_dir, result.photo_urls)
+    print(
+        f"uploaded {len(result.uploaded)}, skipped {len(result.skipped)}, "
+        f"removed {len(result.removed)}, photo_url set for {len(result.photo_urls)} candidacies"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.stage == "fetch":
@@ -299,6 +363,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_current_manifest(args)
     if args.stage == "publish":
         return _run_publish(args)
+    if args.stage == "mirror-photos":
+        return _run_mirror_photos(args)
     raise AssertionError(f"unhandled stage {args.stage!r}")
 
 

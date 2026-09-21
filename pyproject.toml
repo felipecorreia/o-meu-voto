@@ -39,6 +39,7 @@ dev = [
     "ruff>=0.8",
 ]
 pipeline = [
+    "boto3>=1.35",
     "curl-cffi>=0.10",
     "google-cloud-storage>=2.19",
 ]

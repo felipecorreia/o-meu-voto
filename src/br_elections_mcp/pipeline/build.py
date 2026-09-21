@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -174,6 +174,24 @@ def build_index(
     )
     write_manifest(manifest, output_dir / MANIFEST_FILE_NAME)
     return manifest
+
+
+def apply_photo_urls(index_dir: Path, photo_urls: Mapping[int, str]) -> None:
+    """Set ``photo_url`` on an already-built index for the candidacies of ``photo_urls``.
+
+    Called by the ``mirror_photos`` stage after it has synced the JPEGs to R2, with one
+    URL per ``sq_candidato`` currently mirrored. A photo has no round (docs/domain-model.md,
+    3.5): every round of a mirrored ``sq_candidato`` gets the same URL. Everything else keeps
+    the ``NULL`` that ``build_index`` wrote.
+    """
+    conn = duckdb.connect(str(index_dir / INDEX_FILE_NAME))
+    try:
+        conn.executemany(
+            "UPDATE candidates SET photo_url = ? WHERE sq_candidato = ?",
+            [(url, sq_candidato) for sq_candidato, url in photo_urls.items()],
+        )
+    finally:
+        conn.close()
 
 
 def _load_source(

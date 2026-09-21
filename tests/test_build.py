@@ -15,7 +15,7 @@ from br_elections_mcp.index_schema import (
     TABLES,
     read_manifest,
 )
-from br_elections_mcp.pipeline.build import BuildError
+from br_elections_mcp.pipeline.build import BuildError, apply_photo_urls
 from br_elections_mcp.pipeline.datasets import (
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
@@ -29,6 +29,7 @@ from tests.conftest import (
     ACRE_POLLING_PLACES,
     BUILT_AT,
     build_fixture_index,
+    open_core,
 )
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
@@ -406,3 +407,50 @@ def test_missing_candidate_column_fails_loudly(tmp_path: Path):
     broken.write_bytes(ACRE_CANDIDATES.read_bytes().replace(b'"DS_CARGO"', b'"DS_CARGO_X"', 1))
     with pytest.raises(BuildError, match="DS_CARGO"):
         build_fixture_index(tmp_path / "out", candidates=broken)
+
+
+def test_a_freshly_built_index_has_no_photo_url(tmp_path: Path):
+    build_fixture_index(tmp_path / "out")
+    conn = duckdb.connect(str(tmp_path / "out" / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute("SELECT DISTINCT photo_url FROM candidates").fetchall()
+    finally:
+        conn.close()
+    assert rows == [(None,)]
+
+
+def test_apply_photo_urls_sets_the_column_for_the_matching_candidacy_only(tmp_path: Path):
+    build_fixture_index(tmp_path / "out")
+
+    apply_photo_urls(
+        tmp_path / "out", {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"}
+    )
+
+    conn = duckdb.connect(str(tmp_path / "out" / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = dict(conn.execute("SELECT sq_candidato, photo_url FROM candidates").fetchall())
+    finally:
+        conn.close()
+    assert rows[10000000001] == "https://fotos.example.org/FAC10000000001_div.jpg"
+    assert rows[10000000002] is None
+
+
+def test_photo_url_reaches_list_candidates_and_get_candidate_through_a_real_core(tmp_path: Path):
+    build_fixture_index(tmp_path / "out")
+    apply_photo_urls(
+        tmp_path / "out", {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"}
+    )
+    core = open_core(tmp_path / "out")
+    try:
+        list_answer = core.list_candidates("AC", "governador")
+        by_number = {c.number: c for c in list_answer.data.candidates}
+        assert by_number[45].photo_url == "https://fotos.example.org/FAC10000000001_div.jpg"
+        assert by_number[13].photo_url is None
+
+        profile_answer = core.get_candidate(sq_candidato=10000000001)
+        assert (
+            profile_answer.data.candidate.photo_url
+            == "https://fotos.example.org/FAC10000000001_div.jpg"
+        )
+    finally:
+        core.close()
