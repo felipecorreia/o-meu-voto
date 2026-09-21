@@ -27,14 +27,17 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from br_elections_mcp.api import create_api
-from br_elections_mcp.core import Core, IndexUnavailable
-from br_elections_mcp.index_store import LocalDirectoryIndexSource
+from br_elections_mcp.core import Core, IndexSource, IndexUnavailable
+from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from br_elections_mcp.rate_limit import Clock, RateLimitConfig, RateLimitMiddleware
 
 DEFAULT_ELECTIONS_FILE = Path(__file__).resolve().parents[2] / "data" / "elections.yaml"
 
 ENV_INDEX_DIR = "BR_ELECTIONS_INDEX_DIR"
+ENV_INDEX_BUCKET = "BR_ELECTIONS_INDEX_BUCKET"
+ENV_INDEX_BUCKET_PREFIX = "BR_ELECTIONS_INDEX_BUCKET_PREFIX"
+ENV_INDEX_CACHE_DIR = "BR_ELECTIONS_INDEX_CACHE_DIR"
 ENV_ELECTIONS_FILE = "BR_ELECTIONS_ELECTIONS_FILE"
 ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
@@ -44,21 +47,44 @@ ENV_RATE_LIMIT_WINDOW_SECONDS = "BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60.0
+DEFAULT_INDEX_BUCKET_PREFIX = ""
 
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    index_dir: Path
+    """Either ``index_dir`` (``LocalDirectoryIndexSource``) or ``index_bucket`` (``GcsIndexSource``,
+    which also needs ``index_cache_dir``) must be set, never both; ``build_index_source()``
+    is where that is enforced.
+    """
+
+    index_dir: Path | None = None
+    index_bucket: str | None = None
+    index_bucket_prefix: str = DEFAULT_INDEX_BUCKET_PREFIX
+    index_cache_dir: Path | None = None
     elections_file: Path = DEFAULT_ELECTIONS_FILE
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
 
+    def build_index_source(self) -> IndexSource:
+        if self.index_dir and self.index_bucket:
+            raise RuntimeError(f"set only one of {ENV_INDEX_DIR} or {ENV_INDEX_BUCKET}, not both")
+        if self.index_dir:
+            return LocalDirectoryIndexSource(self.index_dir)
+        if self.index_bucket:
+            if not self.index_cache_dir:
+                raise RuntimeError(
+                    f"{ENV_INDEX_CACHE_DIR} must point at a local cache directory when "
+                    f"{ENV_INDEX_BUCKET} is set"
+                )
+            return GcsIndexSource(self.index_bucket, self.index_bucket_prefix, self.index_cache_dir)
+        raise RuntimeError(f"set {ENV_INDEX_DIR} or {ENV_INDEX_BUCKET} to choose the index source")
+
     @classmethod
     def from_env(cls) -> Settings:
         index_dir = os.environ.get(ENV_INDEX_DIR)
-        if not index_dir:
-            raise RuntimeError(f"{ENV_INDEX_DIR} must point at a directory with index.duckdb")
+        index_bucket = os.environ.get(ENV_INDEX_BUCKET)
+        index_cache_dir = os.environ.get(ENV_INDEX_CACHE_DIR)
         max_requests = os.environ.get(ENV_RATE_LIMIT_MAX_REQUESTS)
         rate_limit = (
             RateLimitConfig(
@@ -71,7 +97,12 @@ class Settings:
             else None
         )
         return cls(
-            index_dir=Path(index_dir),
+            index_dir=Path(index_dir) if index_dir else None,
+            index_bucket=index_bucket or None,
+            index_bucket_prefix=os.environ.get(
+                ENV_INDEX_BUCKET_PREFIX, DEFAULT_INDEX_BUCKET_PREFIX
+            ),
+            index_cache_dir=Path(index_cache_dir) if index_cache_dir else None,
             elections_file=Path(os.environ.get(ENV_ELECTIONS_FILE, DEFAULT_ELECTIONS_FILE)),
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
@@ -129,7 +160,7 @@ def build_app(
 
 def create_app(settings: Settings | None = None) -> Starlette:
     settings = settings or Settings.from_env()
-    core = Core(LocalDirectoryIndexSource(settings.index_dir), settings.elections_file)
+    core = Core(settings.build_index_source(), settings.elections_file)
     return build_app(core, host=settings.host, rate_limit=settings.rate_limit)
 
 

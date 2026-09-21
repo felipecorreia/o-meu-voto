@@ -10,7 +10,15 @@ import pytest
 from starlette.testclient import TestClient
 
 from br_elections_mcp.api import create_api
-from br_elections_mcp.app import ENV_INDEX_DIR, ENV_PORT, Settings, build_app, create_app
+from br_elections_mcp.app import (
+    ENV_INDEX_BUCKET,
+    ENV_INDEX_CACHE_DIR,
+    ENV_INDEX_DIR,
+    ENV_PORT,
+    Settings,
+    build_app,
+    create_app,
+)
 from br_elections_mcp.core import (
     CandidateAnswer,
     CandidatesAnswer,
@@ -21,7 +29,7 @@ from br_elections_mcp.core import (
     PollingPlaceAnswer,
     PollingPlacesAnswer,
 )
-from br_elections_mcp.index_store import LocalDirectoryIndexSource
+from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
 from tests.conftest import ELECTIONS_FILE, fixed_clock
 
 
@@ -142,8 +150,9 @@ def test_settings_from_env_reads_the_index_dir_and_defaults(
     monkeypatch: pytest.MonkeyPatch, acre_index_dir: Path
 ):
     monkeypatch.delenv(ENV_INDEX_DIR, raising=False)
+    monkeypatch.delenv(ENV_INDEX_BUCKET, raising=False)
     with pytest.raises(RuntimeError, match=ENV_INDEX_DIR):
-        Settings.from_env()
+        Settings.from_env().build_index_source()
 
     monkeypatch.setenv(ENV_INDEX_DIR, str(acre_index_dir))
     monkeypatch.setenv(ENV_PORT, "8765")
@@ -159,6 +168,29 @@ def test_settings_from_env_reads_the_index_dir_and_defaults(
         )
         assert response.status_code == 200
         assert client.get("/api/v1/docs").status_code == 200
+
+
+def test_settings_selects_the_index_source_from_configuration(
+    monkeypatch: pytest.MonkeyPatch, acre_index_dir: Path, tmp_path: Path
+):
+    monkeypatch.delenv(ENV_INDEX_DIR, raising=False)
+    monkeypatch.delenv(ENV_INDEX_BUCKET, raising=False)
+    monkeypatch.delenv(ENV_INDEX_CACHE_DIR, raising=False)
+
+    assert isinstance(
+        Settings(index_dir=acre_index_dir).build_index_source(), LocalDirectoryIndexSource
+    )
+
+    with pytest.raises(RuntimeError, match=ENV_INDEX_CACHE_DIR):
+        Settings(index_bucket="my-bucket").build_index_source()
+
+    assert isinstance(
+        Settings(index_bucket="my-bucket", index_cache_dir=tmp_path).build_index_source(),
+        GcsIndexSource,
+    )
+
+    with pytest.raises(RuntimeError, match=f"{ENV_INDEX_DIR} or {ENV_INDEX_BUCKET}"):
+        Settings(index_dir=acre_index_dir, index_bucket="my-bucket").build_index_source()
 
 
 def test_index_unavailable_is_503(acre_index_dir: Path):

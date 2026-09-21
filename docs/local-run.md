@@ -63,6 +63,24 @@ BR_ELECTIONS_INDEX_DIR=data/index uv run uvicorn --factory br_elections_mcp.app:
 limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
 default) and `BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS` (default `60`), both must be positive.
 
+### Index source: a directory or a bucket (ticket #16)
+
+`Settings.build_index_source()` picks the `IndexSource` adapter from configuration and fails
+at startup with a clear message on misconfiguration:
+
+- `BR_ELECTIONS_INDEX_DIR` (used above): `LocalDirectoryIndexSource`, a plain directory with
+  `index.duckdb` and `manifest.json`.
+- `BR_ELECTIONS_INDEX_BUCKET`: `GcsIndexSource`, production. Also needs
+  `BR_ELECTIONS_INDEX_CACHE_DIR` (a local directory it downloads into) and accepts
+  `BR_ELECTIONS_INDEX_BUCKET_PREFIX` (default: no prefix). It authenticates with Application
+  Default Credentials, resolved lazily on the first real download, never at startup or in a
+  test; running against a real bucket therefore needs a real GCP credential
+  (`gcloud auth application-default login` or a service account key), which this repository
+  does not have and does not request. Follow-up for the captain, together with #20.
+
+Setting both, or setting `BR_ELECTIONS_INDEX_BUCKET` without `BR_ELECTIONS_INDEX_CACHE_DIR`,
+raises `RuntimeError` before the server starts.
+
 ## 3. Connect Claude Desktop
 
 Claude Desktop launches stdio servers from `claude_desktop_config.json`; to reach a local
