@@ -1,0 +1,183 @@
+# The refresh pipeline of docs/codebase-design.md, section 5: fetch -> extract -> build ->
+# validate -> publish, on the cadences the TSE declares for its datasets (docs/domain-model.md,
+# section 2) and on demand. It runs here, never inside Cloud Run. The job stops at the first
+# failed stage, so a bad index is never published, and every raw ZIP and CSV lives in a
+# temporary directory that the last step removes even on failure (ADR 0004). Only
+# index.duckdb and manifest.json leave the runner, through the publish stage.
+#
+# Secrets (the captain sets them; see README, "Publishing the index"):
+#   INDEX_BUCKET          name of the GCS bucket that holds the index
+#   GCP_CREDENTIALS_JSON  key of a service account that can write that bucket
+# Optional repository variable:
+#   INDEX_BUCKET_PREFIX   object name prefix inside the bucket (default: none)
+name: Refresh index
+
+on:
+  schedule:
+    # The TSE times are America/Sao_Paulo (UTC-3, no daylight saving since 2019); GitHub
+    # cron is UTC. Each entry runs about forty minutes after the declared publication so the
+    # CDN has the new file and the runner is not queued at the top of the hour.
+    - cron: "5 10 * * *" # 07:05 BRT: polling places, published daily at 06:25
+    - cron: "10 12 * * *" # 09:10 BRT: candidates, published at 08:30
+    - cron: "10 16 * * *" # 13:10 BRT: candidates, published at 12:30
+    - cron: "10 20 * * *" # 17:10 BRT: candidates, published at 16:30
+    - cron: "10 23 * * *" # 20:10 BRT: candidates, published at 19:30
+  # Off-season, when polling places come from the monthly ATUAL file instead of the election
+  # file, is not wired here: the ATUAL ZIP is deliberately absent from the fetch registry
+  # (pipeline/datasets.py) during the election year.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One refresh at a time: two runs publishing concurrently could interleave their writes.
+concurrency:
+  group: refresh-index
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Fetch, build, validate and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      INDEX_BUCKET: ${{ secrets.INDEX_BUCKET }}
+      INDEX_BUCKET_PREFIX: ${{ vars.INDEX_BUCKET_PREFIX }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install the pipeline dependency group
+        run: uv sync --locked --group pipeline
+
+      - name: Check the bucket configuration
+        run: |
+          if [ -z "$INDEX_BUCKET" ]; then
+            echo "::error::the INDEX_BUCKET secret is not set; see README, 'Publishing the index'"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Create the temporary work directory
+        # Under RUNNER_TEMP, removed by the last step: raw ZIPs and CSVs never leave it.
+        run: |
+          WORK="$(mktemp -d "$RUNNER_TEMP/refresh.XXXXXX")"
+          echo "WORK=$WORK" >> "$GITHUB_ENV"
+          mkdir -p "$WORK/zips" "$WORK/csv" "$WORK/index" "$WORK/previous"
+
+      - name: Fetch the TSE ZIPs
+        run: uv run python -m br_elections_mcp.pipeline fetch --output "$WORK/zips"
+
+      - name: Extract the CSVs build reads
+        run: |
+          extract() {
+            uv run python -m br_elections_mcp.pipeline extract --zip "$WORK/zips/$1" --output-dir "$WORK/csv"
+          }
+          {
+            echo "POLLING_PLACES_CSV=$(extract eleitorado_local_votacao_2026.zip)"
+            echo "MUNICIPALITIES_CSV=$(extract municipio_tse_ibge.zip)"
+            echo "CANDIDATES_CSV=$(extract consulta_cand_2026.zip)"
+            echo "CANDIDATES_COMPLEMENTARY_CSV=$(extract consulta_cand_complementar_2026.zip)"
+            echo "SOCIAL_LINKS_CSV=$(extract rede_social_candidato_2026.zip)"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the index
+        run: |
+          uv run python -m br_elections_mcp.pipeline build \
+            --polling-places "$POLLING_PLACES_CSV" \
+            --municipalities "$MUNICIPALITIES_CSV" \
+            --candidates "$CANDIDATES_CSV" \
+            --candidates-complementary "$CANDIDATES_COMPLEMENTARY_CSV" \
+            --social-links "$SOCIAL_LINKS_CSV" \
+            --output-dir "$WORK/index"
+
+      - name: Download the manifest currently published
+        # The previous manifest feeds the count-stability gate of validate; the first run has none.
+        run: |
+          uv run python -m br_elections_mcp.pipeline current-manifest \
+            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
+            --output "$WORK/previous/manifest.json"
+
+      - name: Validate the index
+        run: |
+          ARGS=()
+          if [ -f "$WORK/previous/manifest.json" ]; then
+            ARGS+=(--previous-manifest "$WORK/previous/manifest.json")
+          fi
+          uv run python -m br_elections_mcp.pipeline validate \
+            --polling-places "$POLLING_PLACES_CSV" \
+            --municipalities "$MUNICIPALITIES_CSV" \
+            --candidates "$CANDIDATES_CSV" \
+            --candidates-complementary "$CANDIDATES_COMPLEMENTARY_CSV" \
+            --social-links "$SOCIAL_LINKS_CSV" \
+            --index-dir "$WORK/index" \
+            --elections data/elections.yaml \
+            --output-dir "$WORK/index" \
+            "${ARGS[@]}"
+
+      - name: Publish the index
+        run: |
+          uv run python -m br_elections_mcp.pipeline publish \
+            --index-dir "$WORK/index" \
+            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX"
+
+      - name: Report the run
+        if: always()
+        run: |
+          {
+            echo "## Refresh"
+            echo
+            if [ -f "$WORK/zips/fetch.json" ]; then
+              echo "### Fetch"
+              echo
+              echo "| Dataset | Status | Last-Modified | Size (bytes) |"
+              echo "|---|---|---|---|"
+              jq -r '.datasets[] | "| \(.dataset) | \(.status // "-") | \(.last_modified // "-") | \(.size // "-") |"' "$WORK/zips/fetch.json"
+              echo
+            fi
+            if [ -f "$WORK/index/manifest.json" ]; then
+              echo "### Manifest"
+              echo
+              echo "| Dataset | File | Generated at |"
+              echo "|---|---|---|"
+              jq -r '.datasets | to_entries[] | "| \(.key) | \(.value.file) | \(.value.generated_at) |"' "$WORK/index/manifest.json"
+              echo
+              echo "- Index built at: $(jq -r .index_built_at "$WORK/index/manifest.json")"
+              echo "- Election: $(jq -c '{election_year, election_dates}' "$WORK/index/manifest.json")"
+              echo "- Counts: $(jq -c .counts "$WORK/index/manifest.json")"
+              echo "- Index SHA-256: \`$(jq -r .index_sha256 "$WORK/index/manifest.json")\`"
+              echo "- Manifest SHA-256: \`$(sha256sum "$WORK/index/manifest.json" | cut -d' ' -f1)\`"
+              echo
+            fi
+            if [ -f "$WORK/index/validation_report.json" ]; then
+              echo "### Validation"
+              echo
+              echo "| Gate | Status | Message |"
+              echo "|---|---|---|"
+              jq -r '.gates[] | "| \(.name) | \(.status) | \(.message) |"' "$WORK/index/validation_report.json"
+              echo
+            fi
+            if [ -f "$WORK/index/publish.json" ]; then
+              echo "### Publish"
+              echo
+              echo "- Version: \`$(jq -r .index_version "$WORK/index/publish.json")\`"
+              echo "- Objects: $(jq -c .objects "$WORK/index/publish.json")"
+              echo "- Published at: $(jq -r .published_at "$WORK/index/publish.json")"
+            else
+              echo "Nothing was published: a stage before publish failed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the work directory
+        if: always()
+        run: rm -rf "$WORK"

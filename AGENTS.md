@@ -19,7 +19,8 @@ Pointers only; the content lives in the files below.
   (`tests/conftest.py`), deliver it through `LocalDirectoryIndexSource` and exercise a real
   `Core`; MCP tests use the SDK's in-memory `mcp.Client(server)`, REST tests the Starlette
   `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts).
-  Local run and the Claude Desktop connection: `docs/local-run.md`.
+  Local run and the Claude Desktop connection: `docs/local-run.md`. Pipeline chain, bucket
+  layout and the refresh workflow: README, "Publishing the index".
 
 ## Sharp edges
 

@@ -38,6 +38,7 @@ dev = [
 ]
 pipeline = [
     "curl-cffi>=0.10",
+    "google-cloud-storage>=2.19",
 ]
 
 [build-system]

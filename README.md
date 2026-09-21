@@ -55,7 +55,7 @@ Tests build their index from the CSV fixtures in `tests/fixtures/` with the pipe
 `build` stage; none of them touches the network.
 
 The refresh pipeline has its own dependency group, `pipeline`, which the service image never
-installs (`curl_cffi` lives there; see below):
+installs (`curl_cffi` and the GCS client live there; see below):
 
 ```sh
 uv sync --group pipeline
@@ -66,6 +66,44 @@ uv run python -m br_elections_mcp.pipeline fetch --output /tmp/tse
 (URL, HTTP status, `Last-Modified` and size per dataset), so `build` can run alone from that
 directory. `--from-dir DIR` reads the ZIPs from a local directory instead of the CDN, which is
 what the tests do: no test touches the network.
+
+## Publishing the index
+
+The whole pipeline is `fetch -> extract -> build -> validate -> publish`, each a subcommand of
+`python -m br_elections_mcp.pipeline` that reads and writes files, so any one of them runs
+alone. `extract` takes the `_BRASIL` CSV (or the only CSV) out of a fetched ZIP;
+`current-manifest` downloads the manifest currently published, which `validate` takes as
+`--previous-manifest` for its count-stability gate; `publish` sends `index.duckdb` and
+`manifest.json` to the index bucket. A local run against a directory standing in for the
+bucket, which `LocalDirectoryIndexSource` can then serve:
+
+```sh
+uv run python -m br_elections_mcp.pipeline publish --index-dir /tmp/tse/index \
+  --local-bucket /tmp/index-bucket --prefix index
+```
+
+Layout under the prefix: `versions/{version}/index.duckdb` and
+`versions/{version}/manifest.json` are kept for every published index (`{version}` is the UTC
+build time plus the first twelve hex digits of the index SHA-256, so the listing sorts by
+build); `index.duckdb` and `manifest.json` at the root are the current pair, the manifest
+written last. Rolling back is copying an older `versions/{version}/` pair over the current
+one, index first and manifest last. `publish` refuses a manifest whose `index_sha256` is not
+the SHA-256 of the index next to it, and it only ever knows those two files: the raw ZIPs
+and CSVs stay in the runner's temporary directory and are removed at the end of the run
+(ADR 0004).
+
+The scheduled workflow [`refresh.yml`](.github/workflows/refresh.yml) runs the chain on the
+cadences the TSE declares (daily after 06:25 for polling places, four times a day after
+08:30, 12:30, 16:30 and 19:30 for candidates, all America/Sao_Paulo) and on
+`workflow_dispatch`; it stops at the first failed stage and writes the fetch statuses, the
+manifest (generation timestamp per dataset, counts, election, SHA-256), the validation gates
+and the published version to the job summary. It needs two repository secrets, which are not
+in the repo and are set by the maintainer: `INDEX_BUCKET` (the GCS bucket name) and
+`GCP_CREDENTIALS_JSON` (the key of a service account allowed to write that bucket);
+`INDEX_BUCKET_PREFIX` is an optional repository variable. Production writes go through
+`GcsBucketClient` (`pipeline/bucket.py`), the only pipeline code that talks to GCS; the tests
+use an in-memory fake of the same port. The off-season run over the monthly `ATUAL` file is
+not wired into the workflow yet.
 
 ## How the pipeline downloads from the TSE
 

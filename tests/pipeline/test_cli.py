@@ -104,3 +104,96 @@ def test_validate_command_reports_a_failed_gate_and_returns_1(tmp_path: Path, ca
     args[args.index("--candidates") + 1] = str(broken)
     assert main(args) == 1
     assert "office_text_known" in capsys.readouterr().err
+
+
+def test_extract_command_prints_the_extracted_csv_path(tmp_path: Path, capsys):
+    import zipfile
+
+    archive = tmp_path / "consulta_cand_2026.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("consulta_cand_2026_AC.csv", "ac")
+        zf.writestr("consulta_cand_2026_BRASIL.csv", "brasil")
+    assert main(["extract", "--zip", str(archive), "--output-dir", str(tmp_path / "csv")]) == 0
+    assert capsys.readouterr().out.strip() == str(
+        tmp_path / "csv" / "consulta_cand_2026_BRASIL.csv"
+    )
+
+
+def test_extract_command_reports_an_extract_error_and_returns_1(tmp_path: Path, capsys):
+    assert main(["extract", "--zip", str(tmp_path / "x.zip"), "--output-dir", str(tmp_path)]) == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def _publish_args(index_dir: Path, bucket_dir: Path, prefix: str | None = None) -> list[str]:
+    args = ["publish", "--index-dir", str(index_dir), "--local-bucket", str(bucket_dir)]
+    if prefix is not None:
+        args += ["--prefix", prefix]
+    return args
+
+
+def test_publish_command_writes_the_current_pair_and_the_versioned_pair(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    bucket = tmp_path / "bucket"
+    assert main(_publish_args(tmp_path / "out", bucket, prefix="index")) == 0
+    manifest = read_manifest(tmp_path / "out" / MANIFEST_FILE_NAME)
+    assert (bucket / "index" / MANIFEST_FILE_NAME).read_bytes() == (
+        tmp_path / "out" / MANIFEST_FILE_NAME
+    ).read_bytes()
+    assert (bucket / "index" / INDEX_FILE_NAME).is_file()
+    versions = sorted(p.name for p in (bucket / "index" / "versions").iterdir())
+    assert len(versions) == 1
+    assert versions[0].endswith(manifest.index_sha256[:12])
+    out = capsys.readouterr().out
+    assert versions[0] in out
+    assert manifest.index_sha256 in out
+    assert (tmp_path / "out" / "publish.json").is_file()
+
+
+def test_publish_command_requires_exactly_one_bucket(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    with pytest.raises(SystemExit):
+        main(["publish", "--index-dir", str(tmp_path / "out")])
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "publish",
+                "--index-dir",
+                str(tmp_path / "out"),
+                "--local-bucket",
+                str(tmp_path / "b"),
+                "--bucket",
+                "gs-bucket",
+            ]
+        )
+
+
+def test_publish_command_reports_a_publish_error_and_returns_1(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    (tmp_path / "out" / INDEX_FILE_NAME).unlink()
+    assert main(_publish_args(tmp_path / "out", tmp_path / "bucket")) == 1
+    assert "not found" in capsys.readouterr().err
+    assert not (tmp_path / "bucket").exists() or not any((tmp_path / "bucket").iterdir())
+
+
+def test_current_manifest_command_downloads_the_published_manifest(tmp_path: Path, capsys):
+    assert main(_build_args(tmp_path / "out")) == 0
+    bucket = tmp_path / "bucket"
+    assert main(_publish_args(tmp_path / "out", bucket)) == 0
+    target = tmp_path / "previous" / "manifest.json"
+    assert main(["current-manifest", "--local-bucket", str(bucket), "--output", str(target)]) == 0
+    assert read_manifest(target) == read_manifest(tmp_path / "out" / MANIFEST_FILE_NAME)
+    assert str(target) in capsys.readouterr().out
+
+
+def test_current_manifest_command_succeeds_without_a_file_when_nothing_is_published(
+    tmp_path: Path, capsys
+):
+    target = tmp_path / "previous" / "manifest.json"
+    assert (
+        main(
+            ["current-manifest", "--local-bucket", str(tmp_path / "empty"), "--output", str(target)]
+        )
+        == 0
+    )
+    assert not target.exists()
+    assert "no manifest" in capsys.readouterr().out
