@@ -37,7 +37,8 @@ src/br_elections_mcp/
   index_store.py       adaptadores de IndexSource: LocalDirectoryIndexSource e GcsIndexSource (o único lugar do serviço que fala com o bucket)
   mcp_server.py        adaptador MCP (Streamable HTTP, SDK oficial mcp)
   api.py               adaptador REST (FastAPI sobre Starlette, que o SDK mcp já traz)
-  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, limite por IP
+  telemetry.py         telemetria PostHog anônima (ticket #17): um evento por chamada, `Telemetry.call` envolve cada tool/rota
+  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, limite por IP, telemetria
   pipeline/            SEPARADO DO SERVIÇO: fetch, build, validate, publish, mirror_photos
 data/elections.yaml    calendário curado à mão
 web/                   página estática (Cloudflare Pages) e a Pages Function que fala com o Jev
@@ -46,9 +47,9 @@ web/                   página estática (Cloudflare Pages) e a Pages Function q
 Dependências permitidas, e só estas:
 
 ```
-mcp_server.py ──▶ core ◀── api.py          (adaptadores só conhecem a interface do core)
+mcp_server.py ──▶ core, telemetry ◀── api.py   (adaptadores só conhecem a interface do core e a de telemetry)
 index_store.py ──▶ core (só a porta IndexSource)   (adaptadores do índice; GCS fica aqui)
-app.py ──▶ mcp_server.py, api.py, index_store.py   (composição; nunca lógica)
+app.py ──▶ mcp_server.py, api.py, index_store.py, telemetry.py   (composição; nunca lógica)
 core ──▶ domain.py, elections.py, index_schema.py  (nunca index_store.py; nunca rede)
 pipeline ──▶ domain.py, elections.py, index_schema.py     (nunca core; nunca os adaptadores)
 web/ ──▶ REST (HTTP), Jev (HTTP, só a Pages Function)      (nunca importa Python)
@@ -297,7 +298,7 @@ casamento a dígitos). A anotação `int` continua existindo, mas só para que u
 não numérico produza uma mensagem de erro clara. O teste do adaptador REST cobre `by-number`
 explicitamente.
 
-**`app.py`** é a raiz de composição e o único lugar com preocupação transversal: escolhe o
+**`app.py`** é a raiz de composição: escolhe o
 `IndexSource` (`GcsIndexSource` em produção, `LocalDirectoryIndexSource` quando apontado para
 um diretório), cria o `Core` e chama `start()` e `close()` no lifespan ASGI (abertura
 inicial e tarefa de verificação começam e terminam com o processo, nunca no construtor),
@@ -308,6 +309,15 @@ monta as duas aplicações ASGI, expõe `/healthz` (repassa
 aplica o limite por IP: token bucket em memória por instância,
 `429` com `Retry-After`, IP lido de `CF-Connecting-IP` apenas quando a requisição vem das
 faixas da Cloudflare (ADR 0005). Logs registram o IP truncado, nunca completo.
+
+Ao contrário do limite por IP, que fica inteiramente no ASGI middleware acima, a telemetria
+(`telemetry.py`, ticket #17) atravessa os próprios adaptadores: `create_mcp_server` e
+`create_api` recebem um `Telemetry` como parâmetro, e cada tool e cada rota chama
+`Telemetry.call` ao redor da chamada ao `core` (seção 2). `app.py` monta a instância a partir
+de `Settings.telemetry` (`None` desliga, o padrão e o padrão nos testes) e a repassa aos dois
+adaptadores, para que os dois emitam pelo mesmo cliente. O que telemetria coleta e as
+variáveis de ambiente que a configuram estão no README ("Telemetria") e em
+`docs/local-run.md`, não aqui.
 
 ## 5. `pipeline`: separado do serviço
 

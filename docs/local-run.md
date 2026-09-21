@@ -81,6 +81,14 @@ at startup with a clear message on misconfiguration:
 Setting both, or setting `BR_ELECTIONS_INDEX_BUCKET` without `BR_ELECTIONS_INDEX_CACHE_DIR`,
 raises `RuntimeError` before the server starts.
 
+Three more configure anonymous PostHog telemetry (ticket #17), described for the voter in the
+README's "Telemetry" section: `BR_ELECTIONS_POSTHOG_API_KEY` (unset disables telemetry, the
+default and the default in tests), `BR_ELECTIONS_POSTHOG_HOST` (default
+`https://us.i.posthog.com`) and `BR_ELECTIONS_POSTHOG_DISTINCT_ID` (default
+`br-elections-mcp`), the constant distinct id every event of this deployment carries. Getting a
+PostHog project API key is a real-run step outside this repository; it needs a PostHog account,
+which this task does not request or assume.
+
 ## 3. Connect Claude Desktop
 
 Claude Desktop launches stdio servers from `claude_desktop_config.json`; to reach a local

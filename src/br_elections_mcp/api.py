@@ -25,9 +25,11 @@ from br_elections_mcp.core import (
     PollingPlaceAnswer,
     PollingPlacesAnswer,
 )
+from br_elections_mcp.telemetry import Telemetry
 
 
-def create_api(core: Core) -> FastAPI:
+def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
+    telemetry = telemetry if telemetry is not None else Telemetry()
     api = FastAPI(
         title="br-elections-mcp REST API",
         version=__version__,
@@ -67,7 +69,9 @@ def create_api(core: Core) -> FastAPI:
         section: Annotated[str, Query(description="Seção eleitoral; aceita zeros à esquerda")],
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> PollingPlaceAnswer:
-        return core.find_polling_place(uf, zone, section, round)
+        return telemetry.call(
+            "GET /api/v1/polling-place", lambda: core.find_polling_place(uf, zone, section, round)
+        )
 
     @api.get(
         "/election",
@@ -84,7 +88,7 @@ def create_api(core: Core) -> FastAPI:
             str | None, Query(description="Data no formato AAAA-MM-DD; padrão: hoje")
         ] = None,
     ) -> ElectionInfoAnswer:
-        return core.election_info(on)
+        return telemetry.call("GET /api/v1/election", lambda: core.election_info(on))
 
     @api.get(
         "/candidates",
@@ -122,15 +126,18 @@ def create_api(core: Core) -> FastAPI:
         offset: Annotated[str, Query(description="Início da página")] = "0",
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> CandidatesAnswer:
-        return core.list_candidates(
-            uf,
-            office,
-            party=party,
-            name=name,
-            on_ballot_only=on_ballot_only,
-            limit=limit,
-            offset=offset,
-            round=round,
+        return telemetry.call(
+            "GET /api/v1/candidates",
+            lambda: core.list_candidates(
+                uf,
+                office,
+                party=party,
+                name=name,
+                on_ballot_only=on_ballot_only,
+                limit=limit,
+                offset=offset,
+                round=round,
+            ),
         )
 
     # Declaration order is part of the contract (codebase-design 4): `by-number` comes before
@@ -165,7 +172,10 @@ def create_api(core: Core) -> FastAPI:
         number: Annotated[str, Query(description="Número que o eleitor digita na urna")],
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> CandidateAnswer:
-        return core.get_candidate(uf=uf, office=office, number=number, round=round)
+        return telemetry.call(
+            "GET /api/v1/candidates/by-number",
+            lambda: core.get_candidate(uf=uf, office=office, number=number, round=round),
+        )
 
     @api.get(
         "/candidates/{sq_candidato}",
@@ -186,7 +196,10 @@ def create_api(core: Core) -> FastAPI:
         sq_candidato: Annotated[int, Path(description="Número sequencial da candidatura no TSE")],
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> CandidateAnswer:
-        return core.get_candidate(sq_candidato, round=round)
+        return telemetry.call(
+            "GET /api/v1/candidates/{sq_candidato}",
+            lambda: core.get_candidate(sq_candidato, round=round),
+        )
 
     @api.get(
         "/polling-places",
@@ -216,7 +229,12 @@ def create_api(core: Core) -> FastAPI:
     ) -> PollingPlacesAnswer:
         # lat/lon are the REST spelling of `near`; the core validates the pair.
         near = None if lat is None and lon is None else {"latitude": lat, "longitude": lon}
-        return core.search_polling_places(uf, municipality, neighborhood, query, near, limit, round)
+        return telemetry.call(
+            "GET /api/v1/polling-places",
+            lambda: core.search_polling_places(
+                uf, municipality, neighborhood, query, near, limit, round
+            ),
+        )
 
     @api.get(
         "/municipalities",
@@ -236,6 +254,8 @@ def create_api(core: Core) -> FastAPI:
         uf: Annotated[str | None, Query(description="Sigla da UF, opcional")] = None,
         limit: Annotated[str | None, Query(description="1 a 50; padrão 10")] = None,
     ) -> MunicipalitiesAnswer:
-        return core.resolve_municipality(name, uf, limit)
+        return telemetry.call(
+            "GET /api/v1/municipalities", lambda: core.resolve_municipality(name, uf, limit)
+        )
 
     return api

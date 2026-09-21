@@ -19,6 +19,17 @@ Anything that depends on the individual voter registration: zone and section fro
 CPF, the status of a voter's title, justifications or debts. Those questions are redirected to
 the official e-Titulo app and TSE self-service.
 
+## Telemetry
+
+Anonymous product telemetry, off by default and switchable off by configuration. When enabled,
+each MCP tool call and REST request sends one PostHog event with the tool name or route, the
+latency, whether the answer was stale and which round it answered, and the not-found reason
+when there was one. It never carries the caller's IP, any part of the request (UF, zone,
+section, municipality, name, ballot number), or a session or device identifier; the distinct id
+is a constant fixed per deployment, never generated per caller. Telemetry is sent outside the
+request path and a PostHog outage never delays or fails a query. See
+[`docs/local-run.md`](docs/local-run.md) for the environment variables that enable it.
+
 ## Status
 
 Six tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I

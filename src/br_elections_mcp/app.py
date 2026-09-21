@@ -31,6 +31,7 @@ from br_elections_mcp.core import Core, IndexSource, IndexUnavailable
 from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from br_elections_mcp.rate_limit import Clock, RateLimitConfig, RateLimitMiddleware
+from br_elections_mcp.telemetry import Telemetry, TelemetryConfig, build_telemetry
 
 DEFAULT_ELECTIONS_FILE = Path(__file__).resolve().parents[2] / "data" / "elections.yaml"
 
@@ -43,11 +44,16 @@ ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
 ENV_RATE_LIMIT_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS"
 ENV_RATE_LIMIT_WINDOW_SECONDS = "BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS"
+ENV_POSTHOG_API_KEY = "BR_ELECTIONS_POSTHOG_API_KEY"
+ENV_POSTHOG_HOST = "BR_ELECTIONS_POSTHOG_HOST"
+ENV_POSTHOG_DISTINCT_ID = "BR_ELECTIONS_POSTHOG_DISTINCT_ID"
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60.0
 DEFAULT_INDEX_BUCKET_PREFIX = ""
+DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com"
+DEFAULT_POSTHOG_DISTINCT_ID = "br-elections-mcp"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +71,7 @@ class Settings:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
+    telemetry: TelemetryConfig | None = None
 
     def build_index_source(self) -> IndexSource:
         if self.index_dir and self.index_bucket:
@@ -96,6 +103,16 @@ class Settings:
             if max_requests
             else None
         )
+        posthog_api_key = os.environ.get(ENV_POSTHOG_API_KEY)
+        telemetry = (
+            TelemetryConfig(
+                api_key=posthog_api_key,
+                host=os.environ.get(ENV_POSTHOG_HOST, DEFAULT_POSTHOG_HOST),
+                distinct_id=os.environ.get(ENV_POSTHOG_DISTINCT_ID, DEFAULT_POSTHOG_DISTINCT_ID),
+            )
+            if posthog_api_key
+            else None
+        )
         return cls(
             index_dir=Path(index_dir) if index_dir else None,
             index_bucket=index_bucket or None,
@@ -107,6 +124,7 @@ class Settings:
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
             rate_limit=rate_limit,
+            telemetry=telemetry,
         )
 
 
@@ -116,14 +134,17 @@ def build_app(
     host: str = DEFAULT_HOST,
     rate_limit: RateLimitConfig | None = None,
     rate_limit_clock: Clock = time.monotonic,
+    telemetry: Telemetry | None = None,
 ) -> Starlette:
     """Mount the two adapters over an already-constructed ``Core``; tests use this directly.
 
     The per-IP rate limit (codebase-design 4, ticket #10) wraps both mounts as ASGI
     middleware, the only cross-cutting concern of this composition root; ``rate_limit=None``
-    (the default, and the default in tests) disables it entirely.
+    (the default, and the default in tests) disables it entirely. ``telemetry=None`` (the
+    default, and the default in tests) likewise disables product telemetry (ticket #17).
     """
-    mcp_server = create_mcp_server(core)
+    telemetry = telemetry if telemetry is not None else Telemetry()
+    mcp_server = create_mcp_server(core, telemetry=telemetry)
     # `host` only drives the SDK's DNS-rebinding protection: on localhost it allows
     # localhost origins; elsewhere the protection is off and the edge is the guard (ADR 0005).
     mcp_app = mcp_server.streamable_http_app(
@@ -150,7 +171,7 @@ def build_app(
     return Starlette(
         routes=[
             Route("/healthz", healthz),
-            Mount("/api/v1", app=create_api(core)),
+            Mount("/api/v1", app=create_api(core, telemetry=telemetry)),
             Mount("/", app=mcp_app),
         ],
         middleware=middleware,
@@ -161,7 +182,12 @@ def build_app(
 def create_app(settings: Settings | None = None) -> Starlette:
     settings = settings or Settings.from_env()
     core = Core(settings.build_index_source(), settings.elections_file)
-    return build_app(core, host=settings.host, rate_limit=settings.rate_limit)
+    return build_app(
+        core,
+        host=settings.host,
+        rate_limit=settings.rate_limit,
+        telemetry=build_telemetry(settings.telemetry),
+    )
 
 
 def main(argv: list[str] | None = None) -> None:

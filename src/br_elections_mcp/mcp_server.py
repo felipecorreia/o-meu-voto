@@ -29,6 +29,7 @@ from br_elections_mcp.core import (
     PollingPlacesAnswer,
     Source,
 )
+from br_elections_mcp.telemetry import Telemetry
 
 SERVER_NAME = "br-elections-mcp"
 
@@ -95,7 +96,8 @@ RESOLVE_MUNICIPALITY_DESCRIPTION = (
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)
 
 
-def create_mcp_server(core: Core) -> MCPServer:
+def create_mcp_server(core: Core, *, telemetry: Telemetry | None = None) -> MCPServer:
+    telemetry = telemetry if telemetry is not None else Telemetry()
     server = MCPServer(
         name=SERVER_NAME,
         title="Eleições brasileiras (TSE)",
@@ -125,7 +127,9 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
     ) -> Annotated[CallToolResult, PollingPlaceAnswer]:
         try:
-            answer = core.find_polling_place(uf, zone, section, round)
+            answer = telemetry.call(
+                "find_polling_place", lambda: core.find_polling_place(uf, zone, section, round)
+            )
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
         except IndexUnavailable as exc:
@@ -148,7 +152,7 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
     ) -> Annotated[CallToolResult, ElectionInfoAnswer]:
         try:
-            answer = core.election_info(on)
+            answer = telemetry.call("election_info", lambda: core.election_info(on))
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
         return CallToolResult(
@@ -184,15 +188,18 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
     ) -> Annotated[CallToolResult, CandidatesAnswer]:
         try:
-            answer = core.list_candidates(
-                uf,
-                office,
-                party=party,
-                name=name,
-                on_ballot_only=on_ballot_only,
-                limit=limit,
-                offset=offset,
-                round=round,
+            answer = telemetry.call(
+                "list_candidates",
+                lambda: core.list_candidates(
+                    uf,
+                    office,
+                    party=party,
+                    name=name,
+                    on_ballot_only=on_ballot_only,
+                    limit=limit,
+                    offset=offset,
+                    round=round,
+                ),
             )
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
@@ -228,8 +235,11 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
     ) -> Annotated[CallToolResult, CandidateAnswer]:
         try:
-            answer = core.get_candidate(
-                sq_candidato, uf=uf, office=office, number=number, round=round
+            answer = telemetry.call(
+                "get_candidate",
+                lambda: core.get_candidate(
+                    sq_candidato, uf=uf, office=office, number=number, round=round
+                ),
             )
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
@@ -268,8 +278,11 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
     ) -> Annotated[CallToolResult, PollingPlacesAnswer]:
         try:
-            answer = core.search_polling_places(
-                uf, municipality, neighborhood, query, near, limit, round
+            answer = telemetry.call(
+                "search_polling_places",
+                lambda: core.search_polling_places(
+                    uf, municipality, neighborhood, query, near, limit, round
+                ),
             )
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
@@ -292,7 +305,9 @@ def create_mcp_server(core: Core) -> MCPServer:
         limit: Annotated[int | None, Field(description="1 a 50; padrão 10")] = None,
     ) -> Annotated[CallToolResult, MunicipalitiesAnswer]:
         try:
-            answer = core.resolve_municipality(name, uf, limit)
+            answer = telemetry.call(
+                "resolve_municipality", lambda: core.resolve_municipality(name, uf, limit)
+            )
         except InvalidQuery as exc:
             return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
         except IndexUnavailable as exc:
