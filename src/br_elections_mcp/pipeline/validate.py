@@ -177,7 +177,10 @@ def validate(
             ),
             _run("blocked_status_inspection", lambda: _gate_blocked_status_inspection(conn)),
             _run("office_text_known", lambda: _gate_office_text_known(conn)),
-            _run("ticket_single_head", lambda: _gate_ticket_single_head(conn)),
+            _run(
+                "ticket_single_head",
+                lambda: _gate_ticket_single_head(conn, with_round=with_round),
+            ),
             _run(
                 "complementary_join_consistent",
                 lambda: _gate_complementary_join_consistent(conn, with_round=with_round),
@@ -451,13 +454,20 @@ def _gate_office_text_known(conn: duckdb.DuckDBPyConnection) -> GateResult:
     return GateResult("office_text_known", "pass", "every DS_CARGO text maps to a known office")
 
 
-# Gate 10: a ticket, derived by (round, uf, number) within a ticket-head office, has one head.
+# Gate 10: an on-ballot ticket, derived by (round, uf, number) within a ticket-head office,
+# has one head. Off-ballot rows never count: a rejected candidate replaced by a substitute
+# with the same number is one on-ballot ticket (domain-model 3.5, codebase-design 3.4).
 
 
-def _gate_ticket_single_head(conn: duckdb.DuckDBPyConnection) -> GateResult:
+def _gate_ticket_single_head(conn: duckdb.DuckDBPyConnection, *, with_round: bool) -> GateResult:
     rows = conn.execute(
-        "SELECT CAST(NR_TURNO AS INTEGER), upper(trim(SG_UF)), "
-        "CAST(NR_CANDIDATO AS INTEGER), DS_CARGO FROM raw_candidates"
+        f"""
+        SELECT CAST(c.NR_TURNO AS INTEGER), upper(trim(c.SG_UF)),
+               CAST(c.NR_CANDIDATO AS INTEGER), c.DS_CARGO
+        FROM raw_candidates AS c
+        JOIN validate_complementary AS x ON {_complementary_join_condition(with_round)}
+        WHERE x.on_ballot
+        """
     ).fetchall()
     groups: dict[tuple[int, str, int, Office], list[Office]] = defaultdict(list)
     for round_number, uf, number, ds_cargo in rows:

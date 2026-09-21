@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from br_elections_mcp.core import Core, InvalidQuery
@@ -11,6 +13,7 @@ from br_elections_mcp.core.core import (
     SEARCH_PLACES_GUIDANCE,
 )
 from br_elections_mcp.pipeline.datasets import MUNICIPALITIES_TSE_IBGE, POLLING_PLACES_2026
+from tests.conftest import open_core
 
 # Scenario 4: abroad
 
@@ -327,11 +330,19 @@ def test_search_source_and_election_follow_the_polling_places_dataset(core: Core
 
 
 def test_search_round_explicit_and_not_published_answers_the_highest_published_round(
-    core: Core,
+    acre_round_1_index_dir: Path,
 ):
-    answer = core.search_polling_places("AC", "Rio Branco", round=2)
+    core = open_core(acre_round_1_index_dir)
+    try:
+        answer = core.search_polling_places("AC", "Rio Branco", round=2)
+    finally:
+        core.close()
     assert answer.data is not None
     assert answer.data.round == 1
+    assert answer.warnings == [
+        "O TSE ainda não publicou os locais do 2º turno; este é o local do 1º turno. "
+        "Confira de novo perto da data."
+    ]
 
 
 @pytest.mark.parametrize(

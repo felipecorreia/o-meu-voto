@@ -179,8 +179,9 @@ def test_candidates_returns_the_core_envelope(client: TestClient, core: Core):
     body = response.json()
     assert set(body) == {"data", "not_found", "warnings", "election", "source"}
     assert body == core.list_candidates("br", "presidente").model_dump(mode="json")
-    assert body["data"]["total"] == 2
-    assert [c["number"] for c in body["data"]["candidates"]] == [13, 45]
+    # Without `round`, the president list is the highest round of the office (round 2).
+    assert (body["data"]["round"], body["data"]["total"]) == (2, 2)
+    assert [c["number"] for c in body["data"]["candidates"]] == [22, 45]
     assert body["source"]["file"] == "consulta_cand_2026_BRASIL.csv"
     assert body["election"]["id"] == "general-2026"
 

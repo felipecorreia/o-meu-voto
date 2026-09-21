@@ -31,6 +31,10 @@ Pointers only; the content lives in the files below.
   comment and set the description through `json_schema_extra`.
 - Starlette does not run the lifespan of mounted apps: `app.py` runs the MCP session manager
   inside the root lifespan. Keep it there when adding routes.
+- Round handling lives in `core/rounds.py` (the code of codebase-design 3.4); `core.py` only
+  gathers the round sets. The `tests/fixtures/acre/` index carries both rounds, so a list or
+  profile without `round` may answer round 2 (president); `acre_round_1_index_dir` in
+  `tests/conftest.py` is the variant without round 2.
 - The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE`, `DS_SITU_LOCAL_VOTACAO` and every
   `DS_CARGO` text except `"DEPUTADO FEDERAL"` in the fixtures is a guess; `build` fails loudly
   on unknown texts (`OFFICE_BY_DS_CARGO` in `pipeline/build.py` for offices), so the first real

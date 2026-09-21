@@ -7,11 +7,14 @@ quoted, ISO-8859-1 encoding, headers exactly as named in `docs/domain-model.md` 
 ## `acre/`
 
 A slice of Acre for the "where do I vote" tracer bullet and the "places by city or
-neighborhood" search, round 1 only (as the TSE published it in 2026-09). The file keeps the
-`_AC` name of the per-UF ZIP entry but also carries two rows of `ZZ`, so one fixture covers
-the electorate abroad without a second file.
+neighborhood" search, in the two-round shape of `docs/codebase-design.md` 3.3: every section
+appears in round 1 (`DT_ELEICAO` 04/10/2026) and again, unchanged, in round 2 (25/10/2026).
+The variant without round 2 at all is derived by `tests/conftest.py` (`without_round_2`,
+fixture `acre_round_1_index_dir`) by dropping the `NR_TURNO = 2` rows, never stored here.
+The file keeps the `_AC` name of the per-UF ZIP entry but also carries two rows of `ZZ`, so
+one fixture covers the electorate abroad without a second file.
 
-- `eleitorado_local_votacao_2026_AC.csv`: ten sections. Zone 9, section 422 (Rio Branco,
+- `eleitorado_local_votacao_2026_AC.csv`: ten sections per round. Zone 9, section 422 (Rio Branco,
   IEPTEC, voters, coordinates and CEP) reproduces the values the scout verified and
   `docs/codebase-design.md` 8.1 shows; every other row (section numbers, the other places,
   addresses, phone, voter counts, the moved place) is invented to exercise one scenario each:
@@ -42,27 +45,35 @@ first real ingestion fixes the exact texts (domain-model section 7).
 
 ### Candidates (`consulta_cand_2026_BRASIL.csv` and companions)
 
-The candidate slice of the same election, round 1 only, in the three files the TSE ships
-under `candidatos-2026`. Every person, party composition, coalition, federation and social
+The candidate slice of the same election in the three files the TSE ships under
+`candidatos-2026`, with the round-2 rows the round table needs (codebase-design 3.3 and 3.4):
+presidents 45 and 22 with their vices have a row in round 1 and another in round 2, president
+13 (eliminated in round 1) has a row in round 1 only, and every other office has round 1 only
+(Acre decided its governor in round 1). Every person, party composition, coalition, federation and social
 link is invented; only the party numbers and acronyms and the shape of the TSE vocabulary
 (`#NULO`, `-1`, `PARTIDO ISOLADO`, `DEFERIDO`, `INDEFERIDO EM PRAZO RECURSAL OU COM
 RECURSO`, `S`/`N`) follow the `leiame.pdf` in `docs/tse/`. The file is named `BRASIL`
 because president rows carry `SG_UF = BR` and production ingests the national file.
 
-- `consulta_cand_2026_BRASIL.csv`, 16 rows, one per candidacy, with the full TSE header
-  including the five forbidden columns of ADR 0004 filled with placeholders (CPF
+- `consulta_cand_2026_BRASIL.csv`, 23 rows, one per candidacy and round, with the full TSE
+  header including the five forbidden columns of ADR 0004 filled with placeholders (CPF
   `00000000000`, title `000000000000`, `01/01/1970`, `AC`, `NÃO DIVULGÁVEL`), so the LGPD
   contract test runs over the real seam:
   - AC governor 45 (coalition "ACRE PARA TODOS") with vice 45; governor 13 (federation
     "BRASIL DA ESPERANÇA", `NM_COLIGACAO = #NULO`) with vice 13, both `INDEFERIDO ...` and
     on the ballot (domain-model scenario 10); governor 22 (`PARTIDO ISOLADO`, `RENÚNCIA`,
-    off the ballot).
+    off the ballot, nobody else with the number: the trio is `not_found`).
   - AC senator 456 with `1º SUPLENTE` and `2º SUPLENTE`; federal deputies 4512 and 1313;
-    state deputies 45123 (`JOANA D'ARC`, an apostrophe in the ballot name) and 22222.
-  - Presidents 13 and 45 with their vices, `SG_UF = BR` (scenario 9).
+    state deputies 45123 (`JOANA D'ARC`, an apostrophe in the ballot name) and 22222, plus a
+    second 22222 (`ROBERTO NUNES`, `INDEFERIDO`, off the ballot, `ST_SUBSTITUIDO = S`): the
+    rejected candidate the on-ballot 22222 replaced, so the trio resolves to the substitute.
+  - Presidents 13, 45 and 22 with their vices, `SG_UF = BR` (scenario 9), in round 1; 45 and
+    22 with their vices again in round 2 (`NR_TURNO = 2`, `DT_ELEICAO` 25/10/2026), 13
+    eliminated (scenario 14).
 - `consulta_cand_complementar_2026_BRASIL.csv`: one row per `SQ_CANDIDATO`, full header,
   without `NR_TURNO` (as the 2026 `leiame.pdf` documents), so the build deduplicates by
-  `SQ_CANDIDATO`; the tests derive a variant with `NR_TURNO` to cover the other join.
+  `SQ_CANDIDATO` and a candidacy in both rounds shares its row; the tests derive a variant
+  with `NR_TURNO` to cover the other join.
 - `rede_social_candidato_2026_BRASIL.csv`: four links for three candidates.
 
 The `DS_CARGO` texts other than `"DEPUTADO FEDERAL"` are the plausible spellings mapped in

@@ -159,10 +159,12 @@ def test_every_answer_carries_source_and_election(core: Core):
         }
 
 
-# Round handling of this slice: absent -> highest published; explicit and published -> that one.
+# Round handling: the table of codebase-design 3.4 is exercised line by line in
+# tests/test_core_rounds.py; these keep the tracer-bullet cases over the shared index.
 
 
-def test_round_absent_answers_the_highest_published_round(core: Core):
+def test_round_absent_answers_the_next_round_of_the_election(core: Core):
+    # Before round 1, the next round is round 1, published: T1.
     answer = core.find_polling_place("AC", 9, 422)
     assert answer.data is not None
     assert answer.data.round == 1
@@ -171,16 +173,28 @@ def test_round_absent_answers_the_highest_published_round(core: Core):
 
 
 def test_round_explicit_and_published_answers_that_round(core: Core):
-    answer = core.find_polling_place("AC", 9, 422, round="1")
-    assert answer.data is not None
-    assert answer.data.round == 1
+    for requested, expected in (("1", 1), (2, 2)):
+        answer = core.find_polling_place("AC", 9, 422, round=requested)
+        assert answer.data is not None
+        assert answer.data.round == expected
+        assert answer.warnings == []
 
 
-def test_round_explicit_and_not_published_answers_the_highest_published_round(core: Core):
-    # Round 2 is a calendar round; the index has only round 1. Never not_found.
-    answer = core.find_polling_place("AC", 9, 422, round=2)
+def test_round_explicit_and_not_published_answers_the_highest_published_round(
+    acre_round_1_index_dir: Path,
+):
+    # Round 2 is a calendar round; this index has only round 1. Never not_found (T4).
+    core = open_core(acre_round_1_index_dir)
+    try:
+        answer = core.find_polling_place("AC", 9, 422, round=2)
+    finally:
+        core.close()
     assert answer.data is not None
     assert answer.data.round == 1
+    assert answer.warnings == [
+        "O TSE ainda não publicou os locais do 2º turno; este é o local do 1º turno. "
+        "Confira de novo perto da data."
+    ]
 
 
 @pytest.mark.parametrize("round_", [0, 3, "x", "-1"])
@@ -204,7 +218,8 @@ def test_election_is_null_when_the_manifest_dates_do_not_coincide_with_the_calen
     finally:
         core.close()
     assert answer.data is not None
-    assert answer.data.round == 1
+    # Without a coincident election, the highest published round (T5).
+    assert answer.data.round == 2
     assert answer.election is None
 
 

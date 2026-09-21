@@ -40,7 +40,7 @@ def test_build_command_writes_the_index_with_candidates(tmp_path: Path, capsys):
     assert main(_build_args(tmp_path)) == 0
     assert (tmp_path / INDEX_FILE_NAME).is_file()
     manifest = read_manifest(tmp_path / MANIFEST_FILE_NAME)
-    assert manifest.counts["candidates"] == 16
+    assert manifest.counts["candidates"] == 23
     assert set(manifest.datasets) == {
         "polling_places",
         "municipalities",
@@ -48,7 +48,7 @@ def test_build_command_writes_the_index_with_candidates(tmp_path: Path, capsys):
         "candidates_complementary",
         "candidate_social_links",
     }
-    assert "'candidates': 16" in capsys.readouterr().out
+    assert "'candidates': 23" in capsys.readouterr().out
 
 
 def test_build_command_requires_the_candidate_files(tmp_path: Path):

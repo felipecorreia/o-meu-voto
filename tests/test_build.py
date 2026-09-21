@@ -40,15 +40,18 @@ def test_build_writes_index_and_manifest_from_the_acre_fixtures(acre_index_dir: 
     manifest = read_manifest(acre_index_dir / MANIFEST_FILE_NAME)
 
     assert manifest.index_built_at == BUILT_AT
+    # Sections and places count once per round (rounds 1 and 2); the candidates are the 16
+    # round-1 candidacies plus president 22 with vice, the rejected state deputy 22222 and
+    # the round-2 rows of presidents 45 and 22 with their vices (tests/fixtures/README.md).
     assert manifest.counts == {
         "municipalities": 5,
-        "polling_places": 6,
-        "polling_sections": 10,
-        "candidates": 16,
+        "polling_places": 12,
+        "polling_sections": 20,
+        "candidates": 23,
         "candidate_social_links": 4,
     }
     assert manifest.election_year == 2026
-    assert manifest.election_dates == {1: dt.date(2026, 10, 4)}
+    assert manifest.election_dates == {1: dt.date(2026, 10, 4), 2: dt.date(2026, 10, 25)}
     assert len(manifest.index_sha256) == 64
 
     places = manifest.datasets["polling_places"]
@@ -141,7 +144,7 @@ def test_manifest_cites_the_three_candidate_files(acre_index_dir: Path):
     assert social.file == "rede_social_candidato_2026_BRASIL.csv"
     # The candidate file carries the same election as the polling places: still one election.
     assert manifest.election_year == 2026
-    assert manifest.election_dates == {1: dt.date(2026, 10, 4)}
+    assert manifest.election_dates == {1: dt.date(2026, 10, 4), 2: dt.date(2026, 10, 25)}
 
 
 def _candidate(index_dir: Path, sq_candidato: int) -> dict:
@@ -354,7 +357,14 @@ def test_complementary_with_nr_turno_is_joined_by_candidate_and_round(tmp_path: 
     with_rounds.write_bytes(
         _with_round_column(
             ACRE_CANDIDATES_COMPLEMENTARY.read_bytes(),
-            {b'"20000000001"': [(b"2", b"CASSADO")]},
+            {
+                b'"20000000001"': [(b"2", b"CASSADO")],
+                # The candidacies with a round-2 row in the fixture need their round-2 join.
+                b'"20000000003"': [(b"2", b"DEFERIDO")],
+                b'"20000000004"': [(b"2", b"DEFERIDO")],
+                b'"20000000005"': [(b"2", b"DEFERIDO")],
+                b'"20000000006"': [(b"2", b"DEFERIDO")],
+            },
         )
     )
     build_fixture_index(tmp_path / "out", candidates_complementary=with_rounds)
@@ -380,7 +390,7 @@ def test_complementary_without_nr_turno_with_exact_duplicates_is_deduplicated(tm
     duplicated = tmp_path / "consulta_cand_complementar_2026_BRASIL.csv"
     duplicated.write_bytes(header + b"\n" + body + first + b"\n")
     manifest = build_fixture_index(tmp_path / "out", candidates_complementary=duplicated)
-    assert manifest.counts["candidates"] == 16
+    assert manifest.counts["candidates"] == 23
 
 
 def test_election_is_null_when_the_candidate_file_disagrees_with_the_polling_places(tmp_path):

@@ -38,14 +38,16 @@ def numbers(answer: CandidatesAnswer) -> list[int]:
 
 
 def test_scenario_9_president_is_asked_with_uf_br_and_lists_only_the_heads(core: Core):
-    answer = core.list_candidates("BR", "presidente")
+    # Round 1 explicitly: the fixture also carries round 2 (presidents 22 and 45), which is
+    # what the list answers without `round` (codebase-design 3.4, C1; tests/test_core_rounds.py).
+    answer = core.list_candidates("BR", "presidente", round=1)
 
     assert answer.not_found is None
     assert answer.warnings == []
     data = answer.data
     assert data is not None
-    assert (data.round, data.total, data.limit, data.offset) == (1, 2, 50, 0)
-    assert numbers(answer) == [13, 45]
+    assert (data.round, data.total, data.limit, data.offset) == (1, 3, 50, 0)
+    assert numbers(answer) == [13, 22, 45]
     assert {candidate.office for candidate in data.candidates} == {"presidente"}
 
     thirteen = data.candidates[0]
@@ -63,7 +65,7 @@ def test_scenario_9_president_is_asked_with_uf_br_and_lists_only_the_heads(core:
         "occupation": "ECONOMISTA",
         "photo_url": None,
     }
-    forty_five = data.candidates[1]
+    forty_five = data.candidates[2]
     assert forty_five.federation is None
     assert forty_five.coalition is not None
     assert forty_five.coalition.name == "BRASIL EM FRENTE"
@@ -206,8 +208,8 @@ def test_empty_list_is_an_answer_not_a_not_found(core: Core):
 
 
 def test_every_answer_carries_source_and_election(core: Core):
-    for args in [("BR", "presidente"), ("AC", "senador")]:
-        answer = core.list_candidates(*args)
+    for args in [("BR", "presidente", 1), ("AC", "senador", None)]:
+        answer = core.list_candidates(*args[:2], round=args[2])
         source = answer.source
         assert source.kind == "dataset"
         assert source.dataset == CANDIDATES_2026.title
@@ -223,16 +225,17 @@ def test_every_answer_carries_source_and_election(core: Core):
         assert election.round.model_dump() == {"number": 1, "date": dt.date(2026, 10, 4)}
 
 
-# Round handling of this slice: absent -> highest round of the office; explicit and present ->
-# that one; explicit and absent -> highest round of the office. Warnings C1-C4 are ticket #14.
+# Round handling: the table of codebase-design 3.4 is exercised line by line in
+# tests/test_core_rounds.py; these keep the tracer-bullet cases over the shared index.
 
 
 def test_round_absent_answers_the_highest_round_of_the_office(core: Core):
     answer = core.list_candidates("BR", "presidente")
     assert answer.data is not None
-    assert answer.data.round == 1
+    assert answer.data.round == 2
+    assert numbers(answer) == [22, 45]
     assert answer.election is not None
-    assert answer.election.round.number == 1
+    assert answer.election.round.number == 2
 
 
 def test_round_explicit_and_present_answers_that_round(core: Core):
@@ -246,6 +249,7 @@ def test_round_explicit_and_absent_answers_the_highest_round_of_the_office(core:
     assert answer.data is not None
     assert answer.data.round == 1
     assert answer.data.total == 2
+    assert answer.warnings == ["Deputado federal não tem 2º turno; esta é a lista do 1º turno."]
 
 
 @pytest.mark.parametrize("round_", [0, 3, "x", "-1"])

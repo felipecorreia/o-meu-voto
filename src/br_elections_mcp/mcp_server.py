@@ -120,7 +120,8 @@ def create_mcp_server(core: Core) -> MCPServer:
             int | str, Field(description="Seção eleitoral do título; aceita zeros à esquerda")
         ],
         round: Annotated[
-            int | None, Field(description="Turno, opcional; sem ele, o turno mais recente")
+            int | None,
+            Field(description="Turno, opcional; sem ele, o próximo turno já publicado pelo TSE"),
         ] = None,
     ) -> Annotated[CallToolResult, PollingPlaceAnswer]:
         try:
@@ -262,7 +263,8 @@ def create_mcp_server(core: Core) -> MCPServer:
         ] = None,
         limit: Annotated[int | None, Field(description="1 a 50; padrão 20")] = None,
         round: Annotated[
-            int | None, Field(description="Turno, opcional; sem ele, o turno mais recente")
+            int | None,
+            Field(description="Turno, opcional; sem ele, o próximo turno já publicado pelo TSE"),
         ] = None,
     ) -> Annotated[CallToolResult, PollingPlacesAnswer]:
         try:

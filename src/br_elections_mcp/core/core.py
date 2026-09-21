@@ -84,6 +84,14 @@ from br_elections_mcp.core.queries.municipalities import (
 )
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
 from br_elections_mcp.core.queries.search_places import PlaceRow, search_places
+from br_elections_mcp.core.rounds import (
+    RoundResolution,
+    check_round_bound,
+    highest_or_requested,
+    resolve_list_round,
+    resolve_place_round,
+    resolve_profile_round,
+)
 from br_elections_mcp.domain import UF, Election, Office
 from br_elections_mcp.domain import ElectionRound as DomainElectionRound
 from br_elections_mcp.index_schema import TSE_TIMEZONE, DatasetKey
@@ -197,7 +205,9 @@ class Core:
 
         Input is normalized here ("009" is 9, "ac" is AC). Raises ``InvalidQuery``
         for an unknown UF, a non-numeric zone or section or a round outside the
-        calendar; "not found" is an answer, never an exception.
+        calendar; "not found" is an answer, never an exception. ``round`` follows
+        lines T1-T7 of codebase-design 3.4 (``core/rounds.py``): without it, the
+        next round of the current election when published.
         """
         uf_value = normalize_polling_uf(uf)
         zone_number = normalize_number(zone, "zona inválida")
@@ -207,10 +217,10 @@ class Core:
         with self._index_manager.query() as (index, cursor):
             today = self._today()
             election = self._calendar.coincident_election(today, index.manifest)
-            answered_round = _resolve_round(index, requested_round, election)
-            election_info = _election_info(election, answered_round)
+            resolution = _resolve_place_round(index, requested_round, election, today)
+            election_info = _election_info(election, resolution.round)
             source = self._source(index, "polling_places")
-            row = find_section(cursor, uf_value, zone_number, section_number, answered_round)
+            row = find_section(cursor, uf_value, zone_number, section_number, resolution.round)
         # The query is done with the index; whether to check for a new version is the
         # task's O(1) decision, never a wait for this query.
         self._index_manager.signal()
@@ -231,6 +241,7 @@ class Core:
             warnings.append(aggregated_section_warning(data.votes_at_section))
         if data.previous_place is not None:
             warnings.append(place_changed_warning(data.previous_place))
+        warnings.extend(_round_warnings(resolution))
         warnings.extend(self._staleness_warnings(source))
         return PollingPlaceAnswer(
             data=data, not_found=None, warnings=warnings, election=election_info, source=source
@@ -296,7 +307,10 @@ class Core:
         the civil name without accents or case. Only on-ballot candidates by
         default. Raises ``InvalidQuery`` for an unknown office, an office
         impossible for the UF, ``limit`` outside 1..50 or a round outside the
-        calendar; an empty list is an answer, never ``not_found``.
+        calendar; an empty list is an answer, never ``not_found``. ``round``
+        follows lines C1-C4 of codebase-design 3.4 (``core/rounds.py``): without
+        it, the highest round the office has in the UF; a requested round the
+        office does not have answers that one with a warning.
         """
         uf_value = normalize_candidate_uf(uf)
         office_value = normalize_ballot_office(office)
@@ -310,15 +324,18 @@ class Core:
         with self._index_manager.query() as (index, cursor):
             today = self._today()
             election = self._calendar.coincident_election(today, index.manifest)
-            _check_round_bound(requested_round, election)
+            check_round_bound(requested_round, election)
             source = self._source(index, "candidates")
 
-            rounds = candidate_queries.office_rounds(cursor, uf_value, office_value.value)
-            if not rounds:
-                rounds = candidate_queries.candidate_rounds(cursor)
-            if not rounds:
-                raise IndexUnavailable("the index has no candidates in any round")
-            answered_round = _pick_round(rounds, requested_round)
+            published = _published_candidate_rounds(cursor)
+            resolution = resolve_list_round(
+                office_rounds=_office_rounds(cursor, uf_value, office_value.value, published),
+                published=published,
+                requested=requested_round,
+                office=office_value,
+                uf=uf_value,
+            )
+            answered_round = resolution.round
             filters = CandidateFilter(
                 uf=uf_value,
                 office=office_value.value,
@@ -344,7 +361,7 @@ class Core:
                 offset=offset_value,
             ),
             not_found=None,
-            warnings=self._staleness_warnings(source),
+            warnings=[*_round_warnings(resolution), *self._staleness_warnings(source)],
             election=_election_info(election, answered_round),
             source=source,
         )
@@ -367,7 +384,10 @@ class Core:
         profile carries the ticket (vice or substitutes with the same number), the
         social links declared to the TSE and the DivulgaCandContas link, derived and
         never fetched. Raises ``InvalidQuery`` for a malformed lookup or a round
-        outside the calendar.
+        outside the calendar. ``round`` follows lines F1-F5 of codebase-design 3.4
+        (``core/rounds.py``): without it, the highest round of the candidacy; a
+        requested round the candidacy is not in answers the profile of its highest
+        round with a warning, never ``not_found``.
         """
         lookup = _candidate_lookup(sq_candidato, uf, office, number)
         requested_round = None if round is None else normalize_number(round, "turno inválido")
@@ -375,23 +395,32 @@ class Core:
         with self._index_manager.query() as (index, cursor):
             today = self._today()
             election = self._calendar.coincident_election(today, index.manifest)
-            _check_round_bound(requested_round, election)
+            check_round_bound(requested_round, election)
             source = self._source(index, "candidates")
 
             # The set of rounds of the candidacy comes first, then the round table
             # (codebase-design 3.4): by sq_candidato, the rounds it appears in; by the
             # trio, the rounds with an on-ballot candidacy of that number.
-            if isinstance(lookup, int):
-                rounds = candidate_queries.candidacy_rounds(cursor, lookup)
-            else:
-                rounds = candidate_queries.on_ballot_rounds_by_number(cursor, *lookup)
-            if not rounds:
+            published = _published_candidate_rounds(cursor)
+            candidacy = _candidacy(cursor, lookup)
+            resolution: RoundResolution | None = None
+            if candidacy is None:
                 # Not found: the answer still names the round the office (or the index)
                 # is at, so `election` is filled as in every other answer.
-                answered_round = _pick_round(_rounds_for_not_found(cursor, lookup), requested_round)
+                answered_round = highest_or_requested(
+                    _rounds_for_not_found(cursor, lookup, published), requested_round
+                )
                 profile = None
             else:
-                answered_round = _pick_round(rounds, requested_round)
+                resolution = resolve_profile_round(
+                    candidacy_rounds=candidacy.rounds,
+                    office_rounds=_office_rounds(cursor, candidacy.uf, candidacy.office, published),
+                    published=published,
+                    requested=requested_round,
+                    office=Office(candidacy.office),
+                    uf=candidacy.uf,
+                )
+                answered_round = resolution.round
                 profile = _fetch_profile(cursor, lookup, answered_round)
             mates: list[RunningMateRow] = []
             links: list[str] = []
@@ -427,7 +456,7 @@ class Core:
         return CandidateAnswer(
             data=CandidateData(candidate=_candidate_profile(profile, mates, links, page_url)),
             not_found=None,
-            warnings=[],
+            warnings=_round_warnings(resolution),
             election=election_info,
             source=source,
         )
@@ -504,7 +533,8 @@ class Core:
         with self._index_manager.query() as (index, cursor):
             today = self._today()
             election = self._calendar.coincident_election(today, index.manifest)
-            answered_round = _resolve_round(index, requested_round, election)
+            resolution = _resolve_place_round(index, requested_round, election, today)
+            answered_round = resolution.round
             election_info = _election_info(election, answered_round)
             source = self._source(index, "polling_places")
             resolved, options = _resolve_municipality_in_uf(cursor, municipality_text, uf_value)
@@ -546,7 +576,7 @@ class Core:
                 guidance=SEARCH_PLACES_GUIDANCE,
             ),
             not_found=None,
-            warnings=self._staleness_warnings(source),
+            warnings=[*_round_warnings(resolution), *self._staleness_warnings(source)],
             election=election_info,
             source=source,
         )
@@ -613,33 +643,54 @@ def _dataset_health(generated_at: dt.datetime, now: dt.datetime) -> DatasetHealt
     )
 
 
-def _resolve_round(index: Index, requested: int | None, election: Election | None) -> int:
-    """Round handling of this tracer bullet: absent -> highest published; explicit and
-    published -> that one; explicit and unpublished -> highest published. The warnings of the
-    full round table (codebase-design 3.4) are added when the table is implemented."""
+def _resolve_place_round(
+    index: Index, requested: int | None, election: Election | None, today: dt.date
+) -> RoundResolution:
+    """Lines T1-T7 of codebase-design 3.4 over the rounds with a section in the index."""
     published = index.published_rounds
     if not published:
         raise IndexUnavailable("the index has no polling sections in any round")
-    _check_round_bound(requested, election)
-    return _pick_round(published, requested)
+    return resolve_place_round(
+        published=published, requested=requested, election=election, today=today
+    )
 
 
-def _check_round_bound(requested: int | None, election: Election | None) -> None:
-    """A round outside 1..n of the calendar (1..2 without a coincident election) is
-    ``InvalidQuery`` (codebase-design 3.4, common rules)."""
-    if requested is None:
-        return
-    last = len(election.rounds) if election is not None else 2
-    if requested > last:
-        raise InvalidQuery(f"turno inválido: {requested}; os turnos possíveis vão de 1 a {last}")
+def _published_candidate_rounds(cursor: duckdb.DuckDBPyConnection) -> tuple[int, ...]:
+    """The rounds with any candidate row: "published" for lines C1-F5."""
+    rounds = candidate_queries.candidate_rounds(cursor)
+    if not rounds:
+        raise IndexUnavailable("the index has no candidates in any round")
+    return rounds
 
 
-def _pick_round(present: tuple[int, ...], requested: int | None) -> int:
-    """Absent -> highest present; explicit and present -> that one; explicit and absent ->
-    highest present. ``present`` is never empty."""
-    if requested is not None and requested in present:
-        return requested
-    return present[-1]
+def _office_rounds(
+    cursor: duckdb.DuckDBPyConnection, uf: str, office: str, published: tuple[int, ...]
+) -> tuple[int, ...]:
+    """The rounds in which (``uf``, ``office``) has a row; an office with no row at all
+    (an empty list in every round) falls back to the published rounds, never empty."""
+    return candidate_queries.office_rounds(cursor, uf, office) or published
+
+
+def _candidacy(
+    cursor: duckdb.DuckDBPyConnection, lookup: int | tuple[str, str, int]
+) -> candidate_queries.Candidacy | None:
+    """The candidacy the lookup names, with the rounds of codebase-design 3.4: by
+    ``sq_candidato`` the rounds it appears in, by the trio the rounds with an on-ballot
+    candidacy of that number. Null when there is none (a number held only off the ballot
+    included)."""
+    if isinstance(lookup, int):
+        return candidate_queries.candidacy(cursor, lookup)
+    uf, office, number = lookup
+    rounds = candidate_queries.on_ballot_rounds_by_number(cursor, uf, office, number)
+    if not rounds:
+        return None
+    return candidate_queries.Candidacy(uf, office, rounds)
+
+
+def _round_warnings(resolution: RoundResolution | None) -> list[str]:
+    if resolution is None or resolution.warning is None:
+        return []
+    return [resolution.warning]
 
 
 def _party_filter(party: object) -> tuple[int | None, str | None]:
@@ -706,18 +757,15 @@ def _fetch_profile(
 
 
 def _rounds_for_not_found(
-    cursor: duckdb.DuckDBPyConnection, lookup: int | tuple[str, str, int]
+    cursor: duckdb.DuckDBPyConnection,
+    lookup: int | tuple[str, str, int],
+    published: tuple[int, ...],
 ) -> tuple[int, ...]:
-    """The rounds a not-found answer refers to: the office's by the trio, the index's
-    otherwise. Never empty: an index without candidates is ``IndexUnavailable``."""
-    rounds: tuple[int, ...] = ()
+    """The rounds a not-found answer refers to: the office's by the trio, the published
+    ones otherwise. Never empty."""
     if isinstance(lookup, tuple):
-        rounds = candidate_queries.office_rounds(cursor, lookup[0], lookup[1])
-    if not rounds:
-        rounds = candidate_queries.candidate_rounds(cursor)
-    if not rounds:
-        raise IndexUnavailable("the index has no candidates in any round")
-    return rounds
+        return _office_rounds(cursor, lookup[0], lookup[1], published)
+    return published
 
 
 def _ticket_offices(office: Office) -> tuple[str, ...]:

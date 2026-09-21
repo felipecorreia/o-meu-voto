@@ -69,18 +69,32 @@ def _gate(report_or_error, name: str):
     return next(gate for gate in report.gates if gate.name == name)
 
 
+ROUND_1 = (5, b'"1"')
+"""``NR_TURNO`` of the polling-places and candidates fixtures: the sections repeat in
+round 2, so a patch of one section names the round too."""
+
+
 def _patch_field(
-    data: bytes, match_index: int, match_value: bytes, set_index: int, new_value: bytes
+    data: bytes,
+    match_index: int,
+    match_value: bytes,
+    set_index: int,
+    new_value: bytes,
+    also_match: tuple[int, bytes] | None = None,
 ) -> bytes:
     """Replace field ``set_index`` in the exactly one data line whose field ``match_index``
-    equals ``match_value`` (both 0-based, ``;``-separated, header excluded)."""
+    equals ``match_value`` (both 0-based, ``;``-separated, header excluded), and whose
+    ``also_match`` field equals its value when given."""
     lines = data.split(b"\n")
     changed = 0
     out = []
     for i, line in enumerate(lines):
         if i > 0 and line:
             fields = line.split(b";")
-            if len(fields) > match_index and fields[match_index] == match_value:
+            matches = len(fields) > match_index and fields[match_index] == match_value
+            if matches and also_match is not None:
+                matches = fields[also_match[0]] == also_match[1]
+            if matches:
                 fields[set_index] = new_value
                 line = b";".join(fields)
                 changed += 1
@@ -124,11 +138,15 @@ def test_clean_fixtures_pass_every_gate(acre_index_dir: Path, tmp_path: Path):
         "municipality_crosswalk_scope",
     }
     assert _gate(report, "count_stability").message == "no previous manifest; first run"
-    assert _gate(report, "round_2_scope").message == "no round-2 rows yet"
+    assert (
+        _gate(report, "round_2_scope").message
+        == "round-2 rows are within scope with complete tickets"
+    )
+    assert _gate(report, "ticket_single_head").status == "pass"
     blocked = _gate(report, "blocked_status_inspection")
     assert blocked.status == "pass"
-    assert "2 row(s) BLOQUEADO without a place change" in blocked.message
-    assert "1 row(s) with a place change but not BLOQUEADO" in blocked.message
+    assert "4 row(s) BLOQUEADO without a place change" in blocked.message
+    assert "2 row(s) with a place change but not BLOQUEADO" in blocked.message
 
 
 def test_validation_report_round_trips(acre_index_dir: Path, tmp_path: Path):
@@ -243,6 +261,7 @@ def test_polling_place_identity_gate_fails_on_an_inconsistent_name(
             match_value=b'"423"',
             set_index=15,
             new_value=b'"OUTRO NOME"',
+            also_match=ROUND_1,
         )
     )
     with pytest.raises(ValidationError) as excinfo:
@@ -255,15 +274,13 @@ def test_polling_place_identity_gate_fails_on_an_inconsistency_across_rounds(
 ):
     # Identity is (uf, zone, number), not (uf, zone, number, round): a name that changes
     # between round 1 and round 2 at the same place must still be caught.
-    data = _append_line_with_field(
+    data = _patch_field(
         ACRE_POLLING_PLACES.read_bytes(),
         match_index=10,
         match_value=b'"422"',
-        set_index=5,
-        new_value=b'"2"',
-    )
-    data = _patch_field(
-        data, match_index=5, match_value=b'"2"', set_index=15, new_value=b'"OUTRO NOME"'
+        set_index=15,
+        new_value=b'"OUTRO NOME"',
+        also_match=(5, b'"2"'),
     )
     broken = tmp_path / "eleitorado_local_votacao_2026_AC.csv"
     broken.write_bytes(data)
@@ -281,6 +298,7 @@ def test_aggregated_section_same_place_gate_fails_when_moved(tmp_path: Path):
             match_value=b'"424"',
             set_index=14,
             new_value=b'"9999"',
+            also_match=ROUND_1,
         )
     )
     index_dir = tmp_path / "out"
@@ -390,6 +408,7 @@ def test_municipality_crosswalk_scope_gate_fails_on_a_non_zz_gap(
             match_value=b'"20"',
             set_index=7,
             new_value=b'"09999"',
+            also_match=ROUND_1,
         )
     )
     with pytest.raises(ValidationError) as excinfo:

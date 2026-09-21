@@ -142,12 +142,26 @@ _PROFILE_COLUMNS = f"""
 """
 
 
-def candidacy_rounds(cursor: duckdb.DuckDBPyConnection, sq_candidato: int) -> tuple[int, ...]:
-    """Rounds in which the candidacy ``sq_candidato`` has a row, ascending."""
+@dataclass(frozen=True, slots=True)
+class Candidacy:
+    """One ``sq_candidato`` across rounds: its UF and office (the same in every round) and
+    the ascending rounds it has a row in, never empty."""
+
+    uf: str
+    office: str
+    rounds: tuple[int, ...]
+
+
+def candidacy(cursor: duckdb.DuckDBPyConnection, sq_candidato: int) -> Candidacy | None:
+    """The candidacy ``sq_candidato`` with the rounds it has a row in, or null when the
+    index has no row of it in any round."""
     rows = cursor.execute(
-        "SELECT round FROM candidates WHERE sq_candidato = ? ORDER BY round", [sq_candidato]
+        "SELECT uf, office, round FROM candidates WHERE sq_candidato = ? ORDER BY round",
+        [sq_candidato],
     ).fetchall()
-    return tuple(int(row[0]) for row in rows)
+    if not rows:
+        return None
+    return Candidacy(rows[0][0], rows[0][1], tuple(int(row[2]) for row in rows))
 
 
 def on_ballot_rounds_by_number(

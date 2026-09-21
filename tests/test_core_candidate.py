@@ -137,7 +137,7 @@ def test_federation_and_coalition_carry_their_composition_only_in_the_profile(co
     }
     assert candidate.coalition is None
     assert candidate.nomination_kind == "federacao"
-    listed = core.list_candidates("BR", "presidente").data
+    listed = core.list_candidates("BR", "presidente", round=1).data
     assert listed is not None
     assert "composition" not in listed.candidates[0].model_dump()["federation"]
 
@@ -234,10 +234,12 @@ def test_malformed_lookups_are_invalid_query(core: Core, args, kwargs, message):
 def test_round_absent_or_present_answers_the_candidacy_round(core: Core):
     assert profile(core.get_candidate(GOVERNOR_45)).round == 1
     assert profile(core.get_candidate(GOVERNOR_45, round=1)).round == 1
-    # Round 2 is not published in the fixture: the tracer-bullet round handling answers the
-    # highest round of the candidacy; the warnings of codebase-design 3.4 are ticket #14.
+    # Round 2 is published (presidents) but Acre was decided in round 1: the profile of the
+    # highest round of the candidacy, with the F4 warning (tests/test_core_rounds.py has the
+    # whole table).
     answer = core.get_candidate(GOVERNOR_45, round=2)
     assert profile(answer).round == 1
+    assert answer.warnings == ["Não há 2º turno para governador no AC; esta é a ficha do 1º turno."]
     assert answer.election is not None
     assert answer.election.round.number == 1
 

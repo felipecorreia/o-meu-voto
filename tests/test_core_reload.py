@@ -218,7 +218,7 @@ def test_closing_an_index_waits_for_its_last_cursor(index_dir: Path):
     index = index_module.open_index(LocalDirectoryIndexSource(index_dir).current())
     with index.cursor() as cursor:
         index.close()
-        assert cursor.execute("SELECT count(*) FROM polling_sections").fetchone() == (10,)
+        assert cursor.execute("SELECT count(*) FROM polling_sections").fetchone() == (20,)
     with pytest.raises(IndexUnavailable), index.cursor():
         pass
 
@@ -239,7 +239,7 @@ def test_query_that_caught_a_version_closed_by_the_swap_retries_on_the_new_one(
 
         with manager.query() as (index, cursor):
             assert index is fresh
-            assert cursor.execute("SELECT count(*) FROM polling_sections").fetchone() == (10,)
+            assert cursor.execute("SELECT count(*) FROM polling_sections").fetchone() == (20,)
     finally:
         manager.close()
 
