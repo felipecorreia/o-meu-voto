@@ -133,18 +133,24 @@ uv run python -m br_elections_mcp.pipeline mirror-photos \
   --r2-secret-access-key <secret>
 ```
 
-Two things a real run still needs, both follow-ups for the captain, not something this change
+The scheduled workflow ([`refresh.yml`](.github/workflows/refresh.yml)) runs this stage after
+`validate` and before `publish`, reading the R2 credentials from five repository secrets, not
+in the repo and set by the captain: `R2_PUBLIC_DOMAIN`, `R2_ENDPOINT`, `R2_BUCKET`,
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`--public-domain` and the `--r2-*` flags above,
+in order). Until they are set, the step logs why and skips; the rest of the refresh runs as
+before.
+
+One thing a real run still needs, a follow-up for the captain, not something this change
 guesses at:
 
-- **R2 credentials and bucket.** No credential is requested or exercised by this change; the
-  four `--r2-*` flags above (bucket, endpoint, access key ID and secret access key) need to be
-  provisioned and passed in, e.g. as GitHub Actions secrets, when the scheduled workflow
-  (ticket #19) wires this stage in.
 - **Where the photo ZIPs come from.** `--zips-dir` expects the ZIPs already on disk; unlike the
   other datasets in `pipeline/datasets.py`, the exact CDN URL for
   `foto_cand<year>_<UF>_div.zip` was not verified against the TSE portal for this change (only
   the CKAN dataset and file name pattern are documented, docs/domain-model.md section 2), so
-  downloading them is left to whoever wires the scheduled workflow.
+  `refresh.yml` does not fetch them yet: `$WORK/photos` stays empty and the mirror-photos step
+  skips with a log line rather than syncing an empty set, which would delete every photo
+  already mirrored to R2. Wiring that download is the next step before this stage does
+  anything in production.
 
 ## How the pipeline downloads from the TSE
 

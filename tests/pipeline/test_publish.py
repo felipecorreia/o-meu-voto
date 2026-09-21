@@ -20,6 +20,7 @@ from br_elections_mcp.index_schema import (
     write_manifest,
 )
 from br_elections_mcp.pipeline.bucket import LocalDirectoryBucketClient
+from br_elections_mcp.pipeline.build import apply_photo_urls
 from br_elections_mcp.pipeline.datasets import POLLING_PLACES_CURRENT
 from br_elections_mcp.pipeline.publish import (
     PUBLISH_RECORD_FILE,
@@ -135,6 +136,20 @@ def test_publish_refuses_a_manifest_whose_sha256_does_not_match_the_index(index_
     with pytest.raises(PublishError, match="SHA-256"):
         _publish(index_dir, client)
     assert client.writes == []
+
+
+def test_publish_accepts_the_manifest_apply_photo_urls_rewrote(index_dir: Path):
+    """apply_photo_urls mutates index.duckdb in place; its manifest rewrite must keep the
+    two in sync, or publish would refuse the pair the next time mirror-photos runs."""
+    apply_photo_urls(index_dir, {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"})
+    manifest = read_manifest(index_dir / MANIFEST_FILE_NAME)
+    assert (
+        manifest.index_sha256
+        == hashlib.sha256((index_dir / INDEX_FILE_NAME).read_bytes()).hexdigest()
+    )
+    client = FakeBucketClient()
+    record = _publish(index_dir, client)
+    assert record.index_sha256 == manifest.index_sha256
 
 
 def test_publish_refuses_a_missing_index_file(index_dir: Path):

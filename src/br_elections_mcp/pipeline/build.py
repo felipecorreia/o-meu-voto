@@ -34,6 +34,7 @@ from br_elections_mcp.index_schema import (
     DatasetKey,
     DatasetSource,
     Manifest,
+    read_manifest,
     write_manifest,
 )
 from br_elections_mcp.pipeline.datasets import SourceFile
@@ -183,8 +184,13 @@ def apply_photo_urls(index_dir: Path, photo_urls: Mapping[int, str]) -> None:
     URL per ``sq_candidato`` currently mirrored. A photo has no round (docs/domain-model.md,
     3.5): every round of a mirrored ``sq_candidato`` gets the same URL. Everything else keeps
     the ``NULL`` that ``build_index`` wrote.
+
+    Mutating ``index.duckdb`` changes its SHA-256, so the manifest next to it is rewritten
+    with the new digest: otherwise ``publish`` would refuse the pair as mismatched (the
+    check that PublishError enforces) the next time this index is published.
     """
-    conn = duckdb.connect(str(index_dir / INDEX_FILE_NAME))
+    index_path = index_dir / INDEX_FILE_NAME
+    conn = duckdb.connect(str(index_path))
     try:
         conn.executemany(
             "UPDATE candidates SET photo_url = ? WHERE sq_candidato = ?",
@@ -192,6 +198,9 @@ def apply_photo_urls(index_dir: Path, photo_urls: Mapping[int, str]) -> None:
         )
     finally:
         conn.close()
+    manifest_path = index_dir / MANIFEST_FILE_NAME
+    manifest = read_manifest(manifest_path)
+    write_manifest(manifest.model_copy(update={"index_sha256": _sha256(index_path)}), manifest_path)
 
 
 def _load_source(

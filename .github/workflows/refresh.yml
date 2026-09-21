@@ -10,6 +10,15 @@
 #   GCP_CREDENTIALS_JSON  key of a service account that can write that bucket
 # Optional repository variable:
 #   INDEX_BUCKET_PREFIX   object name prefix inside the bucket (default: none)
+#
+# Secrets for the mirror-photos step (see README, "Mirroring candidate photos to R2"), all
+# optional: until the captain provisions them, the step logs why and skips, and the rest of
+# the refresh runs as before.
+#   R2_ENDPOINT             R2 account S3 endpoint URL
+#   R2_BUCKET               R2 bucket name
+#   R2_ACCESS_KEY_ID        R2 access key id
+#   R2_SECRET_ACCESS_KEY    R2 secret access key
+#   R2_PUBLIC_DOMAIN        public base URL the mirrored photos are served from
 name: Refresh index
 
 on:
@@ -73,7 +82,7 @@ jobs:
         run: |
           WORK="$(mktemp -d "$RUNNER_TEMP/refresh.XXXXXX")"
           echo "WORK=$WORK" >> "$GITHUB_ENV"
-          mkdir -p "$WORK/zips" "$WORK/csv" "$WORK/index" "$WORK/previous"
+          mkdir -p "$WORK/zips" "$WORK/csv" "$WORK/index" "$WORK/previous" "$WORK/photos"
 
       - name: Fetch the TSE ZIPs
         run: uv run python -m br_elections_mcp.pipeline fetch --output "$WORK/zips"
@@ -124,6 +133,36 @@ jobs:
             --elections data/elections.yaml \
             --output-dir "$WORK/index" \
             "${ARGS[@]}"
+
+      - name: Mirror candidate photos to R2
+        # foto_cand<year>_<UF>_div.zip is not fetched by this workflow yet (README,
+        # "Mirroring candidate photos to R2"): $WORK/photos stays empty until that is wired,
+        # so this step logs why and skips rather than syncing an empty set, which would
+        # delete every photo already mirrored to R2.
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$R2_ACCESS_KEY_ID" ] ||
+             [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_PUBLIC_DOMAIN" ]; then
+            echo "mirror-photos: R2 secrets not set yet, skipping (see README, 'Mirroring candidate photos to R2')"
+            exit 0
+          fi
+          if ! find "$WORK/photos" -maxdepth 1 -name 'foto_cand*_div.zip' -print -quit | grep -q .; then
+            echo "mirror-photos: no photo ZIPs in $WORK/photos yet, skipping"
+            exit 0
+          fi
+          uv run python -m br_elections_mcp.pipeline mirror-photos \
+            --zips-dir "$WORK/photos" \
+            --index-dir "$WORK/index" \
+            --public-domain "$R2_PUBLIC_DOMAIN" \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY"
 
       - name: Publish the index
         run: |
