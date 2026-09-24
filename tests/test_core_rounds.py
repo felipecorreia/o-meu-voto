@@ -578,5 +578,8 @@ async def test_mcp_passes_the_round_warning_through_in_structured_content_and_te
         core.close()
     assert result.is_error is False
     assert result.structured_content["data"]["candidate"]["round"] == 1
-    assert result.structured_content["warnings"] == [F3_WARNING]
+    warnings = [
+        w for w in result.structured_content["warnings"] if not w.startswith("Os dados do TSE")
+    ]
+    assert warnings == [F3_WARNING]
     assert F3_WARNING in result.content[0].text

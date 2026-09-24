@@ -100,6 +100,30 @@ def test_list_candidates_is_stale_60_hours_after_generated_at(acre_index_dir: Pa
         core.close()
 
 
+def test_get_candidate_is_stale_60_hours_after_generated_at(acre_index_dir: Path):
+    core = stale_core(acre_index_dir, CANDIDATES_GENERATED_AT)
+    try:
+        answer = core.get_candidate(uf="AC", office="governador", number=45)
+        assert answer.data is not None
+        assert answer.source.age_hours == pytest.approx(60.0)
+        assert answer.source.stale is True
+        assert answer.warnings == [CANDIDATES_STALE_WARNING]
+    finally:
+        core.close()
+
+
+def test_get_candidate_not_found_still_carries_the_stale_warning(acre_index_dir: Path):
+    core = stale_core(acre_index_dir, CANDIDATES_GENERATED_AT)
+    try:
+        answer = core.get_candidate(uf="AC", office="governador", number=99999)
+        assert answer.data is None
+        assert answer.not_found is not None
+        assert answer.source.stale is True
+        assert answer.warnings == [CANDIDATES_STALE_WARNING]
+    finally:
+        core.close()
+
+
 def test_resolve_municipality_is_stale_60_hours_after_generated_at(acre_index_dir: Path):
     core = stale_core(acre_index_dir, MUNICIPALITIES_GENERATED_AT)
     try:

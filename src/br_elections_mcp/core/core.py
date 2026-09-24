@@ -443,7 +443,7 @@ class Core:
             return CandidateAnswer(
                 data=None,
                 not_found=NotFound(reason="candidato_nao_encontrado", guidance=guidance),
-                warnings=[],
+                warnings=self._staleness_warnings(source),
                 election=election_info,
                 source=source,
             )
@@ -456,7 +456,7 @@ class Core:
         return CandidateAnswer(
             data=CandidateData(candidate=_candidate_profile(profile, mates, links, page_url)),
             not_found=None,
-            warnings=_round_warnings(resolution),
+            warnings=[*_round_warnings(resolution), *self._staleness_warnings(source)],
             election=election_info,
             source=source,
         )

@@ -534,6 +534,10 @@ está na urna, mesmo que exista uma candidatura fora da urna com o número.
 `education` (como o TSE publica, sem inferência), `running_mates[]` (`sq_candidato`,
 `office`, `ballot_name`, `name`, `party`), `social_links[]` e `divulgacandcontas_url`.
 
+Avisos possíveis: os de turno da seção 3.4 e o de dado envelhecido (seção 9); o de dado
+envelhecido também aparece em `not_found`, já que a idade do índice independe de o número
+buscado existir.
+
 `not_found.reason`: `candidato_nao_encontrado`.
 
 ### 8.5 `election_info`
