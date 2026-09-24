@@ -19,7 +19,7 @@ uv run python -m br_elections_mcp.pipeline build \
 Expected output:
 
 ```
-index written to data/index: {'municipalities': 2, 'polling_places': 3, 'polling_sections': 6, 'candidates': 16, 'candidate_social_links': 4}
+index written to data/index: {'municipalities': 5, 'polling_places': 12, 'polling_sections': 20, 'candidates': 23, 'candidate_social_links': 4}
 ```
 
 `data/index/` (`index.duckdb` and `manifest.json`) is git-ignored. The fixture rows are
@@ -29,10 +29,16 @@ zone 9, section 422.
 ## 2. Start the server on localhost
 
 ```sh
-uv run python -m br_elections_mcp.app --index-dir data/index --port 8000
+uv run python -m br_elections_mcp.app --index-dir data/index --web-dir web --port 8000
 ```
 
 The server prints `Uvicorn running on http://127.0.0.1:8000`. It serves:
+
+- The voter page at `http://localhost:8000/web/`, because of `--web-dir web` (or
+  `BR_ELECTIONS_WEB_DIR=web`): the static page of `web/` mounted next to the API so both share
+  one origin and the page needs no CORS. A local-run convenience only; in production the page
+  lives on Cloudflare Pages (ADR 0005). What the page does and how it was checked:
+  [`web/README.md`](../web/README.md).
 
 - MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
   tools `find_polling_place`, `election_info`, `list_candidates` and `get_candidate`.

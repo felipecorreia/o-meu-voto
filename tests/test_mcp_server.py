@@ -139,6 +139,7 @@ async def test_election_info_call_returns_the_envelope_and_a_pt_br_text(core: Co
     assert result.structured_content["not_found"] is None
     assert result.structured_content["warnings"] == []
     text = result.content[0].text
+    assert text.startswith("Eleições Gerais 2026")
     assert "turno" in text
     assert "Fonte:" in text
 

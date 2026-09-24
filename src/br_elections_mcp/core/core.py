@@ -272,6 +272,8 @@ class Core:
         next_round = election.next_round_on(day)
         return ElectionInfoAnswer(
             data=ElectionInfoData(
+                id=election.id,
+                name=election.name,
                 rounds=[_election_info_round(r) for r in election.rounds],
                 voting_hours=VotingHoursInfo(
                     start=hours.start.strftime("%H:%M"),

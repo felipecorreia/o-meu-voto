@@ -418,7 +418,7 @@ def election_info_text(answer: ElectionInfoAnswer) -> str:
     assert answer.data is not None
     d = answer.data
     rounds = "; ".join(f"{r.number}º turno em {r.date.strftime('%d/%m/%Y')}" for r in d.rounds)
-    lines = [f"Eleição com {len(d.rounds)} turno(s): {rounds}. Votação {d.voting_hours.label}."]
+    lines = [f"{d.name}, {len(d.rounds)} turno(s): {rounds}. Votação {d.voting_hours.label}."]
     if d.next_round is not None:
         lines.append(
             f"Próximo turno: {d.next_round.number}º em "

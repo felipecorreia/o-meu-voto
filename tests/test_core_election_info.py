@@ -43,6 +43,10 @@ def test_before_round_1_next_round_is_round_1(tmp_path: Path):
     assert answer.election is None
     data = answer.data
     assert data is not None
+    # Q1 of the static-page review: the election's own id and name travel in `data`, so the
+    # page can title the calendar without hardcoding it (`election` stays null here).
+    assert data.id == "general-2026"
+    assert data.name == "Eleições Gerais 2026"
     assert [(r.number, r.date) for r in data.rounds] == [(1, ROUND_1), (2, ROUND_2)]
     assert data.rounds[1].note is not None and "segundo turno" in data.rounds[1].note
     assert data.next_round is not None
@@ -87,6 +91,7 @@ def test_after_round_2_the_last_election_in_the_file_data_has_no_next_round(tmp_
     assert data.next_round is None
     assert data.days_until_next_round is None
     # The rest of the calendar still describes general-2026, never not_found.
+    assert (data.id, data.name) == ("general-2026", "Eleições Gerais 2026")
     assert [(r.number, r.date) for r in data.rounds] == [(1, ROUND_1), (2, ROUND_2)]
     assert data.offices == BALLOT_OFFICES
 

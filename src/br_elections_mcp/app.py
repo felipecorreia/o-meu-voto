@@ -7,7 +7,10 @@ lifespans to mounted apps.
 
 Run locally with ``python -m br_elections_mcp.app --index-dir <dir>`` or with
 ``uvicorn --factory br_elections_mcp.app:create_app`` and the environment
-variables read by ``Settings.from_env``.
+variables read by ``Settings.from_env``. ``--web-dir web`` (or
+``BR_ELECTIONS_WEB_DIR``) also serves the static page under ``/web`` so it
+reaches ``/api/v1`` on the same origin; that is a local-run convenience only,
+the page is published on Cloudflare Pages (ADR 0005), never by the service.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.core import Core, IndexSource, IndexUnavailable
@@ -40,6 +44,7 @@ ENV_INDEX_BUCKET = "BR_ELECTIONS_INDEX_BUCKET"
 ENV_INDEX_BUCKET_PREFIX = "BR_ELECTIONS_INDEX_BUCKET_PREFIX"
 ENV_INDEX_CACHE_DIR = "BR_ELECTIONS_INDEX_CACHE_DIR"
 ENV_ELECTIONS_FILE = "BR_ELECTIONS_ELECTIONS_FILE"
+ENV_WEB_DIR = "BR_ELECTIONS_WEB_DIR"
 ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
 ENV_RATE_LIMIT_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS"
@@ -68,6 +73,7 @@ class Settings:
     index_bucket_prefix: str = DEFAULT_INDEX_BUCKET_PREFIX
     index_cache_dir: Path | None = None
     elections_file: Path = DEFAULT_ELECTIONS_FILE
+    web_dir: Path | None = None
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
@@ -103,6 +109,7 @@ class Settings:
             if max_requests
             else None
         )
+        web_dir = os.environ.get(ENV_WEB_DIR)
         posthog_api_key = os.environ.get(ENV_POSTHOG_API_KEY)
         telemetry = (
             TelemetryConfig(
@@ -121,6 +128,7 @@ class Settings:
             ),
             index_cache_dir=Path(index_cache_dir) if index_cache_dir else None,
             elections_file=Path(os.environ.get(ENV_ELECTIONS_FILE, DEFAULT_ELECTIONS_FILE)),
+            web_dir=Path(web_dir) if web_dir else None,
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
             rate_limit=rate_limit,
@@ -135,6 +143,7 @@ def build_app(
     rate_limit: RateLimitConfig | None = None,
     rate_limit_clock: Clock = time.monotonic,
     telemetry: Telemetry | None = None,
+    web_dir: Path | None = None,
 ) -> Starlette:
     """Mount the two adapters over an already-constructed ``Core``; tests use this directly.
 
@@ -142,6 +151,7 @@ def build_app(
     middleware, the only cross-cutting concern of this composition root; ``rate_limit=None``
     (the default, and the default in tests) disables it entirely. ``telemetry=None`` (the
     default, and the default in tests) likewise disables product telemetry (ticket #17).
+    ``web_dir`` (local run only) mounts the static page of ``web/`` under ``/web``.
     """
     telemetry = telemetry if telemetry is not None else Telemetry()
     mcp_server = create_mcp_server(core, telemetry=telemetry)
@@ -168,12 +178,15 @@ def build_app(
         return JSONResponse(health.model_dump(mode="json"))
 
     middleware = [Middleware(RateLimitMiddleware, config=rate_limit, clock=rate_limit_clock)]
+    routes = [
+        Route("/healthz", healthz),
+        Mount("/api/v1", app=create_api(core, telemetry=telemetry)),
+    ]
+    if web_dir is not None:
+        routes.append(Mount("/web", app=StaticFiles(directory=web_dir, html=True), name="web"))
+    routes.append(Mount("/", app=mcp_app))
     return Starlette(
-        routes=[
-            Route("/healthz", healthz),
-            Mount("/api/v1", app=create_api(core, telemetry=telemetry)),
-            Mount("/", app=mcp_app),
-        ],
+        routes=routes,
         middleware=middleware,
         lifespan=lifespan,
     )
@@ -187,6 +200,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         host=settings.host,
         rate_limit=settings.rate_limit,
         telemetry=build_telemetry(settings.telemetry),
+        web_dir=settings.web_dir,
     )
 
 
@@ -196,11 +210,21 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m br_elections_mcp.app")
     parser.add_argument("--index-dir", type=Path, required=True)
     parser.add_argument("--elections-file", type=Path, default=DEFAULT_ELECTIONS_FILE)
+    parser.add_argument(
+        "--web-dir",
+        type=Path,
+        default=None,
+        help="serve the static page of this directory under /web (local run only)",
+    )
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args(argv)
     settings = Settings(
-        index_dir=args.index_dir, elections_file=args.elections_file, host=args.host, port=args.port
+        index_dir=args.index_dir,
+        elections_file=args.elections_file,
+        web_dir=args.web_dir,
+        host=args.host,
+        port=args.port,
     )
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
 

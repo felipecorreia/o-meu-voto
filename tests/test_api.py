@@ -92,6 +92,8 @@ def test_election_returns_the_core_envelope(client: TestClient, core: Core):
     body = response.json()
     assert set(body) == {"data", "not_found", "warnings", "election", "source"}
     assert body == core.election_info("2026-09-18").model_dump(mode="json")
+    assert body["data"]["id"] == "general-2026"
+    assert body["data"]["name"] == "Eleições Gerais 2026"
     assert body["data"]["next_round"]["number"] == 1
     assert body["source"]["kind"] == "curated"
     assert body["not_found"] is None

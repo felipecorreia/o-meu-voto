@@ -174,6 +174,12 @@ class CuratedSource(_Model):
 
 
 class ElectionInfoData(_Model):
+    """The calendar of the election the answer describes. ``id`` and ``name`` repeat the
+    election's own identity here because ``election`` is null in this answer (there is no
+    "round the answer refers to"), and a client titling the calendar needs the name."""
+
+    id: str = Field(description="Id da eleição no calendário curado, ex.: general-2026")
+    name: str = Field(description="Nome da eleição, ex.: Eleições Gerais 2026")
     rounds: list[ElectionInfoRound]
     voting_hours: VotingHoursInfo
     next_round: ElectionInfoRound | None = Field(

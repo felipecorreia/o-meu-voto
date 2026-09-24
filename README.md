@@ -39,10 +39,11 @@ vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the
 `GET /api/v1/candidates/by-number` and `GET /api/v1/candidates/{sq_candidato}`), "what is this
 municipality's TSE code" (MCP tool
 `resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
-neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). To run it
-locally, connect Claude Desktop, or serve an index built from the real TSE files from the
-service image (`Dockerfile`, `compose.yaml`), see [`docs/local-run.md`](docs/local-run.md).
-The design documents remain the reference:
+neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). The voter
+page in [`web/`](web/README.md) (static, no build) answers the same four questions over the
+REST API as a deck of cards. To run it all locally, connect Claude Desktop, or serve an index
+built from the real TSE files from the service image (`Dockerfile`, `compose.yaml`), see
+[`docs/local-run.md`](docs/local-run.md). The design documents remain the reference:
 
 - [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
@@ -64,7 +65,9 @@ uv run pytest
 ```
 
 Tests build their index from the CSV fixtures in `tests/fixtures/` with the pipeline's own
-`build` stage; none of them touches the network.
+`build` stage; none of them touches the network. The voter page has no build step: edit the
+files in `web/` and open them through `--web-dir web` (`docs/local-run.md`); `tests/test_web.py`
+checks that the page and everything it references are served.
 
 The refresh pipeline has its own dependency group, `pipeline`, which the service image never
 installs (`curl_cffi` and the GCS client live there; see below):

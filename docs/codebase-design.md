@@ -381,6 +381,25 @@ levam ao mesmo lugar: os formulários, que já estão na tela, e a orientação 
 quando a pergunta depende do cadastro. O Jev está fora do caminho crítico: a página funciona
 inteira sem ele, e o serviço Python não sabe que ele existe (ADR 0006).
 
+**Fluxo da página** (decisões do capitão na revisão do protótipo, issue #21, 2026-09-23). A
+página é um baralho de seis cartas, uma por vez, com o progresso acima e a pilha desenhada
+atrás: início (o que o app responde e a promessa de não pedir dado do cadastro), onde voto,
+locais da cidade, candidatos, quando é a eleição e fim (compartilhar no WhatsApp ou voltar ao
+início). Passa-se de carta por arrasto lateral, pelos botões abaixo da carta ou pelas etapas
+acima; um botão fixo de compartilhar no WhatsApp fica visível em toda tela. Os quatro
+formulários estruturados continuam os mesmos, um por carta. A caixa de linguagem natural do
+ADR 0006 ainda não existe na página; em que carta ela entra é decisão do ticket que a trouxer.
+Decisões fechadas na mesma revisão: `election_info.data` carrega `id` e `name` (8.5); o link
+do mapa abre o Google Maps atrás de um ícone de pino; "Perto de mim" fica (geolocalização
+opt-in, enviada uma vez e nunca guardada) e o botão de rota fica para uma próxima versão; os
+dados declarados do candidato (gênero, cor/raça, estado civil, escolaridade) aparecem
+recolhidos; "Ver ficha" na lista usa `GET /candidates/{sq_candidato}`; badges, cargos e o
+painel da eleição são ícones e blocos, com a legenda ao passar o mouse (desktop) ou ícone com
+rótulo curto e legenda ao tocar (celular). A regra de caixa dos nomes (Título em locais,
+endereços e nomes civis com lista de siglas, nome de urna como publicado, avisos do `core`
+com a mesma regra) é do serviço, não da página, e fica para depois da primeira ingestão real.
+Implementação, execução local e o que foi verificado: `web/README.md`.
+
 ## 8. Contratos das seis tools
 
 Nomes de tool e de campo em inglês; descrições, enums e textos em PT-BR. Toda resposta tem
@@ -548,9 +567,12 @@ Descrição: "Data e horário da votação, turnos, cargos em disputa e a fonte 
 
 Input: `on` (data, opcional; padrão: hoje em `America/Sao_Paulo`).
 
-`data`: `rounds[]` (`number`, `date`, `note`), `voting_hours`, `next_round` ou nulo,
-`days_until_next_round`, `offices[]`, `notes[]`, `calendar_source {title, url,
-verified_at}`. `source.kind = curated`.
+`data`: `id` e `name` da eleição (os mesmos de `election` nas outras tools; aqui `election`
+é nulo porque não há "turno a que a resposta se refere", e a página precisa do nome para
+intitular o calendário sem chumbá-lo), `rounds[]` (`number`, `date`, `note`),
+`voting_hours`, `next_round` ou nulo, `days_until_next_round`, `offices[]`, `notes[]`,
+`calendar_source {title, url, verified_at}`. `source.kind = curated`. (`id` e `name`
+entraram pela decisão Q1 da revisão da página estática, 2026-09-23.)
 
 ### 8.6 `resolve_municipality`
 

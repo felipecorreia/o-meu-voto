@@ -11,6 +11,8 @@ Pointers only; the content lives in the files below.
   there; a change that contradicts them needs a new ADR, not a silent override.
 - **Guardrails**: no personal data in the index or in any response (ADR 0004); PostHog
   telemetry anonymous.
+- **Voter page**: `web/` is static, no build, REST only; `web/README.md` says what it does and
+  how to open it locally (`--web-dir web`), `tests/test_web.py` what CI checks of it.
 - **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)
