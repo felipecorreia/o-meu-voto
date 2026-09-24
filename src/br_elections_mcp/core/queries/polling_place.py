@@ -1,4 +1,10 @@
-"""The "where do I vote" lookup: one section in one round, with its place and municipality."""
+"""The "where do I vote" lookup: one section in one round, with its place and municipality.
+
+The place is the one of the section the voter votes at: the section itself, or its main
+section when it is aggregated. The TSE registers some aggregated sections at a place with
+no main section, hence no ballot box (1,807 of 17,931 in the 2026 file), so the aggregated
+row's own place is not where its voters go.
+"""
 
 from __future__ import annotations
 
@@ -37,6 +43,8 @@ class SectionRow:
     place_status: str
     place_section_count: int
     place_accessible_section_count: int
+    votes_elsewhere: bool
+    """True when the voting place is not the place the aggregated section is registered at."""
 
 
 _SQL = """
@@ -46,11 +54,16 @@ _SQL = """
         s.previous_place_number, s.previous_place_name, s.previous_place_address,
         m.tse_code, m.ibge_code, m.name,
         p.number, p.name, p.kind, p.address, p.neighborhood, p.postal_code, p.phone,
-        p.latitude, p.longitude, p.status, p.section_count, p.accessible_section_count
+        p.latitude, p.longitude, p.status, p.section_count, p.accessible_section_count,
+        v.municipality_tse_code <> s.municipality_tse_code OR v.place_number <> s.place_number
     FROM polling_sections AS s
+    JOIN polling_sections AS v
+      ON v.uf = s.uf AND v.zone = s.zone AND v.round = s.round
+      AND v.section = coalesce(s.main_section, s.section)
     JOIN polling_places AS p
-      ON p.uf = s.uf AND p.zone = s.zone AND p.number = s.place_number AND p.round = s.round
-    JOIN municipalities AS m ON m.tse_code = s.municipality_tse_code
+      ON p.uf = v.uf AND p.zone = v.zone AND p.municipality_tse_code = v.municipality_tse_code
+      AND p.number = v.place_number AND p.round = v.round
+    JOIN municipalities AS m ON m.tse_code = v.municipality_tse_code
     WHERE s.uf = ? AND s.zone = ? AND s.section = ? AND s.round = ?
 """
 

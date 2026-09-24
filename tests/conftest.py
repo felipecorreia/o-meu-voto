@@ -95,6 +95,67 @@ def without_round_2(source: Path, directory: Path) -> Path:
     return target
 
 
+def with_fields(
+    source: Path,
+    directory: Path,
+    key: tuple[str, ...],
+    patches: dict[tuple[str, ...], dict[str, str]],
+) -> Path:
+    """A copy of a TSE CSV fixture with fields replaced in every row matching a key.
+
+    ``patches`` maps a value of the ``key`` columns to {column: new value}; each must match
+    at least one row, so a typo in a test fails here instead of silently patching nothing.
+    """
+    with source.open(encoding="latin-1", newline="") as f:
+        rows = list(csv.reader(f, delimiter=";", quotechar='"'))
+    header, body = rows[0], rows[1:]
+    key_indexes = [header.index(column) for column in key]
+    for value, fields in patches.items():
+        matched = [row for row in body if tuple(row[i] for i in key_indexes) == value]
+        assert matched, f"no row with {key} = {value}"
+        for row in matched:
+            for column, new in fields.items():
+                row[header.index(column)] = new
+    target = directory / source.name
+    with target.open("w", encoding="latin-1", newline="") as f:
+        writer = csv.writer(
+            f, delimiter=";", quotechar='"', quoting=csv.QUOTE_ALL, lineterminator="\n"
+        )
+        writer.writerow(header)
+        writer.writerows(body)
+    return target
+
+
+def with_section_fields(
+    source: Path, directory: Path, patches: dict[tuple[str, str], dict[str, str]]
+) -> Path:
+    """``with_fields`` over the polling-places fixture, keyed by (``NR_ZONA``, ``NR_SECAO``)."""
+    return with_fields(source, directory, ("NR_ZONA", "NR_SECAO"), patches)
+
+
+# Real TSE shapes the Acre fixture does not carry by itself (first real ingestion, 2026-09-24).
+# A place number is unique per municipality within a zone, not per zone: section 1/20 of
+# Cruzeiro do Sul moved to zone 9 reuses place number 1000 of Rio Branco's IEPTEC.
+SHARED_PLACE_NUMBER = {("1", "20"): {"NR_ZONA": "9", "NR_LOCAL_VOTACAO": "1000"}}
+# An aggregated section registered at a place with no main section: its voters vote at the
+# main section's place. Section 9/424 (main 422 at IEPTEC, place 1000) moved to place 1099.
+AGGREGATED_ELSEWHERE = {
+    ("9", "424"): {
+        "NR_LOCAL_VOTACAO": "1099",
+        "NM_LOCAL_VOTACAO": "ESCOLA RURAL SEM URNA",
+        "DS_ENDERECO": "RAMAL DO BARRO VERMELHO, KM 12",
+        "NR_LOCAL_VOTACAO_ORIGINAL": "1099",
+    }
+}
+# A substituted candidacy the TSE still flags as on the ballot, next to its on-ballot
+# substitute with the same number (SP deputado federal 3660 in the 2026 file): the substitute
+# 10000000012 names the rejected 22222 (10000000013) in SQ_SUBSTITUIDO.
+SUBSTITUTED_STILL_ON_BALLOT = {
+    ("10000000013",): {"ST_CANDIDATO_INSERIDO_URNA": "SIM"},
+    ("10000000012",): {"SQ_SUBSTITUIDO": "10000000013"},
+}
+
+
 def build_round_1_index(output_dir: Path, *, dataset: Dataset = POLLING_PLACES_2026) -> Manifest:
     """The variant of the fixture index without round 2 at all (codebase-design 3.3)."""
     sources = output_dir / "round-1-sources"

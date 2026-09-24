@@ -28,8 +28,12 @@ from tests.conftest import (
     ACRE_CANDIDATES_COMPLEMENTARY,
     ACRE_POLLING_PLACES,
     BUILT_AT,
+    SHARED_PLACE_NUMBER,
+    SUBSTITUTED_STILL_ON_BALLOT,
     build_fixture_index,
     open_core,
+    with_fields,
+    with_section_fields,
 )
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
@@ -123,6 +127,26 @@ def test_unknown_accessibility_text_fails_loudly(tmp_path: Path):
     )
     with pytest.raises(BuildError, match="TALVEZ"):
         build_fixture_index(tmp_path / "out", polling_places=broken)
+
+
+def test_a_place_number_shared_by_two_municipalities_of_a_zone_is_two_places(tmp_path: Path):
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, SHARED_PLACE_NUMBER)
+    build_fixture_index(tmp_path / "out", polling_places=polling_places)
+    conn = duckdb.connect(str(tmp_path / "out" / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            SELECT municipality_tse_code, name, section_count FROM polling_places
+            WHERE uf = 'AC' AND zone = 9 AND number = 1000 AND round = 1
+            ORDER BY municipality_tse_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [
+        ("01120", "ESCOLA ESTADUAL FLODOARDO CABRAL", 1),
+        ("01392", "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA", 3),
+    ]
 
 
 # Candidates (ticket #8): three files in, two tables out, nothing personal written.
@@ -322,6 +346,29 @@ def test_an_on_ballot_vice_without_a_head_fails_the_ticket_check(tmp_path: Path)
     complementary.write_bytes(header + b"\n" + b"\n".join(lines))
     with pytest.raises(BuildError, match=r"round 1 AC governador 45: 0 heads"):
         build_fixture_index(tmp_path / "out", candidates_complementary=complementary)
+
+
+def test_a_substituted_candidacy_is_off_the_ballot_even_when_the_tse_flags_it_on(
+    tmp_path: Path,
+):
+    # Real TSE data (2026-09-24): of 282 substituted candidacies, 280 come with
+    # ST_CANDIDATO_INSERIDO_URNA = NÃO and 2 still with SIM, one of them next to its
+    # substitute with the same number (SP deputado federal 3660), which broke the ticket check.
+    complementary = with_fields(
+        ACRE_CANDIDATES_COMPLEMENTARY, tmp_path, ("SQ_CANDIDATO",), SUBSTITUTED_STILL_ON_BALLOT
+    )
+    index_dir = tmp_path / "out"
+    build_fixture_index(index_dir, candidates_complementary=complementary)
+
+    assert _candidate(index_dir, 10000000013)["on_ballot"] is False
+    assert _candidate(index_dir, 10000000012)["on_ballot"] is True
+    core = open_core(index_dir)
+    try:
+        answer = core.get_candidate(uf="AC", office="deputado_estadual", number=22222)
+    finally:
+        core.close()
+    assert answer.data is not None
+    assert answer.data.candidate.sq_candidato == 10000000012
 
 
 def test_an_off_ballot_head_never_counts_for_the_ticket_check(acre_index_dir: Path):

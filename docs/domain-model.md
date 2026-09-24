@@ -35,7 +35,7 @@ separador `;`, codificação ISO-8859-1, aspas em todos os campos e as colunas `
 
 | Dataset (CKAN) | Arquivo | Conteúdo | Cadência declarada pelo TSE |
 |---|---|---|---|
-| `eleitorado-2026` | `eleitorado_local_votacao_2026.zip` (88 MB) | 517.179 seções, 83.688 locais, 5.757 municípios (inclui exterior) | diária, 06:25 |
+| `eleitorado-2026` | `eleitorado_local_votacao_2026.zip` (88 MB) | 517.179 seções, 83.688 locais (95.601 pela chave certa, 3.3), 5.757 municípios (inclui exterior) | diária, 06:25 |
 | `eleitorado-atual` | `eleitorado_local_votacao_ATUAL.zip` (45,9 MB) | mesmo esquema, cadastro mensal; fonte fora do ano eleitoral | mensal, dia 1, 00:00 |
 | `candidatos-2026` | `consulta_cand_2026.zip` (3,2 MB) | 20.984 candidaturas | 4x ao dia: 08:30, 12:30, 16:30, 19:30 |
 | `candidatos-2026` | `consulta_cand_complementar_2026.zip` (1,3 MB) | situação de julgamento e presença na urna, por `SQ_CANDIDATO` | idem |
@@ -129,9 +129,11 @@ apontam para ele.
 
 Invariantes:
 
-- Identidade assumida: (`uf`, `zone`, `number`) por turno. O scout contou 83.688 locais mas
-  não verificou a chave; o pipeline valida que nome e endereço são constantes dentro dessa
-  chave (seção 7).
+- Identidade: (`uf`, `zone`, `municipality`, `number`) por turno. O número do local é único
+  por município dentro da zona, não por zona: na primeira ingestão real (arquivo de 2026,
+  gerado em 23/09/2026) 12.212 chaves (`uf`, `zone`, `number`) abrangem mais de um município,
+  e a chave com o município dá 95.601 locais com nome e endereço constantes. O pipeline valida
+  essa constância (seção 7).
 - `latitude` e `longitude` são ambos presentes ou ambos nulos; presentes, estão em [-90, 90] e
   [-180, 180].
 - `previous_place` presente implica aviso "o local mudou" em toda resposta que contenha o
@@ -154,7 +156,7 @@ Fonte: dataset de locais de votação, uma linha por seção e turno.
 | `section` | int | `NR_SECAO` |
 | `round` | int | `NR_TURNO` |
 | `municipality` | ref. Municipality | `CD_MUNICIPIO` |
-| `polling_place` | ref. PollingPlace | `NR_LOCAL_VOTACAO` (com `SG_UF` e `NR_ZONA`) |
+| `polling_place` | ref. PollingPlace | `NR_LOCAL_VOTACAO` (com `SG_UF`, `NR_ZONA` e `CD_MUNICIPIO`) |
 | `section_kind` | `principal`, `agregada` | `DS_TIPO_SECAO_AGREGADA` |
 | `main_section` | int ou nulo | `NR_SECAO_PRINCIPAL` (`-1` vira nulo) |
 | `voters` | int | `QT_ELEITOR_SECAO` |
@@ -169,9 +171,12 @@ Invariantes:
   abranger vários municípios, mas a seção é única dentro da zona.
 - `section_kind = agregada` implica `main_section` presente e diferente de `section`;
   `principal` implica `main_section` nulo. 499.248 principais e 17.931 agregadas (§1.2 a).
-- A seção principal de uma agregada pertence ao mesmo local. O scout afirma isso pelo exemplo
-  (Jacareacanga, zona 102, seção 9 vota na 8, ambas na EMEF WARU APOMPO); o pipeline valida em
-  toda a base (seção 7).
+- O eleitor de uma seção agregada vota no local da seção principal, que em geral é o mesmo
+  local da agregada, mas nem sempre: no arquivo de 2026, 1.996 das 17.931 agregadas estão
+  cadastradas em outro local, 1.807 delas num local sem nenhuma seção principal, portanto sem
+  urna (e `QT_ELEITOR_ELEICAO_*` é zero nas agregadas, contadas na principal). "Onde voto"
+  responde o local da principal; o pipeline valida que a principal existe na mesma zona e
+  turno e é ela mesma principal (seção 7).
 - Em 2026-09-17 o dataset só tem `NR_TURNO = 1`. Quando o TSE publicar o 2º turno, o índice
   carrega os dois e a chave passa a incluir o turno de fato (§2.1).
 - Entrada humana é normalizada antes da busca: "zona 009" e "seção 0422" viram 9 e 422.
@@ -209,7 +214,7 @@ arquivo principal vem `#NE` em 100% das linhas; a situação útil está só no 
 | `federation` | `Federation(acronym, name, composition)` ou nulo | `SG_FEDERACAO`, `NM_FEDERACAO`, `DS_COMPOSICAO_FEDERACAO` (`#NULO` e `NR_FEDERACAO = -1` viram nulo) |
 | `coalition` | `Coalition(name, composition)` ou nulo | `NM_COLIGACAO`, `DS_COMPOSICAO_COLIGACAO` ("PARTIDO ISOLADO" e `#NULO` viram nulo) |
 | `adjudication_status` | str, PT-BR | `DS_SITUACAO_JULGAMENTO` (complementar) |
-| `on_ballot` | bool | `ST_CANDIDATO_INSERIDO_URNA` (complementar; `SIM`/`NÃO`) |
+| `on_ballot` | bool | `ST_CANDIDATO_INSERIDO_URNA` (complementar; `SIM`/`NÃO`), falso quando outra candidatura do arquivo a substitui (`SQ_SUBSTITUIDO` dela aponta para esta) |
 | `occupation` | str, PT-BR | `DS_OCUPACAO` |
 | `gender` | str, PT-BR | `DS_GENERO`, como o TSE publica; só na ficha individual |
 | `race_color` | str, PT-BR | `DS_COR_RACA`, como o TSE publica; só na ficha individual |
@@ -235,7 +240,9 @@ Invariantes:
 - Entre candidatos `on_ballot`, `number` é único por (`election`, `round`, `uf`, `office`).
   Vice e suplentes repetem o número do titular: a chapa é derivada por (`election`, `round`,
   `uf`, `number`) dentro do grupo `Office.ticket_head`, e o pipeline valida que cada chapa tem
-  exatamente um titular (seção 7).
+  exatamente um titular (seção 7). Uma candidatura substituída sai da urna mesmo quando o TSE
+  ainda a marca `SIM`: no arquivo de 2026, 280 das 282 substituídas vêm com `NÃO` e 2 com
+  `SIM`, uma delas ao lado da substituta de mesmo número (SP, deputado federal 3660).
 - `gender`, `race_color`, `marital_status` e `education` aparecem só na ficha individual
   (`get_candidate`), nunca em `list_candidates` nem em agregados; entram como o TSE publica,
   sem inferência nem cruzamento (seção 5).
@@ -295,7 +302,7 @@ Election 1 ── n Candidate ── 1 Party
                           ── 0..1 Coalition
                           ── 0..n Candidate (running_mates, mesma chapa)
 Municipality 1 ── n PollingPlace 1 ── n PollingSection
-PollingSection (agregada) ── 1 PollingSection (principal, mesmo local)
+PollingSection (agregada) ── 1 PollingSection (principal, cujo local é onde o eleitor vota)
 PollingSection ── 1 ElectionRound (via round + election_date)
 Toda resposta ── 1 Source, 0..1 Election
 ```
@@ -386,12 +393,19 @@ Regras complementares (detalhadas no ADR 0004):
 Cada item vira uma validação do pipeline que bloqueia a publicação do índice.
 
 - Identidade de PollingPlace como (`uf`, `zone`, `number`), com nome e endereço constantes
-  dentro da chave.
-- Seção principal de uma agregada sempre no mesmo local da agregada.
+  dentro da chave. **Refutada na primeira ingestão (2026-09-24):** a chave inclui o município
+  (3.3).
+- Seção principal de uma agregada sempre no mesmo local da agregada. **Refutada na primeira
+  ingestão (2026-09-24):** a validação agora exige só que a principal exista e seja principal,
+  e a resposta usa o local dela (3.4).
 - Semântica de `DS_SITU_LOCAL_VOTACAO = BLOQUEADO` em relação a `*_ORIGINAL`: inspecionar
   linhas em que o status é `bloqueado` sem mudança de local e vice-versa.
-- Textos exatos de `DS_CARGO` para os dez cargos, além de `"DEPUTADO FEDERAL"`.
+- Textos exatos de `DS_CARGO` para os dez cargos, além de `"DEPUTADO FEDERAL"`. **Confirmados
+  na primeira ingestão (2026-09-24):** os dez textos do arquivo real já estavam no mapeamento,
+  inclusive `1º SUPLENTE` e `2º SUPLENTE`.
 - Derivação da chapa por (`round`, `uf`, `number`) com exatamente um titular por chapa.
+  **Vale na primeira ingestão (2026-09-24)** depois de tirar da urna as candidaturas
+  substituídas (3.5).
 - Identidade de Candidate como (`sq_candidato`, `round`): a chave é única no arquivo principal,
   e o mesmo `SQ_CANDIDATO` pode aparecer nos dois turnos quando o 2º turno for publicado. O
   complementar traz `NR_TURNO`? Se sim, o join é por (`SQ_CANDIDATO`, `NR_TURNO`); se não, o

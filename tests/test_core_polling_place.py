@@ -14,11 +14,14 @@ from br_elections_mcp.index_store import LocalDirectoryIndexSource
 from br_elections_mcp.pipeline.datasets import POLLING_PLACES_2026, POLLING_PLACES_CURRENT
 from tests.conftest import (
     ACRE_POLLING_PLACES,
+    AGGREGATED_ELSEWHERE,
     BUILT_AT,
     ELECTIONS_FILE,
+    SHARED_PLACE_NUMBER,
     build_fixture_index,
     fixed_clock,
     open_core,
+    with_section_fields,
 )
 
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
@@ -66,6 +69,55 @@ def test_scenario_2_aggregated_section_votes_at_the_main_section_same_place(core
     assert answer.warnings == [
         "Sua seção é agregada: a votação acontece na seção 422, no mesmo local."
     ]
+
+
+def test_aggregated_section_registered_elsewhere_votes_at_the_main_sections_place(
+    tmp_path: Path,
+):
+    # Real TSE data (2026-09-24): 1,996 aggregated sections sit at another place than their
+    # main section, 1,807 of them at a place with no main section at all, so no ballot box.
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, AGGREGATED_ELSEWHERE)
+    build_fixture_index(tmp_path / "index", polling_places=polling_places)
+    core = open_core(tmp_path / "index")
+    try:
+        answer = core.find_polling_place("AC", 9, 424)
+    finally:
+        core.close()
+
+    assert answer.data is not None
+    assert answer.data.votes_at_section == 422
+    assert answer.data.place.number == 1000
+    assert answer.data.place.name == "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA"
+    assert answer.warnings == [
+        "Sua seção é agregada: a votação acontece na seção 422, em outro local: "
+        "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA."
+    ]
+
+
+def test_place_number_shared_by_two_municipalities_of_a_zone_resolves_by_municipality(
+    tmp_path: Path,
+):
+    # Real TSE data (2026-09-24): NR_LOCAL_VOTACAO is unique per municipality within a zone,
+    # not per zone; 12,212 (uf, zone, number) keys span more than one municipality.
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, SHARED_PLACE_NUMBER)
+    build_fixture_index(tmp_path / "index", polling_places=polling_places)
+    core = open_core(tmp_path / "index")
+    try:
+        cruzeiro = core.find_polling_place("AC", 9, 20)
+        rio_branco = core.find_polling_place("AC", 9, 422)
+    finally:
+        core.close()
+
+    assert cruzeiro.data is not None
+    assert cruzeiro.data.municipality.name == "CRUZEIRO DO SUL"
+    assert cruzeiro.data.place.number == 1000
+    assert cruzeiro.data.place.name == "ESCOLA ESTADUAL FLODOARDO CABRAL"
+    assert cruzeiro.data.place.section_count == 1
+    assert rio_branco.data is not None
+    assert (
+        rio_branco.data.place.name == "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA"
+    )
+    assert rio_branco.data.place.section_count == 3
 
 
 def test_scenario_3_place_changed_carries_the_previous_place_and_the_warning(core: Core):

@@ -353,7 +353,8 @@ def _prepare_complementary(conn: duckdb.DuckDBPyConnection, *, with_round: bool)
         SELECT DISTINCT
             CAST(SQ_CANDIDATO AS BIGINT) AS sq_candidato{round_column},
             trim(DS_SITUACAO_JULGAMENTO) AS adjudication_status,
-            {_ON_BALLOT_SQL} AS on_ballot
+            {_ON_BALLOT_SQL}
+                AND CAST(SQ_CANDIDATO AS BIGINT) NOT IN ({_SUBSTITUTED_SQL}) AS on_ballot
         FROM raw_candidates_complementary
         """
     )
@@ -596,6 +597,7 @@ _INSERT_POLLING_PLACES = f"""
         count(*) FILTER (WHERE {_ACCESSIBILITY_SQL} = 'com_acessibilidade'),
         sum(CAST(QT_ELEITOR_SECAO AS INTEGER))
     FROM raw_polling_places
+    -- A place number is unique per municipality within a zone, not per zone (real 2026 file).
     GROUP BY 1, 2, 3, 4, 5
 """
 
@@ -615,6 +617,15 @@ _ON_BALLOT_SQL = """
         WHEN 'N' THEN FALSE
         WHEN 'NAO' THEN FALSE
     END
+"""
+
+# The candidacies a substitute replaced (docs/domain-model.md, 3.5). The TSE clears the
+# on-ballot flag of a substituted candidacy with a lag: 2 of 282 in the 2026 file still had
+# it, one next to its substitute with the same number.
+_SUBSTITUTED_SQL = """
+    SELECT try_cast(SQ_SUBSTITUIDO AS BIGINT) FROM raw_candidates_complementary
+    WHERE try_cast(SQ_SUBSTITUIDO AS BIGINT) IS NOT NULL
+      AND try_cast(SQ_SUBSTITUIDO AS BIGINT) <> -1
 """
 
 _SEARCH_TEXT = "upper(strip_accents(trim({column})))"

@@ -172,8 +172,8 @@ def validate(
             ),
             _run("polling_place_identity", lambda: _gate_polling_place_identity(conn)),
             _run(
-                "aggregated_section_same_place",
-                lambda: _gate_aggregated_section_same_place(index_dir / INDEX_FILE_NAME),
+                "aggregated_section_main_is_principal",
+                lambda: _gate_aggregated_section_main_is_principal(index_dir / INDEX_FILE_NAME),
             ),
             _run("blocked_status_inspection", lambda: _gate_blocked_status_inspection(conn)),
             _run("office_text_known", lambda: _gate_office_text_known(conn)),
@@ -358,15 +358,18 @@ def _gate_election_date_matches_calendar(
     )
 
 
-# Gate 6: a polling place's identity (uf, zone, number) carries one name and address.
+# Gate 6: a polling place's identity (uf, zone, municipality, number) carries one name and
+# address. The number alone is unique per municipality within a zone, not per zone: the real
+# 2026 file has 12,212 (uf, zone, number) keys spanning more than one municipality.
 
 
 def _gate_polling_place_identity(conn: duckdb.DuckDBPyConnection) -> GateResult:
     rows = conn.execute(
         """
-        SELECT upper(trim(SG_UF)), CAST(NR_ZONA AS INTEGER), CAST(NR_LOCAL_VOTACAO AS INTEGER)
+        SELECT upper(trim(SG_UF)), CAST(NR_ZONA AS INTEGER), lpad(trim(CD_MUNICIPIO), 5, '0'),
+               CAST(NR_LOCAL_VOTACAO AS INTEGER)
         FROM raw_polling_places
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         HAVING count(DISTINCT trim(NM_LOCAL_VOTACAO)) > 1 OR count(DISTINCT trim(DS_ENDERECO)) > 1
         """
     ).fetchall()
@@ -374,41 +377,47 @@ def _gate_polling_place_identity(conn: duckdb.DuckDBPyConnection) -> GateResult:
         return GateResult(
             "polling_place_identity",
             "fail",
-            f"place (uf, zone, number) with more than one name or address: {rows}",
+            f"place (uf, zone, municipality, number) with more than one name or address: {rows}",
         )
     return GateResult(
         "polling_place_identity", "pass", "every polling place has one name and address"
     )
 
 
-# Gate 7: an aggregated section's main section is at the same place.
+# Gate 7: an aggregated section's main section exists in the same zone and round and is a
+# main section itself, so "where do I vote" can answer the main section's place. The main
+# section is not always at the aggregated section's place: the real 2026 file has 1,996
+# aggregated sections registered elsewhere, 1,807 of them at a place with no main section.
 
 
-def _gate_aggregated_section_same_place(index_path: Path) -> GateResult:
+def _gate_aggregated_section_main_is_principal(index_path: Path) -> GateResult:
     conn = duckdb.connect(str(index_path), read_only=True)
     try:
-        mismatches = conn.execute(
+        rows = conn.execute(
             """
-            SELECT a.uf, a.zone, a.section, a.round, a.place_number, m.place_number
+            SELECT a.uf, a.zone, a.section, a.round, a.main_section, m.section_kind
             FROM polling_sections AS a
-            JOIN polling_sections AS m
+            LEFT JOIN polling_sections AS m
               ON a.uf = m.uf AND a.zone = m.zone AND a.round = m.round
               AND a.main_section = m.section
-            WHERE a.place_number != m.place_number
+            WHERE a.main_section IS NOT NULL
+              AND (m.section IS NULL OR m.section_kind != 'principal')
+            ORDER BY 1, 2, 3, 4
             """
         ).fetchall()
     finally:
         conn.close()
-    if mismatches:
-        return GateResult(
-            "aggregated_section_same_place",
-            "fail",
-            f"aggregated section not at its main section's place: {mismatches}",
-        )
+    if rows:
+        problems = [
+            f"{uf} {zone}/{section} round {round_}: main section {main} "
+            + ("missing" if kind is None else "is not a main section")
+            for uf, zone, section, round_, main, kind in rows
+        ]
+        return GateResult("aggregated_section_main_is_principal", "fail", "; ".join(problems))
     return GateResult(
-        "aggregated_section_same_place",
+        "aggregated_section_main_is_principal",
         "pass",
-        "every aggregated section is at its main section's place",
+        "every aggregated section points at a main section of its zone and round",
     )
 
 
@@ -499,8 +508,13 @@ def _create_complementary_view(conn: duckdb.DuckDBPyConnection, *, with_round: b
             CASE upper(strip_accents(trim(ST_CANDIDATO_INSERIDO_URNA)))
                 WHEN 'S' THEN TRUE WHEN 'SIM' THEN TRUE
                 WHEN 'N' THEN FALSE WHEN 'NAO' THEN FALSE
-            END AS on_ballot
-        FROM raw_candidates_complementary
+            END
+            -- A substituted candidacy is off the ballot even when the TSE still flags it on.
+            AND NOT EXISTS (
+                SELECT 1 FROM raw_candidates_complementary AS s
+                WHERE try_cast(s.SQ_SUBSTITUIDO AS BIGINT) = CAST(c.SQ_CANDIDATO AS BIGINT)
+            ) AS on_ballot
+        FROM raw_candidates_complementary AS c
         """
     )
 

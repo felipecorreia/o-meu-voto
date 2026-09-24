@@ -40,8 +40,9 @@ vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the
 municipality's TSE code" (MCP tool
 `resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
 neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). To run it
-locally and connect Claude Desktop, see [`docs/local-run.md`](docs/local-run.md). The design
-documents remain the reference:
+locally, connect Claude Desktop, or serve an index built from the real TSE files from the
+service image (`Dockerfile`, `compose.yaml`), see [`docs/local-run.md`](docs/local-run.md).
+The design documents remain the reference:
 
 - [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
@@ -143,14 +144,14 @@ before.
 One thing a real run still needs, a follow-up for the captain, not something this change
 guesses at:
 
-- **Where the photo ZIPs come from.** `--zips-dir` expects the ZIPs already on disk; unlike the
-  other datasets in `pipeline/datasets.py`, the exact CDN URL for
-  `foto_cand<year>_<UF>_div.zip` was not verified against the TSE portal for this change (only
-  the CKAN dataset and file name pattern are documented, docs/domain-model.md section 2), so
-  `refresh.yml` does not fetch them yet: `$WORK/photos` stays empty and the mirror-photos step
-  skips with a log line rather than syncing an empty set, which would delete every photo
-  already mirrored to R2. Wiring that download is the next step before this stage does
-  anything in production.
+- **Where the photo ZIPs come from.** `--zips-dir` expects the ZIPs already on disk. The CDN
+  answers for them at
+  `https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`
+  (a `HEAD` through `curl_cffi` returned 200, 2.3 MB for AC, on 2026-09-24), but nothing
+  downloads them yet, so `refresh.yml` does not fetch them: `$WORK/photos` stays empty and
+  the mirror-photos step skips with a log line rather than syncing an empty set, which would
+  delete every photo already mirrored to R2. Wiring that download is the next step before
+  this stage does anything in production.
 
 ## How the pipeline downloads from the TSE
 

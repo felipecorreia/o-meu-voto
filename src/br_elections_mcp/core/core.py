@@ -146,8 +146,14 @@ class Near(BaseModel):
     longitude: float = Field(ge=-180, le=180)
 
 
-def aggregated_section_warning(main_section: int) -> str:
-    return f"Sua seção é agregada: a votação acontece na seção {main_section}, no mesmo local."
+def aggregated_section_warning(main_section: int, elsewhere_place_name: str | None) -> str:
+    """``elsewhere_place_name`` is the voting place's name when it is not the place the
+    aggregated section is registered at, ``None`` when both are the same place."""
+    if elsewhere_place_name is None:
+        where = "no mesmo local"
+    else:
+        where = f"em outro local: {elsewhere_place_name}"
+    return f"Sua seção é agregada: a votação acontece na seção {main_section}, {where}."
 
 
 def place_changed_warning(previous: PreviousPlace) -> str:
@@ -238,7 +244,11 @@ class Core:
         data = _polling_place_data(row)
         warnings: list[str] = []
         if row.section_kind == "agregada":
-            warnings.append(aggregated_section_warning(data.votes_at_section))
+            warnings.append(
+                aggregated_section_warning(
+                    data.votes_at_section, row.place_name if row.votes_elsewhere else None
+                )
+            )
         if data.previous_place is not None:
             warnings.append(place_changed_warning(data.previous_place))
         warnings.extend(_round_warnings(resolution))

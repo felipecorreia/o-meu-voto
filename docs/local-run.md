@@ -89,6 +89,61 @@ default and the default in tests), `BR_ELECTIONS_POSTHOG_HOST` (default
 PostHog project API key is a real-run step outside this repository; it needs a PostHog account,
 which this task does not request or assume.
 
+## 2b. Real TSE data, served from the service image
+
+This runs the same service over an index built from the real TSE files, in the Docker image
+that Cloud Run (#20) will run. Nothing here publishes anything or needs a credential, and
+telemetry stays off.
+
+Build the index with the pipeline chain of the README ("Publishing the index"), stopping
+before `publish` (`data/raw/` is git-ignored):
+
+```sh
+uv sync --group pipeline
+uv run python -m br_elections_mcp.pipeline fetch --output data/raw/zips
+for zip in data/raw/zips/*.zip; do
+  uv run python -m br_elections_mcp.pipeline extract --zip "$zip" --output-dir data/raw/csv
+done
+SOURCES="--polling-places data/raw/csv/eleitorado_local_votacao_2026_BRASIL.csv \
+  --municipalities data/raw/csv/municipio_tse_ibge.csv \
+  --candidates data/raw/csv/consulta_cand_2026_BRASIL.csv \
+  --candidates-complementary data/raw/csv/consulta_cand_complementar_2026_BRASIL.csv \
+  --social-links data/raw/csv/rede_social_candidato_2026_BRASIL.csv"
+uv run python -m br_elections_mcp.pipeline build $SOURCES --output-dir data/index
+uv run python -m br_elections_mcp.pipeline validate $SOURCES --index-dir data/index \
+  --elections data/elections.yaml --output-dir data/index
+```
+
+(`$SOURCES` relies on word splitting: run it in `sh` or `bash`, not `zsh`.) Then serve it:
+
+```sh
+docker compose up --build -d          # INDEX_DIR=<dir> to serve another index directory
+curl "http://localhost:8080/api/v1/polling-place?uf=sp&zone=251&section=72"
+```
+
+The image (`Dockerfile`) installs only the service dependencies from `uv.lock` (no dev or
+pipeline group), runs as a non-root user, listens on `$PORT` (default 8080, the variable Cloud
+Run sets) and takes its `IndexSource` from the environment exactly as above:
+`compose.yaml` mounts the index read-only and sets `BR_ELECTIONS_INDEX_DIR`; a bucket-backed
+deploy sets `BR_ELECTIONS_INDEX_BUCKET` and `BR_ELECTIONS_INDEX_CACHE_DIR` instead. MCP is at
+`http://localhost:8080/mcp` (the image sets `BR_ELECTIONS_HOST=0.0.0.0`, which turns the SDK's
+localhost-only Host check off, as behind the edge of ADR 0005).
+
+Measured on 2026-09-24 on a MacBook (Apple silicon), over the files the TSE generated on
+2026-09-23 (polling places) and 2026-09-24 (candidates), all UFs plus ZZ:
+
+| Stage | Duration | Output |
+|---|---|---|
+| `fetch` | 6 s | 5 ZIPs, 103 MB, HTTP 200 each |
+| `extract` | 1 s | 5 CSVs, 232 MB |
+| `build` | 5.4 s | `index.duckdb` 46 MB: 517,179 sections, 95,601 places, 5,757 municipalities, 20,986 candidacies, 61,793 social links |
+| `validate` | 7.7 s | 13 gates passed |
+| `docker build --no-cache` | 8 s (base images already pulled) | image of 392 MB |
+
+Acre alone (the `_AC` polling-places CSV with the `_AC` and `_BR` candidate CSVs) builds in
+0.5 s into a 3 MB index; Sao Paulo alone in 1.8 s into 10 MB. The run log with the requests and
+answers is the 2026-09-24 entry of `wiki/log.md`.
+
 ## 3. Connect Claude Desktop
 
 Claude Desktop launches stdio servers from `claude_desktop_config.json`; to reach a local

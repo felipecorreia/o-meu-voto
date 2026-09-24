@@ -1,0 +1,23 @@
+# The service image over a local index, shaped like the Cloud Run service (#20): read-only
+# root filesystem, non-root user, PORT from the environment, telemetry off (no PostHog key).
+#
+#   INDEX_DIR=data/raw/br/index docker compose up --build
+#
+# INDEX_DIR is a directory with index.duckdb and manifest.json, e.g. the output of the
+# pipeline's build stage (README, "Publishing the index"); default data/index.
+services:
+  api:
+    build: .
+    image: br-elections-mcp:local
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      BR_ELECTIONS_INDEX_DIR: /data/index
+    volumes:
+      - type: bind
+        source: ${INDEX_DIR:-data/index}
+        target: /data/index
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp

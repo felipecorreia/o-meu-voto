@@ -30,9 +30,14 @@ from tests.conftest import (
     ACRE_MUNICIPALITIES,
     ACRE_POLLING_PLACES,
     ACRE_SOCIAL_LINKS,
+    AGGREGATED_ELSEWHERE,
     BUILT_AT,
     ELECTIONS_FILE,
+    SHARED_PLACE_NUMBER,
+    SUBSTITUTED_STILL_ON_BALLOT,
     build_fixture_index,
+    with_fields,
+    with_section_fields,
 )
 
 
@@ -129,7 +134,7 @@ def test_clean_fixtures_pass_every_gate(acre_index_dir: Path, tmp_path: Path):
         "count_stability",
         "election_date_matches_calendar",
         "polling_place_identity",
-        "aggregated_section_same_place",
+        "aggregated_section_main_is_principal",
         "blocked_status_inspection",
         "office_text_known",
         "ticket_single_head",
@@ -272,7 +277,7 @@ def test_polling_place_identity_gate_fails_on_an_inconsistent_name(
 def test_polling_place_identity_gate_fails_on_an_inconsistency_across_rounds(
     acre_index_dir: Path, tmp_path: Path
 ):
-    # Identity is (uf, zone, number), not (uf, zone, number, round): a name that changes
+    # Identity is (uf, zone, municipality, number), not with round added: a name that changes
     # between round 1 and round 2 at the same place must still be caught.
     data = _patch_field(
         ACRE_POLLING_PLACES.read_bytes(),
@@ -289,23 +294,72 @@ def test_polling_place_identity_gate_fails_on_an_inconsistency_across_rounds(
     assert "polling_place_identity" in str(excinfo.value)
 
 
-def test_aggregated_section_same_place_gate_fails_when_moved(tmp_path: Path):
-    broken = tmp_path / "eleitorado_local_votacao_2026_AC.csv"
-    broken.write_bytes(
-        _patch_field(
-            ACRE_POLLING_PLACES.read_bytes(),
-            match_index=10,
-            match_value=b'"424"',
-            set_index=14,
-            new_value=b'"9999"',
-            also_match=ROUND_1,
-        )
+@pytest.mark.parametrize(
+    "patches",
+    [SHARED_PLACE_NUMBER, AGGREGATED_ELSEWHERE],
+    ids=["place-number-shared-across-municipalities", "aggregated-section-elsewhere"],
+)
+def test_real_tse_shapes_pass_every_gate(tmp_path: Path, patches):
+    # Both shapes are in the real 2026 file (first real ingestion, 2026-09-24).
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, patches)
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, polling_places=polling_places)
+    report = run_validate(index_dir, polling_places=polling_places, output_dir=tmp_path)
+    assert report.ok, report.failed
+
+
+def test_ticket_single_head_gate_passes_with_a_substituted_candidacy_still_flagged_on(
+    tmp_path: Path,
+):
+    complementary = with_fields(
+        ACRE_CANDIDATES_COMPLEMENTARY, tmp_path, ("SQ_CANDIDATO",), SUBSTITUTED_STILL_ON_BALLOT
+    )
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, candidates_complementary=complementary)
+    report = run_validate(index_dir, candidates_complementary=complementary, output_dir=tmp_path)
+    assert _gate(report, "ticket_single_head").status == "pass"
+
+
+def test_polling_place_identity_gate_fails_on_two_names_within_one_municipality(
+    acre_index_dir: Path, tmp_path: Path
+):
+    # Section 9/150 (place 1050, COLÉGIO ACREANO) moved to place 1000 of the same municipality
+    # without taking its name: two names for (AC, 9, 01392, 1000).
+    broken = with_section_fields(
+        ACRE_POLLING_PLACES, tmp_path, {("9", "150"): {"NR_LOCAL_VOTACAO": "1000"}}
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        run_validate(acre_index_dir, polling_places=broken, output_dir=tmp_path)
+    assert "polling_place_identity" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("main_section", "problem"),
+    [("999", "main section 999 missing"), ("424", "main section 424 is not a main section")],
+    ids=["missing", "aggregated"],
+)
+def test_aggregated_section_main_is_principal_gate_fails(
+    tmp_path: Path, main_section: str, problem: str
+):
+    # 9/424 aggregated to 999 (no such section) or to itself-aggregated 424 via 9/423.
+    patched_section = "424" if main_section == "999" else "423"
+    broken = with_section_fields(
+        ACRE_POLLING_PLACES,
+        tmp_path,
+        {
+            ("9", patched_section): {
+                "DS_TIPO_SECAO_AGREGADA": "Agregada",
+                "NR_SECAO_PRINCIPAL": main_section,
+            }
+        },
     )
     index_dir = tmp_path / "out"
     build_fixture_index(index_dir, polling_places=broken)
     with pytest.raises(ValidationError) as excinfo:
         run_validate(index_dir, polling_places=broken, output_dir=tmp_path)
-    assert "aggregated_section_same_place" in str(excinfo.value)
+    gate = _gate(excinfo.value, "aggregated_section_main_is_principal")
+    assert gate.status == "fail"
+    assert problem in gate.message
 
 
 def test_office_text_known_gate_fails_on_an_unmapped_ds_cargo(acre_index_dir: Path, tmp_path: Path):

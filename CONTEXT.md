@@ -56,7 +56,7 @@ _Avoid_: seção de votação, sala, mesa
 
 **Main section** (seção principal) e **Aggregated section** (seção agregada):
 Uma seção agregada não recebe votos por si: seus eleitores votam na seção principal indicada,
-no mesmo local.
+no local dela, que em geral é o mesmo da agregada, mas nem sempre (`docs/domain-model.md`, 3.4).
 _Avoid_: seção fundida, seção anexada
 
 **Polling place** (local de votação):

@@ -1,0 +1,11 @@
+# Only pyproject.toml, uv.lock, README.md, LICENSE, src/ and data/elections.yaml reach the
+# image; everything else stays out of the build context.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!data/elections.yaml
+**/__pycache__
+**/*.py[cod]

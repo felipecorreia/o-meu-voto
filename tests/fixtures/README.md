@@ -38,10 +38,12 @@ one fixture covers the electorate abroad without a second file.
   (`01392`) is the one in the design document, the other TSE codes and the rest of the
   crosswalk columns are illustrative.
 
-The vocabulary of `DS_TIPO_SECAO_AGREGADA`, `DS_SITU_SECAO_ACESSIBILIDADE` and
-`DS_SITU_LOCAL_VOTACAO` is a plausible guess; the `build` stage derives the section kind from
-`NR_SECAO_PRINCIPAL` and fails loudly on an accessibility or status text it cannot map, so the
-first real ingestion fixes the exact texts (domain-model section 7).
+The vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE` and `DS_SITU_LOCAL_VOTACAO` was a guess the
+first real ingestion (2026-09-24) confirmed up to case (`Com acessibilidade`, `ATIVO`,
+`BLOQUEADO`); `DS_TIPO_SECAO_AGREGADA` is `Principal`/`Agregada` in the real file, but the
+`build` stage derives the section kind from `NR_SECAO_PRINCIPAL` and never reads it. Two shapes
+of the real file that these rows do not carry are derived in `tests/conftest.py`
+(`SHARED_PLACE_NUMBER`, `AGGREGATED_ELSEWHERE`, through `with_section_fields`).
 
 ### Candidates (`consulta_cand_2026_BRASIL.csv` and companions)
 
@@ -76,9 +78,10 @@ because president rows carry `SG_UF = BR` and production ingests the national fi
   with `NR_TURNO` to cover the other join.
 - `rede_social_candidato_2026_BRASIL.csv`: four links for three candidates.
 
-The `DS_CARGO` texts other than `"DEPUTADO FEDERAL"` are the plausible spellings mapped in
-`pipeline/build.py` (`OFFICE_BY_DS_CARGO`); the build fails loudly on any other text, so the
-first real ingestion fixes them (domain-model section 7).
+The `DS_CARGO` texts are the spellings mapped in `pipeline/build.py` (`OFFICE_BY_DS_CARGO`);
+the first real ingestion (2026-09-24) found exactly those ten texts, and the build still fails
+loudly on any other. The real shape of a substituted candidacy still flagged on the ballot is
+derived in `tests/conftest.py` (`SUBSTITUTED_STILL_ON_BALLOT`, through `with_fields`).
 
 ## `acre_lgpd/`
 

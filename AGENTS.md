@@ -19,8 +19,9 @@ Pointers only; the content lives in the files below.
   (`tests/conftest.py`), deliver it through `LocalDirectoryIndexSource` and exercise a real
   `Core`; MCP tests use the SDK's in-memory `mcp.Client(server)`, REST tests the Starlette
   `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts).
-  Local run and the Claude Desktop connection: `docs/local-run.md`. Pipeline chain, bucket
-  layout and the refresh workflow: README, "Publishing the index".
+  Local run, the Claude Desktop connection and the service image over real TSE data
+  (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
+  refresh workflow: README, "Publishing the index".
 
 ## Sharp edges
 
@@ -36,15 +37,17 @@ Pointers only; the content lives in the files below.
   gathers the round sets. The `tests/fixtures/acre/` index carries both rounds, so a list or
   profile without `round` may answer round 2 (president); `acre_round_1_index_dir` in
   `tests/conftest.py` is the variant without round 2.
-- The TSE vocabulary of `DS_SITU_SECAO_ACESSIBILIDADE`, `DS_SITU_LOCAL_VOTACAO` and every
-  `DS_CARGO` text except `"DEPUTADO FEDERAL"` in the fixtures is a guess; `build` fails loudly
-  on unknown texts (`OFFICE_BY_DS_CARGO` in `pipeline/build.py` for offices), so the first real
-  ingestion fixes them (`tests/fixtures/README.md`).
-- The CDN URL for the per-UF candidate photo ZIPs (`foto_cand<year>_<UF>_div.zip`) was never
-  verified against the TSE portal; only the CKAN dataset and file name are documented
-  (`docs/domain-model.md`, section 2). `pipeline/mirror_photos.py` takes the ZIPs as file input
-  (`PhotoZip`) rather than guessing the URL; wiring the download is a follow-up left for the
-  scheduled workflow (README, "Mirroring candidate photos to R2").
+- The fixtures are hand-written; the real TSE files differ from them in ways the fixtures only
+  show through derived variants (`with_fields` and the constants below it in
+  `tests/conftest.py`): a place number is unique per municipality within a zone, an aggregated
+  section can be registered at another place than its main section, and a substituted
+  candidacy can still be flagged on the ballot. Findings of the first real ingestion
+  (2026-09-24): `docs/domain-model.md` section 7 and that date's entry in `wiki/log.md`.
+- The candidate photo ZIPs answer at
+  `https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`
+  (HEAD 200 on 2026-09-24), but nothing downloads them yet: `pipeline/mirror_photos.py` takes
+  the ZIPs as file input (`PhotoZip`) and wiring the download into `refresh.yml` is a
+  follow-up (README, "Mirroring candidate photos to R2").
 
 ## Agent skills
 

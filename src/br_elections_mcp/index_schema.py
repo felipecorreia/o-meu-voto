@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 INDEX_FILE_NAME = "index.duckdb"
 MANIFEST_FILE_NAME = "manifest.json"
@@ -140,8 +140,13 @@ CANDIDATES_COMPLEMENTARY_CSV_COLUMNS: tuple[str, ...] = (
     "SQ_CANDIDATO",
     "ST_CANDIDATO_INSERIDO_URNA",
     "DS_SITUACAO_JULGAMENTO",
+    "SQ_SUBSTITUIDO",
 )
 """Columns of ``consulta_cand_complementar_*.csv`` the build reads.
+
+``SQ_SUBSTITUIDO`` names the candidacy a substitute replaced; a candidacy some other row
+names there is off the ballot whatever its ``ST_CANDIDATO_INSERIDO_URNA`` says
+(docs/domain-model.md, 3.5).
 
 ``NR_TURNO`` is optional: when present the join is by (``SQ_CANDIDATO``,
 ``NR_TURNO``); when absent the file is deduplicated by ``SQ_CANDIDATO`` and
@@ -186,7 +191,7 @@ TABLES: dict[str, str] = {
             section_count            INTEGER NOT NULL,
             accessible_section_count INTEGER NOT NULL,
             voters                   INTEGER NOT NULL,
-            PRIMARY KEY (uf, zone, number, round)
+            PRIMARY KEY (uf, zone, municipality_tse_code, number, round)
         )
     """,
     "polling_sections": """

@@ -465,7 +465,8 @@ acessíveis, os dois números mostram a diferença em vez de um rótulo ambíguo
 `accessible_section_count` do exemplo são ilustrativos.
 
 Avisos possíveis: seção agregada ("Sua seção é agregada: a votação acontece na seção 8, no
-mesmo local."); local mudou ("O local de votação mudou. Antes era EMEF AMÁLIA PAUNGARTTEN,
+mesmo local.", ou "..., em outro local: NOME DO LOCAL." quando a agregada está cadastrada num
+local diferente do da principal; `place` é sempre o local da principal); local mudou ("O local de votação mudou. Antes era EMEF AMÁLIA PAUNGARTTEN,
 endereço X."); os avisos de turno da seção 3.4; dado envelhecido (seção 9).
 
 `not_found.reason`: `secao_nao_encontrada`. `guidance`: "Confira a zona e a seção no
