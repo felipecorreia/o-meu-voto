@@ -23,7 +23,8 @@ Pointers only; the content lives in the files below.
   `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts).
   Local run, the Claude Desktop connection and the service image over real TSE data
   (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
-  refresh workflow: README, "Publishing the index".
+  refresh workflow: README, "Publishing the index". Cloud Run + Cloudflare deploy checklist,
+  costs and open decisions: `docs/deploy-runbook.md` (nothing provisioned yet).
 
 ## Sharp edges
 

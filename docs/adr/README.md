@@ -13,3 +13,4 @@ do repositório), com a seção indicada.
 | [0004](0004-lgpd-candidate-data-minimization.md) | Tratamento LGPD dos dados de candidato: minimização na ingestão |
 | [0005](0005-cloud-run-behind-cloudflare.md) | Cloud Run em southamerica-east1 atrás da Cloudflare, página no Pages, fotos no R2 |
 | [0006](0006-jev-restricted-to-static-page.md) | Jev restrito à caixa de linguagem natural da página estática |
+| [0007](0007-product-recorte-mvp-then-comparator.md) | Product recorte: finish the MVP before round 1, candidate comparator as the first new scope |
