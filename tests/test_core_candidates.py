@@ -55,7 +55,7 @@ def test_scenario_9_president_is_asked_with_uf_br_and_lists_only_the_heads(core:
         "sq_candidato": 20000000001,
         "number": 13,
         "ballot_name": "FERNANDO",
-        "name": "FERNANDO AUGUSTO PEREIRA",
+        "name": "Fernando Augusto Pereira",
         "office": "presidente",
         "party": {"number": 13, "acronym": "PT", "name": "PARTIDO DOS TRABALHADORES"},
         "federation": {"acronym": "PT/PC do B/PV", "name": "BRASIL DA ESPERANÇA"},

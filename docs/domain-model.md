@@ -346,9 +346,10 @@ Regras complementares (detalhadas no ADR 0004):
    acessibilidade (§2.1, resposta em 0,6 ms no DuckDB).
 2. **Seção agregada.** (PA, 102, 9) é agregada com principal 8: a resposta traz o local e o
    aviso "sua seção é agregada; a votação acontece na seção 8, no mesmo local".
-3. **Local mudou.** Belém, zona 29, seção 91 migrou de "EMEF AMÁLIA PAUNGARTTEN" para
-   "UNIVERSIDADE FEDERAL DO PARÁ": `previous_place` preenchido, aviso "o local mudou; antes era
-   EMEF AMÁLIA PAUNGARTTEN".
+3. **Local mudou.** Belém, zona 29, seção 91 migrou de "EMEF Amália Paungartten" para
+   "Universidade Federal do Pará" (caixa do índice, regra de nomes em `codebase-design.md`
+   seção 7): `previous_place` preenchido, aviso "o local mudou; antes era EMEF Amália
+   Paungartten".
 4. **Exterior.** (ZZ, zona, seção) de Frankfurt resolve para um local em Colônia, Alemanha;
    município sem código IBGE; mesmo esquema.
 5. **Segundo turno ainda não publicado.** Pedido com `round = 2` antes de o TSE publicar as

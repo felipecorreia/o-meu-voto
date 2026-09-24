@@ -12,7 +12,7 @@ from br_elections_mcp.core import CandidateAnswer, CandidateProfile, Core, Inval
 from br_elections_mcp.core.divulgacandcontas import REGION_BY_UF, candidate_page_url
 from br_elections_mcp.domain import UF
 from br_elections_mcp.pipeline.datasets import POLLING_PLACES_CURRENT
-from tests.conftest import ACRE_CANDIDATES, build_fixture_index, fixed_clock, open_core
+from tests.conftest import ACRE_CANDIDATES, build_fixture_index, fixed_clock, open_core, with_fields
 from tests.test_core_candidates import LIST_ITEM_FIELDS, PROFILE_ONLY_FIELDS
 
 GOVERNOR_45 = 10000000001
@@ -42,7 +42,7 @@ def test_scenario_8_governor_by_number_carries_the_vice_with_the_same_number(cor
         "sq_candidato": GOVERNOR_45,
         "number": 45,
         "ballot_name": "MARIA DA SILVA",
-        "name": "MARIA APARECIDA DA SILVA",
+        "name": "Maria Aparecida da Silva",
         "office": "governador",
         "party": {
             "number": 45,
@@ -67,7 +67,7 @@ def test_scenario_8_governor_by_number_carries_the_vice_with_the_same_number(cor
                 "sq_candidato": VICE_45,
                 "office": "vice_governador",
                 "ballot_name": "JOÃO DO ACRE",
-                "name": "JOÃO BATISTA PEREIRA",
+                "name": "João Batista Pereira",
                 "party": {
                     "number": 15,
                     "acronym": "MDB",
@@ -206,6 +206,25 @@ def test_divulgacandcontas_link_is_null_for_an_election_outside_the_calendar(tmp
         core.close()
     assert candidate.divulgacandcontas_url is None
     assert candidate.round == 1
+
+
+def test_social_name_is_shown_exactly_as_published_never_recased(tmp_path: Path):
+    # NM_SOCIAL_CANDIDATO is self-declared, like ballot_name: the casing pass must leave it
+    # untouched even though the civil name in the same row gets title-cased.
+    candidates = with_fields(
+        ACRE_CANDIDATES,
+        tmp_path,
+        ("SQ_CANDIDATO",),
+        {(str(GOVERNOR_45),): {"NM_SOCIAL_CANDIDATO": "MARIA SILVA"}},
+    )
+    build_fixture_index(tmp_path / "index", candidates=candidates)
+    core = open_core(tmp_path / "index")
+    try:
+        candidate = profile(core.get_candidate(GOVERNOR_45))
+    finally:
+        core.close()
+    assert candidate.social_name == "MARIA SILVA"
+    assert candidate.name == "Maria Aparecida da Silva"
 
 
 @pytest.mark.parametrize(

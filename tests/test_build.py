@@ -96,12 +96,12 @@ def test_municipalities_come_from_the_crosswalk_with_the_abroad_fallback(acre_in
     finally:
         conn.close()
     assert rows == [
-        ("01120", 1200203, "CRUZEIRO DO SUL", "AC", "CRUZEIRO DO SUL"),
-        ("01392", 1200401, "RIO BRANCO", "AC", "RIO BRANCO"),
-        ("01481", 1200807, "PORTO ACRE", "AC", "PORTO ACRE"),
-        ("01503", 1200609, "PORTO WALTER", "AC", "PORTO WALTER"),
+        ("01120", 1200203, "Cruzeiro do Sul", "AC", "CRUZEIRO DO SUL"),
+        ("01392", 1200401, "Rio Branco", "AC", "RIO BRANCO"),
+        ("01481", 1200807, "Porto Acre", "AC", "PORTO ACRE"),
+        ("01503", 1200609, "Porto Walter", "AC", "PORTO WALTER"),
         # Abroad: missing from the crosswalk, so the name the TSE prints and no IBGE code.
-        ("30015", None, "COLÔNIA", "ZZ", "COLONIA"),
+        ("30015", None, "Colônia", "ZZ", "COLONIA"),
     ]
 
 
@@ -144,8 +144,8 @@ def test_a_place_number_shared_by_two_municipalities_of_a_zone_is_two_places(tmp
     finally:
         conn.close()
     assert rows == [
-        ("01120", "ESCOLA ESTADUAL FLODOARDO CABRAL", 1),
-        ("01392", "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA", 3),
+        ("01120", "Escola Estadual Flodoardo Cabral", 1),
+        ("01392", "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada", 3),
     ]
 
 
@@ -192,7 +192,7 @@ def test_candidate_row_maps_office_by_text_and_joins_the_complementary_file(acre
     assert governor["office"] == "governador"
     assert governor["number"] == 13
     assert governor["ballot_name"] == "ZÉ ANTÔNIO"
-    assert governor["name"] == "JOSÉ ANTÔNIO DOS SANTOS"
+    assert governor["name"] == "José Antônio dos Santos"
     assert governor["social_name"] is None  # #NULO
     assert (governor["party_number"], governor["party_acronym"]) == (13, "PT")
     assert governor["party_name"] == "PARTIDO DOS TRABALHADORES"

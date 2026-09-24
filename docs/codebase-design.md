@@ -397,8 +397,24 @@ recolhidos; "Ver ficha" na lista usa `GET /candidates/{sq_candidato}`; badges, c
 painel da eleição são ícones e blocos, com a legenda ao passar o mouse (desktop) ou ícone com
 rótulo curto e legenda ao tocar (celular). A regra de caixa dos nomes (Título em locais,
 endereços e nomes civis com lista de siglas, nome de urna como publicado, avisos do `core`
-com a mesma regra) é do serviço, não da página, e fica para depois da primeira ingestão real.
-Implementação, execução local e o que foi verificado: `web/README.md`.
+com a mesma regra) é do serviço, não da página. Implementada em `pipeline/casing.py`
+(`title_case_pt`), aplicada uma vez na construção do índice (`build.py`, `_apply_display_casing`),
+não a cada resposta: o valor que o índice guarda já é o que o serviço devolve, e um aviso do
+`core` que cita um nome herda a caixa de graça, sem regra duplicada lá. Alcança
+`municipalities.name`, `polling_places.name`/`address`/`neighborhood`,
+`polling_sections.previous_place_name`/`previous_place_address` e `candidates.name` (nome
+civil); nomes autodeclarados (`candidates.ballot_name`, nome de urna, e
+`candidates.social_name`, nome social) nunca passam por ela — aparecem exatamente como
+publicados. Conectivos do português
+(de, da, do, das, dos, e, em, na, no...) ficam minúsculos, exceto na primeira ou na última
+palavra do nome — uma sigla como número de setor ("Setor A", "Freguesia do Ó" sem o acento na
+fonte) nunca é, de fato, um conectivo pendurado no fim. A lista de siglas mantidas em
+maiúsculas (IEPTEC, IFAC, os 34 outros Institutos Federais, siglas de escola/assistência
+social como EMEF/CRAS/APAE/UBS, códigos de superquadra de Brasília e as UFs do domínio) foi
+minerada do índice real construído em 2026-09-24 e é o próprio `ACRONYMS` do módulo, com a
+derivação comentada ali; issue #48 (município em caixa mista no crosswalk real, ex. "Rio
+Branco Do Ivaí") fechou junto. Fica para depois: nada — a regra já roda desde a primeira
+ingestão real. Implementação, execução local e o que foi verificado: `web/README.md`.
 
 ## 8. Contratos das seis tools
 
@@ -458,7 +474,7 @@ local e `ibge_code` são ilustrativos):
 
 ```json
 {
-  "municipality": { "tse_code": "01392", "ibge_code": 1200000, "name": "RIO BRANCO", "uf": "AC" },
+  "municipality": { "tse_code": "01392", "ibge_code": 1200000, "name": "Rio Branco", "uf": "AC" },
   "round": 1,
   "zone": 9,
   "section": 422,
@@ -467,9 +483,9 @@ local e `ibge_code` são ilustrativos):
   "voters_in_section": 260,
   "accessibility": "com_acessibilidade",
   "place": {
-    "number": 1000, "name": "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA",
-    "kind": "Convencional", "address": "RUA RIO GRANDE DO SUL, 2600",
-    "neighborhood": "AEROPORTO VELHO", "postal_code": "69911030", "phone": null,
+    "number": 1000, "name": "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada",
+    "kind": "Convencional", "address": "Rua Rio Grande do Sul, 2600",
+    "neighborhood": "Aeroporto Velho", "postal_code": "69911030", "phone": null,
     "latitude": -9.9848126, "longitude": -67.8225501,
     "status": "ativo", "section_count": 12, "accessible_section_count": 12
   },
@@ -485,8 +501,10 @@ acessíveis, os dois números mostram a diferença em vez de um rótulo ambíguo
 
 Avisos possíveis: seção agregada ("Sua seção é agregada: a votação acontece na seção 8, no
 mesmo local.", ou "..., em outro local: NOME DO LOCAL." quando a agregada está cadastrada num
-local diferente do da principal; `place` é sempre o local da principal); local mudou ("O local de votação mudou. Antes era EMEF AMÁLIA PAUNGARTTEN,
-endereço X."); os avisos de turno da seção 3.4; dado envelhecido (seção 9).
+local diferente do da principal; `place` é sempre o local da principal); local mudou ("O local
+de votação mudou. Antes era EMEF Amália Paungartten, endereço X." — o nome citado já vem do
+índice na caixa da seção 7, não é recaixado aqui); os avisos de turno da seção 3.4; dado
+envelhecido (seção 9).
 
 `not_found.reason`: `secao_nao_encontrada`. `guidance`: "Confira a zona e a seção no
 e-Título ou no título impresso. Sem o título, use o serviço Onde votar do TSE:

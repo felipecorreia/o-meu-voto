@@ -287,7 +287,7 @@ async def test_get_candidate_by_sq_candidato_returns_the_envelope_and_a_pt_br_te
     assert result.is_error is False
     assert result.structured_content == core.get_candidate(10000000001).model_dump(mode="json")
     text = result.content[0].text
-    assert "45 MARIA DA SILVA (MARIA APARECIDA DA SILVA), governador, turno 1" in text
+    assert "45 MARIA DA SILVA (Maria Aparecida da Silva), governador, turno 1" in text
     assert "coligação ACRE PARA TODOS" in text
     assert "Chapa: vice governador JOÃO DO ACRE (MDB)." in text
     assert "https://www.instagram.com/mariadasilva45" in text
@@ -379,7 +379,7 @@ async def test_search_polling_places_returns_the_envelope_and_a_pt_br_text(core:
     assert "distance_km" not in result.structured_content["data"]["places"][0]
     text = result.content[0].text
     assert "2 locais" in text
-    assert "COLÉGIO ACREANO" in text
+    assert "Colégio Acreano" in text
     assert "Para saber a sua seção, consulte o e-Título." in text
     assert "Fonte:" in text
 
@@ -413,8 +413,8 @@ async def test_search_polling_places_ambiguous_municipality_lists_options(core: 
     assert result.is_error is False
     not_found = result.structured_content["not_found"]
     assert not_found["reason"] == "municipio_ambiguo"
-    assert [o["name"] for o in not_found["options"]] == ["PORTO ACRE", "PORTO WALTER"]
-    assert "PORTO ACRE" in result.content[0].text
+    assert [o["name"] for o in not_found["options"]] == ["Porto Acre", "Porto Walter"]
+    assert "Porto Acre" in result.content[0].text
 
 
 async def test_search_polling_places_invalid_limit_is_a_result_with_is_error(core: Core):
@@ -435,7 +435,7 @@ async def test_resolve_municipality_returns_the_envelope_and_a_pt_br_text(core: 
     assert result.structured_content == expected.model_dump(mode="json")
     assert result.structured_content["data"]["municipalities"][0]["ibge_code"] is None
     text = result.content[0].text
-    assert "COLÔNIA" in text and "ZZ" in text and "30015" in text
+    assert "Colônia" in text and "ZZ" in text and "30015" in text
     assert "Fonte:" in text
 
 

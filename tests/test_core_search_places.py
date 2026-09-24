@@ -29,11 +29,11 @@ def test_scenario_4_abroad_section_resolves_to_a_place_in_cologne_with_the_same_
     assert data.municipality.model_dump() == {
         "tse_code": "30015",
         "ibge_code": None,
-        "name": "COLÔNIA",
+        "name": "Colônia",
         "uf": "ZZ",
     }
-    assert data.place.name == "CONSULADO-GERAL DO BRASIL EM COLÔNIA"
-    assert data.place.address == "BENRATHER STRASSE 8"
+    assert data.place.name == "Consulado-Geral do Brasil em Colônia"
+    assert data.place.address == "Benrather Strasse 8"
     assert (data.place.section_count, data.place.accessible_section_count) == (2, 1)
     assert answer.election is not None
 
@@ -48,7 +48,7 @@ def test_resolve_municipality_is_case_and_whitespace_insensitive(core: Core, nam
     assert answer.not_found is None
     assert answer.data is not None
     assert [m.model_dump() for m in answer.data.municipalities] == [
-        {"tse_code": "01392", "ibge_code": 1200401, "name": "RIO BRANCO", "uf": "AC", "score": 1.0}
+        {"tse_code": "01392", "ibge_code": 1200401, "name": "Rio Branco", "uf": "AC", "score": 1.0}
     ]
 
 
@@ -57,7 +57,7 @@ def test_resolve_municipality_is_accent_insensitive_and_abroad_has_no_ibge_code(
 
     assert answer.data is not None
     assert [m.model_dump() for m in answer.data.municipalities] == [
-        {"tse_code": "30015", "ibge_code": None, "name": "COLÔNIA", "uf": "ZZ", "score": 1.0}
+        {"tse_code": "30015", "ibge_code": None, "name": "Colônia", "uf": "ZZ", "score": 1.0}
     ]
 
 
@@ -66,7 +66,7 @@ def test_resolve_municipality_lists_partial_matches_by_score(core: Core):
 
     assert answer.data is not None
     matches = answer.data.municipalities
-    assert [(m.name, m.uf) for m in matches] == [("PORTO ACRE", "AC"), ("PORTO WALTER", "AC")]
+    assert [(m.name, m.uf) for m in matches] == [("Porto Acre", "AC"), ("Porto Walter", "AC")]
     assert all(0 < m.score < 1 for m in matches)
 
 
@@ -74,7 +74,7 @@ def test_resolve_municipality_tolerates_a_typo_with_a_lower_score(core: Core):
     answer = core.resolve_municipality("Rio Branca", uf="ac")
 
     assert answer.data is not None
-    assert [m.name for m in answer.data.municipalities] == ["RIO BRANCO"]
+    assert [m.name for m in answer.data.municipalities] == ["Rio Branco"]
     assert 0.9 < answer.data.municipalities[0].score < 1.0
 
 
@@ -88,7 +88,7 @@ def test_resolve_municipality_filters_by_uf(core: Core):
 def test_resolve_municipality_honors_limit(core: Core):
     answer = core.resolve_municipality("porto", limit=1)
     assert answer.data is not None
-    assert [m.name for m in answer.data.municipalities] == ["PORTO ACRE"]
+    assert [m.name for m in answer.data.municipalities] == ["Porto Acre"]
 
 
 def test_resolve_municipality_not_found_carries_guidance(core: Core):
@@ -142,7 +142,7 @@ def test_scenario_7_places_of_a_municipality_filtered_by_neighborhood(core: Core
     assert data.municipality.model_dump() == {
         "tse_code": "01392",
         "ibge_code": 1200401,
-        "name": "RIO BRANCO",
+        "name": "Rio Branco",
         "uf": "AC",
     }
     assert data.total == 2
@@ -151,10 +151,10 @@ def test_scenario_7_places_of_a_municipality_filtered_by_neighborhood(core: Core
         {
             "number": 1050,
             "zone": 9,
-            "name": "COLÉGIO ACREANO",
+            "name": "Colégio Acreano",
             "kind": "Convencional",
-            "address": "RUA RUI BARBOSA, 200",
-            "neighborhood": "CENTRO",
+            "address": "Rua Rui Barbosa, 200",
+            "neighborhood": "Centro",
             "postal_code": "69900120",
             "phone": None,
             "latitude": -9.9738,
@@ -167,10 +167,10 @@ def test_scenario_7_places_of_a_municipality_filtered_by_neighborhood(core: Core
         {
             "number": 1035,
             "zone": 9,
-            "name": "ESCOLA ESTADUAL JOSÉ RODRIGUES LEITE",
+            "name": "Escola Estadual José Rodrigues Leite",
             "kind": "Convencional",
-            "address": "AVENIDA CEARÁ, 1500",
-            "neighborhood": "CENTRO",
+            "address": "Avenida Ceará, 1500",
+            "neighborhood": "Centro",
             "postal_code": "69900460",
             "phone": "(68) 3223-1234",
             "latitude": -9.9754,
@@ -229,7 +229,7 @@ def test_search_of_a_municipality_without_places_is_an_empty_list(core: Core):
 
     assert answer.not_found is None
     assert answer.data is not None
-    assert answer.data.municipality.name == "PORTO ACRE"
+    assert answer.data.municipality.name == "Porto Acre"
     assert answer.data.total == 0
 
 
@@ -287,7 +287,7 @@ def test_search_abroad_lists_the_place_in_cologne(core: Core):
 
     assert answer.data is not None
     assert answer.data.municipality.ibge_code is None
-    assert [p.name for p in answer.data.places] == ["CONSULADO-GERAL DO BRASIL EM COLÔNIA"]
+    assert [p.name for p in answer.data.places] == ["Consulado-Geral do Brasil em Colônia"]
     assert answer.data.places[0].voters == 412 + 398
 
 

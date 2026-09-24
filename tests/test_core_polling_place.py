@@ -37,7 +37,7 @@ def test_scenario_1_title_in_hand(core: Core):
     assert data.municipality.model_dump() == {
         "tse_code": "01392",
         "ibge_code": 1200401,
-        "name": "RIO BRANCO",
+        "name": "Rio Branco",
         "uf": "AC",
     }
     assert (data.round, data.zone, data.section) == (1, 9, 422)
@@ -48,10 +48,10 @@ def test_scenario_1_title_in_hand(core: Core):
     assert data.previous_place is None
     place = data.place
     assert place.number == 1000
-    assert place.name == "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA"
+    assert place.name == "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada"
     assert place.kind == "Convencional"
-    assert place.address == "RUA RIO GRANDE DO SUL, 2600"
-    assert place.neighborhood == "AEROPORTO VELHO"
+    assert place.address == "Rua Rio Grande do Sul, 2600"
+    assert place.neighborhood == "Aeroporto Velho"
     assert place.postal_code == "69911030"
     assert place.phone is None
     assert (place.latitude, place.longitude) == (-9.9848126, -67.8225501)
@@ -87,10 +87,10 @@ def test_aggregated_section_registered_elsewhere_votes_at_the_main_sections_plac
     assert answer.data is not None
     assert answer.data.votes_at_section == 422
     assert answer.data.place.number == 1000
-    assert answer.data.place.name == "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA"
+    assert answer.data.place.name == "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada"
     assert answer.warnings == [
         "Sua seção é agregada: a votação acontece na seção 422, em outro local: "
-        "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA."
+        "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada."
     ]
 
 
@@ -109,13 +109,13 @@ def test_place_number_shared_by_two_municipalities_of_a_zone_resolves_by_municip
         core.close()
 
     assert cruzeiro.data is not None
-    assert cruzeiro.data.municipality.name == "CRUZEIRO DO SUL"
+    assert cruzeiro.data.municipality.name == "Cruzeiro do Sul"
     assert cruzeiro.data.place.number == 1000
-    assert cruzeiro.data.place.name == "ESCOLA ESTADUAL FLODOARDO CABRAL"
+    assert cruzeiro.data.place.name == "Escola Estadual Flodoardo Cabral"
     assert cruzeiro.data.place.section_count == 1
     assert rio_branco.data is not None
     assert (
-        rio_branco.data.place.name == "IEPTEC - ANTIGO INSTITUTO FEDERAL DO ACRE - IFAC - BAIXADA"
+        rio_branco.data.place.name == "IEPTEC - Antigo Instituto Federal do Acre - IFAC - Baixada"
     )
     assert rio_branco.data.place.section_count == 3
 
@@ -128,11 +128,11 @@ def test_scenario_3_place_changed_carries_the_previous_place_and_the_warning(cor
     assert answer.data.previous_place is not None
     assert answer.data.previous_place.model_dump() == {
         "number": 1027,
-        "name": "EMEF ANTÔNIO FERREIRA",
-        "address": "RUA DO ALTO, 80",
+        "name": "EMEF Antônio Ferreira",
+        "address": "Rua do Alto, 80",
     }
     assert answer.warnings == [
-        "O local de votação mudou. Antes era EMEF ANTÔNIO FERREIRA, endereço RUA DO ALTO, 80."
+        "O local de votação mudou. Antes era EMEF Antônio Ferreira, endereço Rua do Alto, 80."
     ]
 
 
@@ -156,7 +156,7 @@ def test_place_without_coordinates_and_blocked_status_is_reported_as_it_comes(co
     assert answer.data.place.latitude is None
     assert answer.data.place.longitude is None
     assert answer.data.place.status == "bloqueado"
-    assert answer.data.municipality.name == "CRUZEIRO DO SUL"
+    assert answer.data.municipality.name == "Cruzeiro do Sul"
 
 
 @pytest.mark.parametrize("zone", ["009", 9, " 9 ", "9"])

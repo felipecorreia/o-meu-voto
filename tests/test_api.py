@@ -364,7 +364,7 @@ def test_polling_places_ambiguous_municipality_is_200_with_options(client: TestC
     body = response.json()
     assert body["data"] is None
     assert body["not_found"]["reason"] == "municipio_ambiguo"
-    assert [o["name"] for o in body["not_found"]["options"]] == ["PORTO ACRE", "PORTO WALTER"]
+    assert [o["name"] for o in body["not_found"]["options"]] == ["Porto Acre", "Porto Walter"]
 
 
 @pytest.mark.parametrize(
@@ -413,7 +413,7 @@ def test_municipalities_uf_and_limit_are_passed_through(client: TestClient):
         "/api/v1/municipalities", params={"name": "porto", "uf": "ac", "limit": "1"}
     )
     assert response.status_code == 200
-    assert [m["name"] for m in response.json()["data"]["municipalities"]] == ["PORTO ACRE"]
+    assert [m["name"] for m in response.json()["data"]["municipalities"]] == ["Porto Acre"]
 
     response = client.get("/api/v1/municipalities", params={"name": "porto", "limit": "0"})
     assert response.status_code == 400

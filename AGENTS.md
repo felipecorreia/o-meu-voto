@@ -45,6 +45,11 @@ Pointers only; the content lives in the files below.
   section can be registered at another place than its main section, and a substituted
   candidacy can still be flagged on the ballot. Findings of the first real ingestion
   (2026-09-24): `docs/domain-model.md` section 7 and that date's entry in `wiki/log.md`.
+- Display casing (locais/endereços/municípios/nome civil, title case with a mined acronym
+  list, `nome_urna` untouched) is applied once at index build time
+  (`pipeline/casing.py`/`build.py`, `codebase-design.md` section 7), not in `core`: the
+  index already stores the display value, so a `core` warning that quotes a name inherits the
+  casing for free. Add a name-bearing column to `_CASED_COLUMNS` there, not to `core`.
 - The candidate photo ZIPs answer at
   `https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`
   (HEAD 200 on 2026-09-24), but nothing downloads them yet: `pipeline/mirror_photos.py` takes

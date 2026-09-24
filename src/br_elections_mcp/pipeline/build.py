@@ -37,6 +37,7 @@ from br_elections_mcp.index_schema import (
     read_manifest,
     write_manifest,
 )
+from br_elections_mcp.pipeline.casing import title_case_pt
 from br_elections_mcp.pipeline.datasets import SourceFile
 
 _CSV_OPTIONS = CSV_READ_OPTIONS
@@ -134,6 +135,7 @@ def build_index(
         conn.execute(_insert_candidates_sql(office_sql, with_round=complementary_has_round))
         _check_tickets(conn)
         conn.execute(_INSERT_SOCIAL_LINKS)
+        _apply_display_casing(conn)
         counts = {
             table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # type: ignore[index]
             for table in TABLES
@@ -201,6 +203,48 @@ def apply_photo_urls(index_dir: Path, photo_urls: Mapping[int, str]) -> None:
     manifest_path = index_dir / MANIFEST_FILE_NAME
     manifest = read_manifest(manifest_path)
     write_manifest(manifest.model_copy(update={"index_sha256": _sha256(index_path)}), manifest_path)
+
+
+# The columns the casing rule applies to (docs/codebase-design.md, section 7): polling
+# place names, addresses and neighborhoods, municipality names, the previous-place fields a
+# warning quotes, and the candidate's civil name. Self-declared names (``ballot_name``,
+# ``social_name``) are deliberately absent: they are shown exactly as published.
+_CASED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("municipalities", "name"),
+    ("polling_places", "name"),
+    ("polling_places", "address"),
+    ("polling_places", "neighborhood"),
+    ("polling_sections", "previous_place_name"),
+    ("polling_sections", "previous_place_address"),
+    ("candidates", "name"),
+)
+
+
+def _apply_display_casing(conn: duckdb.DuckDBPyConnection) -> None:
+    """Title-case the columns of ``_CASED_COLUMNS`` in place (``casing.title_case_pt``)."""
+    for table, column in _CASED_COLUMNS:
+        _recase_column(conn, table, column)
+
+
+def _recase_column(conn: duckdb.DuckDBPyConnection, table: str, column: str) -> None:
+    distinct_values = [
+        row[0]
+        for row in conn.execute(
+            f"SELECT DISTINCT {column} FROM {table} WHERE {column} IS NOT NULL"
+        ).fetchall()
+    ]
+    changed = [
+        (value, cased) for value in distinct_values if (cased := title_case_pt(value)) != value
+    ]
+    if not changed:
+        return
+    conn.execute("CREATE OR REPLACE TEMP TABLE _casing_map (orig VARCHAR, cased VARCHAR)")
+    conn.executemany("INSERT INTO _casing_map VALUES (?, ?)", changed)
+    conn.execute(
+        f"UPDATE {table} SET {column} = _casing_map.cased "
+        f"FROM _casing_map WHERE {table}.{column} = _casing_map.orig"
+    )
+    conn.execute("DROP TABLE _casing_map")
 
 
 def _load_source(
