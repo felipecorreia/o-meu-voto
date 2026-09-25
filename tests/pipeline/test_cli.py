@@ -9,6 +9,7 @@ import pytest
 from br_elections_mcp.index_schema import INDEX_FILE_NAME, MANIFEST_FILE_NAME, read_manifest
 from br_elections_mcp.pipeline.__main__ import main
 from tests.conftest import (
+    ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
     ACRE_CANDIDATES_COMPLEMENTARY,
     ACRE_MUNICIPALITIES,
@@ -31,6 +32,8 @@ def _build_args(output: Path) -> list[str]:
         str(ACRE_CANDIDATES_COMPLEMENTARY),
         "--social-links",
         str(ACRE_SOCIAL_LINKS),
+        "--candidate-assets",
+        str(ACRE_CANDIDATE_ASSETS),
         "--output-dir",
         str(output),
     ]
@@ -47,6 +50,7 @@ def test_build_command_writes_the_index_with_candidates(tmp_path: Path, capsys):
         "candidates",
         "candidates_complementary",
         "candidate_social_links",
+        "candidate_assets",
     }
     assert "'candidates': 23" in capsys.readouterr().out
 
@@ -80,6 +84,8 @@ def _validate_args(index_dir: Path, output: Path) -> list[str]:
         str(ACRE_CANDIDATES_COMPLEMENTARY),
         "--social-links",
         str(ACRE_SOCIAL_LINKS),
+        "--candidate-assets",
+        str(ACRE_CANDIDATE_ASSETS),
         "--index-dir",
         str(index_dir),
         "--elections",

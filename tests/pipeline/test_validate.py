@@ -14,6 +14,7 @@ from br_elections_mcp.index_schema import (
     write_manifest,
 )
 from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_ASSETS_2026,
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
     CANDIDATES_COMPLEMENTARY_2026,
@@ -25,6 +26,7 @@ from br_elections_mcp.pipeline.datasets import (
 )
 from br_elections_mcp.pipeline.validate import ValidationError, ValidationReport, validate
 from tests.conftest import (
+    ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
     ACRE_CANDIDATES_COMPLEMENTARY,
     ACRE_MUNICIPALITIES,
@@ -49,6 +51,7 @@ def run_validate(
     candidates: Path = ACRE_CANDIDATES,
     candidates_complementary: Path = ACRE_CANDIDATES_COMPLEMENTARY,
     social_links: Path = ACRE_SOCIAL_LINKS,
+    candidate_assets: Path = ACRE_CANDIDATE_ASSETS,
     dataset: Dataset = POLLING_PLACES_2026,
     output_dir: Path | None = None,
     elections_path: Path = ELECTIONS_FILE,
@@ -60,6 +63,7 @@ def run_validate(
         SourceFile(CANDIDATES_2026, candidates),
         SourceFile(CANDIDATES_COMPLEMENTARY_2026, candidates_complementary),
         SourceFile(CANDIDATE_SOCIAL_LINKS_2026, social_links),
+        SourceFile(CANDIDATE_ASSETS_2026, candidate_assets),
         index_dir,
         elections_path,
         output_dir or index_dir,
@@ -167,6 +171,18 @@ def test_csv_header_gate_fails_on_a_missing_expected_column(acre_index_dir: Path
         run_validate(acre_index_dir, polling_places=broken, output_dir=tmp_path)
     assert "csv_header" in str(excinfo.value)
     assert _gate(excinfo.value, "csv_header").status == "fail"
+
+
+def test_csv_header_gate_covers_the_asset_file(acre_index_dir: Path, tmp_path: Path):
+    broken = tmp_path / "bem_candidato_2026_BRASIL.csv"
+    broken.write_bytes(
+        ACRE_CANDIDATE_ASSETS.read_bytes().replace(b'"VR_BEM_CANDIDATO"', b'"VR_BEM"', 1)
+    )
+    with pytest.raises(ValidationError) as excinfo:
+        run_validate(acre_index_dir, candidate_assets=broken, output_dir=tmp_path)
+    gate = _gate(excinfo.value, "csv_header")
+    assert gate.status == "fail"
+    assert "candidate_assets lacks expected columns: ['VR_BEM_CANDIDATO']" in gate.message
 
 
 def test_key_uniqueness_gate_fails_on_a_duplicated_section_key(

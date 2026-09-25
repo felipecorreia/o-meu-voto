@@ -17,6 +17,7 @@ from br_elections_mcp import __version__
 from br_elections_mcp.core import (
     CandidateAnswer,
     CandidatesAnswer,
+    CandidatesComparisonAnswer,
     Core,
     ElectionInfoAnswer,
     IndexUnavailable,
@@ -140,9 +141,10 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
             ),
         )
 
-    # Declaration order is part of the contract (codebase-design 4): `by-number` comes before
-    # `{sq_candidato}`, because the first matching route wins and the `int` annotation only
-    # turns a non-numeric segment into a clear 422, it never keeps the path from matching.
+    # Declaration order is part of the contract (codebase-design 4): `by-number` and `compare`
+    # come before `{sq_candidato}`, because the first matching route wins and the `int`
+    # annotation only turns a non-numeric segment into a clear 422, it never keeps the path
+    # from matching.
     @api.get(
         "/candidates/by-number",
         response_model=CandidateAnswer,
@@ -175,6 +177,52 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         return telemetry.call(
             "GET /api/v1/candidates/by-number",
             lambda: core.get_candidate(uf=uf, office=office, number=number, round=round),
+        )
+
+    @api.get(
+        "/candidates/compare",
+        response_model=CandidatesComparisonAnswer,
+        summary="Comparar candidatos",
+        description=(
+            "Compara lado a lado de 2 a 4 candidaturas do mesmo cargo, UF e turno, por sq "
+            "(repetido) ou por number (repetido): partido, aliança, situação do registro, destino "
+            "dos votos, ocupação, chapa, foto, total de bens declarados e links oficiais. Sempre "
+            "em ordem de número de urna: não ordena por valor, não pontua e não recomenda voto. "
+            "Sem sq nem number, compara todas as candidaturas na urna quando são de 2 a 4. Nunca "
+            "inclui CPF, título de eleitor, data de nascimento, idade, gênero, cor/raça, estado "
+            "civil ou escolaridade."
+        ),
+        responses={
+            400: {"description": "Entrada fora do domínio"},
+            503: {"description": "Índice indisponível"},
+        },
+    )
+    def compare_candidates(
+        uf: Annotated[str, Query(description="Sigla da UF: estados, DF ou BR para presidente")],
+        office: Annotated[
+            str,
+            Query(
+                description=(
+                    "Cargo de urna: presidente, governador, senador, deputado_federal, "
+                    "deputado_estadual ou deputado_distrital"
+                )
+            ),
+        ],
+        sq: Annotated[
+            list[str] | None,
+            Query(description="sq_candidato, de 2 a 4 vezes; ou number"),
+        ] = None,
+        number: Annotated[
+            list[str] | None,
+            Query(description="Número de urna, de 2 a 4 vezes; ou sq"),
+        ] = None,
+        round: Annotated[str | None, Query(description="Turno, opcional")] = None,
+    ) -> CandidatesComparisonAnswer:
+        return telemetry.call(
+            "GET /api/v1/candidates/compare",
+            lambda: core.compare_candidates(
+                uf, office, sq_candidatos=sq, numbers=number, round=round
+            ),
         )
 
     @api.get(

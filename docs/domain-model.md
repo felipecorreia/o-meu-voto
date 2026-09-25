@@ -12,7 +12,7 @@ PT-BR. Um campo marcado **derivado** é calculado na ingestão, não lido de uma
 
 ## 1. Escopo
 
-O serviço responde quatro grupos de pergunta do eleitor.
+O serviço responde cinco grupos de pergunta do eleitor.
 
 | # | Pergunta | Entidades | Fonte |
 |---|---|---|---|
@@ -20,6 +20,7 @@ O serviço responde quatro grupos de pergunta do eleitor.
 | 2 | Quais são os locais de votação da minha cidade ou bairro? | PollingPlace, Municipality | dataset de locais de votação e crosswalk TSE/IBGE |
 | 3 | Quem são os candidatos? Por cargo, nome ou número | Candidate, Office, Party, Federation, Coalition | datasets de candidatos, complementar, redes sociais e fotos |
 | 4 | Quando é a eleição e até que horas posso votar? | Election, ElectionRound, VotingHours | `data/elections.yaml`, curado da Resolução TSE 23.760/2026 |
+| 5 | Como estas 2 a 4 candidaturas se comparam lado a lado? (ADR 0008) | Candidate, com destino dos votos e total de bens declarados | datasets de candidatos, complementar, redes sociais, bens e fotos |
 
 Fora do domínio, por construção: tudo que depende do cadastro eleitoral individual (zona e
 seção a partir de nome, CPF ou título; situação do título; débitos; justificativas; convocação
@@ -40,6 +41,7 @@ separador `;`, codificação ISO-8859-1, aspas em todos os campos e as colunas `
 | `candidatos-2026` | `consulta_cand_2026.zip` (3,2 MB) | 20.984 candidaturas | 4x ao dia: 08:30, 12:30, 16:30, 19:30 |
 | `candidatos-2026` | `consulta_cand_complementar_2026.zip` (1,3 MB) | situação de julgamento e presença na urna, por `SQ_CANDIDATO` | idem |
 | `candidatos-2026` | `rede_social_candidato_2026.zip` (2,9 MB) | `SQ_CANDIDATO`, `DS_URL` | idem |
+| `candidatos-2026` | `bem_candidato_2026.zip` (3,7 MB) | um bem declarado por linha: `SQ_CANDIDATO`, `VR_BEM_CANDIDATO` (vírgula decimal), tipo e descrição livre; 77.254 bens de 13.909 candidaturas em 2026-09-25 (ADR 0008) | não declarada; regerado com os candidatos |
 | `candidatos-2026` | `foto_cand2026_{UF}_div.zip` (AC 2,3 MB, SP 15,6 MB) | JPEG `F{UF}{SQ_CANDIDATO}_div.jpg` | não declarada |
 | `codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge` | `municipio_tse_ibge.zip` (0,1 MB) | 5.571 municípios com código TSE e IBGE | não declarada |
 
@@ -216,6 +218,9 @@ arquivo principal vem `#NE` em 100% das linhas; a situação útil está só no 
 | `adjudication_status` | str, PT-BR | `DS_SITUACAO_JULGAMENTO` (complementar) |
 | `on_ballot` | bool | `ST_CANDIDATO_INSERIDO_URNA` (complementar; `SIM`/`NÃO`), falso quando outra candidatura do arquivo a substitui (`SQ_SUBSTITUIDO` dela aponta para esta) |
 | `occupation` | str, PT-BR | `DS_OCUPACAO` |
+| `vote_destination` | str ou nulo, PT-BR | `NM_TIPO_DESTINACAO_VOTOS` (complementar), como o TSE publica: "Válido", "Anulado sub judice", "Nulo técnico"; `#NULO` vira nulo (vices e suplentes vêm assim) |
+| `declares_assets` | bool ou nulo | `ST_DECLARAR_BENS` (complementar): `S` verdadeiro, `N` falso (declarou não possuir bens), outro valor ("Não divulgável") nulo |
+| `assets_total` | decimal ou nulo, **derivado** | soma de `VR_BEM_CANDIDATO` por `SQ_CANDIDATO` no dataset de bens, tabela `candidate_assets`; só o total, como declarado (ADR 0008) |
 | `gender` | str, PT-BR | `DS_GENERO`, como o TSE publica; só na ficha individual |
 | `race_color` | str, PT-BR | `DS_COR_RACA`, como o TSE publica; só na ficha individual |
 | `marital_status` | str, PT-BR | `DS_ESTADO_CIVIL`, como o TSE publica; só na ficha individual |
@@ -323,8 +328,11 @@ qualquer coisa; elas não existem no índice, e um teste falha se voltarem.
 | `DT_NASCIMENTO` | dado pessoal; nenhuma pergunta do eleitor depende dela |
 | `SG_UF_NASCIMENTO` | dado pessoal; sem pergunta do eleitor |
 | `DS_EMAIL` | dado pessoal (vem "NÃO DIVULGÁVEL", descartada mesmo assim) |
+| `DS_BEM_CANDIDATO` | texto livre de cada bem declarado: traz endereços, placas, agências e CPF do candidato e de terceiros (ADR 0009) |
 
-A lista é exatamente a decidida pelo capitão no grilling de 2026-09-17. Gênero, cor/raça,
+A lista é a decidida pelo capitão no grilling de 2026-09-17, mais `DS_BEM_CANDIDATO`
+(ADR 0009, 2026-09-25). A ADR 0009 também admite o título como chave de junção só em memória,
+para o crescimento patrimonial da v1.1; ele continua descartado em toda gravação. Gênero, cor/raça,
 estado civil e grau de instrução (`DS_GENERO`, `DS_COR_RACA`, `DS_ESTADO_CIVIL`,
 `DS_GRAU_INSTRUCAO`) ficam no índice como o TSE publica, sem inferência nem cruzamento, e
 aparecem só na ficha individual de `get_candidate`, nunca em `list_candidates` nem em

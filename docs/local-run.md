@@ -13,13 +13,14 @@ uv run python -m br_elections_mcp.pipeline build \
   --candidates tests/fixtures/acre/consulta_cand_2026_BRASIL.csv \
   --candidates-complementary tests/fixtures/acre/consulta_cand_complementar_2026_BRASIL.csv \
   --social-links tests/fixtures/acre/rede_social_candidato_2026_BRASIL.csv \
+  --candidate-assets tests/fixtures/acre/bem_candidato_2026_BRASIL.csv \
   --output-dir data/index
 ```
 
 Expected output:
 
 ```
-index written to data/index: {'municipalities': 5, 'polling_places': 12, 'polling_sections': 20, 'candidates': 23, 'candidate_social_links': 4}
+index written to data/index: {'municipalities': 5, 'polling_places': 12, 'polling_sections': 20, 'candidates': 23, 'candidate_social_links': 4, 'candidate_assets': 5}
 ```
 
 `data/index/` (`index.duckdb` and `manifest.json`) is git-ignored. The fixture rows are
@@ -114,7 +115,8 @@ SOURCES="--polling-places data/raw/csv/eleitorado_local_votacao_2026_BRASIL.csv 
   --municipalities data/raw/csv/municipio_tse_ibge.csv \
   --candidates data/raw/csv/consulta_cand_2026_BRASIL.csv \
   --candidates-complementary data/raw/csv/consulta_cand_complementar_2026_BRASIL.csv \
-  --social-links data/raw/csv/rede_social_candidato_2026_BRASIL.csv"
+  --social-links data/raw/csv/rede_social_candidato_2026_BRASIL.csv \
+  --candidate-assets data/raw/csv/bem_candidato_2026_BRASIL.csv"
 uv run python -m br_elections_mcp.pipeline build $SOURCES --output-dir data/index
 uv run python -m br_elections_mcp.pipeline validate $SOURCES --index-dir data/index \
   --elections data/elections.yaml --output-dir data/index

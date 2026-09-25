@@ -115,6 +115,7 @@ jobs:
             echo "CANDIDATES_CSV=$(extract consulta_cand_2026.zip)"
             echo "CANDIDATES_COMPLEMENTARY_CSV=$(extract consulta_cand_complementar_2026.zip)"
             echo "SOCIAL_LINKS_CSV=$(extract rede_social_candidato_2026.zip)"
+            echo "CANDIDATE_ASSETS_CSV=$(extract bem_candidato_2026.zip)"
           } >> "$GITHUB_ENV"
 
       - name: Build the index
@@ -125,6 +126,7 @@ jobs:
             --candidates "$CANDIDATES_CSV" \
             --candidates-complementary "$CANDIDATES_COMPLEMENTARY_CSV" \
             --social-links "$SOCIAL_LINKS_CSV" \
+            --candidate-assets "$CANDIDATE_ASSETS_CSV" \
             --output-dir "$WORK/index"
 
       - name: Download the manifest currently published
@@ -146,6 +148,7 @@ jobs:
             --candidates "$CANDIDATES_CSV" \
             --candidates-complementary "$CANDIDATES_COMPLEMENTARY_CSV" \
             --social-links "$SOCIAL_LINKS_CSV" \
+            --candidate-assets "$CANDIDATE_ASSETS_CSV" \
             --index-dir "$WORK/index" \
             --elections data/elections.yaml \
             --output-dir "$WORK/index" \

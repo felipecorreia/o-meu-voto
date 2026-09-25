@@ -9,8 +9,9 @@ Pointers only; the content lives in the files below.
 - **`docs/domain-model.md`**, **`docs/codebase-design.md`**, **`docs/adr/`**: entities and
   invariants, module boundaries and tool contracts, accepted decisions. Design is settled
   there; a change that contradicts them needs a new ADR, not a silent override.
-- **Guardrails**: no personal data in the index or in any response (ADR 0004); PostHog
-  telemetry anonymous.
+- **Guardrails**: no personal data in the index or in any response (ADR 0004; ADR 0009 adds
+  the asset free text and allows the título only as an in-memory join key); the comparator
+  never ranks, sorts by value or scores (ADR 0008); PostHog telemetry anonymous.
 - **Voter page**: `web/` is static, no build, REST only, plus the Cloudflare Pages edge
   (`functions/[[path]].js` proxying `/api/*` and `/mcp` to Cloud Run, `_routes.json`,
   `404.html`); `web/README.md` says what it does and how to open it locally (`--web-dir web`,

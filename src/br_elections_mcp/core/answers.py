@@ -46,6 +46,7 @@ NotFoundReason = Literal[
     "municipio_nao_encontrado",
     "municipio_ambiguo",
     "candidato_nao_encontrado",
+    "candidaturas_insuficientes",
 ]
 
 
@@ -241,6 +242,10 @@ class CandidateListItem(_Model):
     photo_url: str | None = Field(
         description="Foto oficial espelhada; nula enquanto não há espelho"
     )
+    vote_destination: str | None = Field(
+        description="Destino dos votos, como o TSE publica ('Válido', 'Anulado sub judice', "
+        "'Nulo técnico'); nulo quando o TSE não informa"
+    )
 
 
 class CandidatesData(_Model):
@@ -407,3 +412,78 @@ class IndexHealth(_Model):
     last_index_check_error: IndexHealthCheckError | None = Field(
         description="Instant and message of the last failed check, or null"
     )
+
+
+class ComparedAssets(_Model):
+    """The declared assets of one compared candidacy: the total only, as declared (ADR 0008)."""
+
+    state: Literal["declarados", "declarou_nao_possuir", "sem_informacao"] = Field(
+        description="declarados: há bens publicados pelo TSE; declarou_nao_possuir: a "
+        "candidatura declarou não ter bens; sem_informacao: nenhum dos dois"
+    )
+    total: float | None = Field(
+        description="Soma dos bens declarados ao TSE, em reais, como declarados; nula fora de "
+        "'declarados'"
+    )
+
+
+class ComparedCandidate(CandidateListItem):
+    """One candidacy of ``compare_candidates`` (codebase-design 8.7): the list fields, the
+    alliance with its composition, the vote destination with its explanation, the ticket by
+    name and party, the links and the declared-assets total. Deliberately without
+    ``gender``, ``race_color``, ``marital_status`` and ``education``: a comparison is
+    list-shaped (ADR 0004)."""
+
+    social_name: str | None = Field(description="Nome social, quando declarado")
+    nomination_kind: Literal["partido_isolado", "federacao", "coligacao"]
+    federation: FederationDetail | None
+    coalition: CoalitionDetail | None
+    vote_destination_note: str | None = Field(
+        description="Uma linha que explica vote_destination ao eleitor; nula para um valor que "
+        "o serviço não conhece"
+    )
+    running_mates: list[RunningMate] = Field(
+        description="Vice ou suplentes da chapa (mesmo número), só nome e partido; vazia para "
+        "deputados"
+    )
+    social_links: list[str] = Field(description="Redes sociais declaradas ao TSE")
+    divulgacandcontas_url: str | None = Field(
+        description="Página oficial da candidatura no DivulgaCandContas, com cada bem declarado"
+    )
+    assets: ComparedAssets
+
+
+class MissingCandidacy(_Model):
+    """A requested number or ``sq_candidato`` left out of the comparison, and why."""
+
+    requested: int = Field(description="O número de urna ou o sq_candidato pedido")
+    reason: Literal["nao_encontrado", "fora_da_urna", "fora_do_turno"] = Field(
+        description="nao_encontrado: nenhuma candidatura do cargo com ele; fora_da_urna: existe "
+        "no turno, mas não está na urna; fora_do_turno: não disputa o turno respondido"
+    )
+
+
+class CandidatesComparisonData(_Model):
+    round: int = Field(description="Turno a que a comparação se refere")
+    uf: str
+    office: Office
+    candidates: list[ComparedCandidate] = Field(
+        description="De 2 a 4 candidaturas na urna, sempre em ordem de número de urna, nunca "
+        "por valor"
+    )
+    missing: list[MissingCandidacy] = Field(
+        description="Candidaturas pedidas que ficaram de fora; pode ser vazia"
+    )
+    assets_note: str = Field(description="Ressalva fixa sobre os bens declarados, em PT-BR")
+    assets_source: Source = Field(description="Fonte dos bens declarados")
+
+
+class CandidatesComparisonAnswer(_Model):
+    """Answer of ``compare_candidates`` (codebase-design 8.7). ``source`` is the candidates
+    file; the declared assets come from a second file, cited in ``data.assets_source``."""
+
+    data: CandidatesComparisonData | None
+    not_found: NotFound | None
+    warnings: list[str] = Field(description="Avisos ao eleitor, em PT-BR; pode ser vazia")
+    election: ElectionInfo | None
+    source: Source

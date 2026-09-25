@@ -477,3 +477,68 @@ def test_lifespan_starts_the_check_task_and_shutdown_stops_it(acre_index_dir: Pa
     assert check_task_alive() is False
     with pytest.raises(IndexUnavailable):
         core.find_polling_place("AC", 9, 422)
+
+
+# GET /api/v1/candidates/compare (codebase-design 8.7, ADR 0008)
+
+
+def test_compare_is_matched_before_the_sq_candidato_route(client: TestClient, core: Core):
+    # A regression that lets `{sq_candidato}` swallow the literal segment shows up as a 422.
+    response = client.get("/api/v1/candidates/compare", params={"uf": "ac", "office": "governador"})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"data", "not_found", "warnings", "election", "source"}
+    assert body == core.compare_candidates("ac", "governador").model_dump(mode="json")
+    assert [c["number"] for c in body["data"]["candidates"]] == [13, 45]
+    assert body["data"]["candidates"][1]["assets"] == {"state": "declarados", "total": 1216500.0}
+
+
+def test_compare_takes_repeated_number_or_sq_parameters(client: TestClient, core: Core):
+    by_number = client.get(
+        "/api/v1/candidates/compare",
+        params=[
+            ("uf", "BR"),
+            ("office", "presidente"),
+            ("number", "45"),
+            ("number", "13"),
+            ("number", "22"),
+            ("round", "1"),
+        ],
+    )
+    assert by_number.status_code == 200
+    expected = core.compare_candidates("BR", "presidente", numbers=["45", "13", "22"], round="1")
+    assert by_number.json() == expected.model_dump(mode="json")
+    assert [c["number"] for c in by_number.json()["data"]["candidates"]] == [13, 22, 45]
+
+    by_sq = client.get(
+        "/api/v1/candidates/compare",
+        params=[
+            ("uf", "AC"),
+            ("office", "governador"),
+            ("sq", "10000000001"),
+            ("sq", "10000000005"),
+        ],
+    )
+    assert by_sq.status_code == 200
+    assert by_sq.json()["not_found"]["reason"] == "candidaturas_insuficientes"
+
+
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [
+        ([("uf", "AC"), ("office", "governador"), ("number", "45")], "escolha de 2 a 4"),
+        (
+            [("uf", "AC"), ("office", "governador"), ("number", "45"), ("sq", "10000000003")],
+            "não os dois",
+        ),
+        ([("uf", "AC"), ("office", "senador")], "candidatura(s) na urna"),
+        (
+            [("uf", "AC"), ("office", "vice_governador"), ("number", "45"), ("number", "13")],
+            "cargo de chapa",
+        ),
+    ],
+)
+def test_compare_invalid_query_is_400(client: TestClient, params, message):
+    response = client.get("/api/v1/candidates/compare", params=params)
+    assert response.status_code == 400
+    assert message in response.json()["detail"]

@@ -55,6 +55,7 @@ def test_scenario_8_governor_by_number_carries_the_vice_with_the_same_number(cor
         "on_ballot": True,
         "occupation": "ADMINISTRADOR",
         "photo_url": None,
+        "vote_destination": "Válido",
         "round": 1,
         "social_name": None,
         "nomination_kind": "coligacao",

@@ -77,6 +77,19 @@ because president rows carry `SG_UF = BR` and production ingests the national fi
   `SQ_CANDIDATO` and a candidacy in both rounds shares its row; the tests derive a variant
   with `NR_TURNO` to cover the other join.
 - `rede_social_candidato_2026_BRASIL.csv`: four links for three candidates.
+- `bem_candidato_2026_BRASIL.csv`: declared assets with the real 2026 header (checked against
+  the TSE file of 2026-09-25), nine items: governor 45 (three items, total 1,216,500.00),
+  governor 13 (two items, one of them negative, as the real file has a few), federal deputy
+  4512, presidents 13 and 45, and one `SQ_CANDIDATO` that is no candidacy of the candidates
+  file, which the build drops. Every `DS_BEM_CANDIDATO` is invented free text with the shapes
+  that make it forbidden (a street, a plate, a bank agency, a CPF and a CNPJ placeholder), so
+  the LGPD contract test proves the column never reaches the index or an answer (ADR 0009).
+
+The complementary file carries `NM_TIPO_DESTINACAO_VOTOS` as the real one does: "Válido" for
+the on-ballot candidacies, "Anulado sub judice" for governor 13 and its vice (rejected with an
+appeal, on the ballot), `#NULO` for the two off-ballot ones. `ST_DECLARAR_BENS` is `S` except
+federal deputy 1313 (`N`, declared having no assets) and president 22 (`Não divulgável`, a real
+value, read as unknown).
 
 The `DS_CARGO` texts are the spellings mapped in `pipeline/build.py` (`OFFICE_BY_DS_CARGO`);
 the first real ingestion (2026-09-24) found exactly those ten texts, and the build still fails

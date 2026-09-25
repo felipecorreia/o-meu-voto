@@ -108,6 +108,24 @@ _Avoid_: situação da candidatura (a coluna com esse nome vem vazia no dataset)
 Indica se o candidato está carregado na urna eletrônica. É informação independente da
 situação de julgamento.
 
+**Vote destination** (destino dos votos):
+O que a Justiça Eleitoral faz, hoje, com um voto dado ao número: "Válido", "Anulado sub
+judice" (anulado enquanto uma decisão judicial está pendente) ou "Nulo técnico". Um candidato
+pode estar na urna e ter os votos anulados; o texto é sempre o do TSE.
+_Avoid_: validade do voto, voto válido (é um dos valores, não o conceito)
+
+**Declared assets** (bens declarados):
+O que a candidatura declarou ao TSE no registro. O serviço guarda e mostra só o total, como
+declarado, nunca a descrição de cada bem (ADR 0009). Uma candidatura pode ter declarado não
+possuir bens, o que é diferente de não haver declaração publicada.
+_Avoid_: patrimônio (sugere valor de mercado, e o declarado é em geral o de aquisição),
+riqueza, fortuna
+
+**Comparison** (comparação):
+De 2 a 4 candidaturas do mesmo cargo, UF e turno, lado a lado, sempre em ordem de número de
+urna (ADR 0008). Não é ranking nem recomendação de voto.
+_Avoid_: ranking, disputa, placar
+
 **Photo** (foto):
 A imagem oficial de campanha publicada pelo TSE, espelhada pelo serviço.
 

@@ -75,6 +75,7 @@ def test_health_exposes_generated_at_per_dataset_index_built_at_and_version(
         "candidates",
         "candidates_complementary",
         "candidate_social_links",
+        "candidate_assets",
     }
     assert health.index_built_at == BUILT_AT
     assert health.stale is False

@@ -8,7 +8,9 @@ clock is injected so tests can move in time.
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 import duckdb
@@ -21,9 +23,13 @@ from br_elections_mcp.core.answers import (
     CandidateListItem,
     CandidateProfile,
     CandidatesAnswer,
+    CandidatesComparisonAnswer,
+    CandidatesComparisonData,
     CandidatesData,
     Coalition,
     CoalitionDetail,
+    ComparedAssets,
+    ComparedCandidate,
     CuratedSource,
     DatasetHealth,
     ElectionInfo,
@@ -35,6 +41,7 @@ from br_elections_mcp.core.answers import (
     FederationDetail,
     IndexHealth,
     IndexHealthCheckError,
+    MissingCandidacy,
     MunicipalitiesAnswer,
     MunicipalitiesData,
     Municipality,
@@ -85,6 +92,7 @@ from br_elections_mcp.core.queries.municipalities import (
 from br_elections_mcp.core.queries.polling_place import SectionRow, find_section
 from br_elections_mcp.core.queries.search_places import PlaceRow, search_places
 from br_elections_mcp.core.rounds import (
+    OFFICE_LABELS,
     RoundResolution,
     check_round_bound,
     highest_or_requested,
@@ -128,6 +136,36 @@ CANDIDATE_NOT_FOUND_BY_SQ_GUIDANCE = (
     "Nenhuma candidatura com esse sq_candidato. Confira o número sequencial, ou procure o "
     "candidato por UF, cargo e número de urna."
 )
+
+COMPARISON_MIN = 2
+COMPARISON_MAX = 4
+"""A comparison has 2 to 4 candidacies (ADR 0008)."""
+
+COMPARISON_TOO_FEW_GUIDANCE = (
+    "Menos de duas das candidaturas pedidas estão na urna neste turno. Confira os números com "
+    "list_candidates e escolha de 2 a 4 candidaturas do mesmo cargo."
+)
+
+ASSETS_NOTE = (
+    "Bens como declarados ao TSE pela própria candidatura, em geral pelo valor de aquisição, "
+    "não de mercado; o serviço não corrige nem avalia os valores. Cada bem está na página "
+    "oficial da candidatura (divulgacandcontas_url)."
+)
+
+VOTE_DESTINATION_NOTES: dict[str, str] = {
+    "Válido": "Pela situação atual no TSE, os votos neste número contam para a candidatura.",
+    "Anulado sub judice": (
+        "O registro depende de decisão judicial ainda pendente: pela situação atual no TSE, os "
+        "votos neste número ficam anulados e só passam a contar se a decisão final for "
+        "favorável à candidatura."
+    ),
+    "Nulo técnico": (
+        "Pela situação atual no TSE, os votos neste número são nulos e não contam para a "
+        "candidatura."
+    ),
+}
+"""One PT-BR line per ``vote_destination`` value the TSE publishes (ADR 0008), keyed by the
+exact text; a value outside the table gets no line rather than a guess."""
 
 SEARCH_PLACES_DEFAULT_LIMIT = 20
 RESOLVE_MUNICIPALITY_DEFAULT_LIMIT = 10
@@ -473,6 +511,113 @@ class Core:
             source=source,
         )
 
+    def compare_candidates(
+        self,
+        uf: object,
+        office: object,
+        sq_candidatos: object = None,
+        numbers: object = None,
+        round: object = None,
+    ) -> CandidatesComparisonAnswer:
+        """2 to 4 on-ballot candidacies of one ballot office, UF and round, side by side.
+
+        Exactly one selector, ``sq_candidatos`` or ``numbers`` (2 to 4 distinct values), or
+        none: then the answered round must have 2 to 4 on-ballot candidacies, and they are all
+        compared. ``round`` follows lines C1-C4 of codebase-design 3.4, like the list, so every
+        entry shares one answered round. The entries come in ballot-number order, never by
+        any value. A requested candidacy that is not on the ballot in that round is left out
+        and named in ``missing``; fewer than two left is ``candidaturas_insuficientes``. Raises
+        ``InvalidQuery`` for a malformed selector, a ticket office, an office impossible for
+        the UF, an ``sq_candidato`` of another UF or office, or a round outside the calendar.
+        """
+        uf_value = normalize_candidate_uf(uf)
+        office_value = normalize_ballot_office(office)
+        check_office_for_uf(office_value, uf_value)
+        selector = _comparison_selector(sq_candidatos, numbers)
+        requested_round = None if round is None else normalize_number(round, "turno inválido")
+
+        with self._index_manager.query() as (index, cursor):
+            today = self._today()
+            election = self._calendar.coincident_election(today, index.manifest)
+            check_round_bound(requested_round, election)
+            source = self._source(index, "candidates")
+            assets_source = self._source(index, "candidate_assets")
+
+            published = _published_candidate_rounds(cursor)
+            resolution = resolve_list_round(
+                office_rounds=_office_rounds(cursor, uf_value, office_value.value, published),
+                published=published,
+                requested=requested_round,
+                office=office_value,
+                uf=uf_value,
+            )
+            answered_round = resolution.round
+            rows, missing = _comparison_rows(
+                cursor, uf_value.value, office_value, answered_round, selector
+            )
+            ticket_offices = _ticket_offices(office_value)
+            mates = {
+                row.sq_candidato: candidate_queries.running_mates(cursor, row, ticket_offices)
+                for row in rows
+            }
+            links = {
+                row.sq_candidato: candidate_queries.social_links(cursor, row.sq_candidato)
+                for row in rows
+            }
+            totals = candidate_queries.asset_totals(cursor, [row.sq_candidato for row in rows])
+        # The query is done with the index; whether to check for a new version is the
+        # task's O(1) decision, never a wait for this query.
+        self._index_manager.signal()
+
+        warnings = _unique(
+            [
+                *_round_warnings(resolution),
+                *self._staleness_warnings(source),
+                *self._staleness_warnings(assets_source),
+            ]
+        )
+        election_info = _election_info(election, answered_round)
+        if len(rows) < COMPARISON_MIN:
+            return CandidatesComparisonAnswer(
+                data=None,
+                not_found=NotFound(
+                    reason="candidaturas_insuficientes", guidance=COMPARISON_TOO_FEW_GUIDANCE
+                ),
+                warnings=warnings,
+                election=election_info,
+                source=source,
+            )
+        candidates = [
+            _compared_candidate(
+                row,
+                mates[row.sq_candidato],
+                links[row.sq_candidato],
+                candidate_page_url(
+                    self._calendar.divulgacandcontas_election_id(row.election_year),
+                    UF(row.uf),
+                    row.sq_candidato,
+                    row.election_year,
+                ),
+                totals.get(row.sq_candidato),
+            )
+            for row in sorted(rows, key=lambda row: (row.number, row.sq_candidato))
+        ]
+        return CandidatesComparisonAnswer(
+            data=CandidatesComparisonData(
+                round=answered_round,
+                uf=uf_value.value,
+                office=office_value,
+                candidates=candidates,
+                missing=missing,
+                assets_note=ASSETS_NOTE,
+                assets_source=assets_source,
+            ),
+            not_found=None,
+            warnings=warnings,
+            election=election_info,
+            source=source,
+        )
+
     def resolve_municipality(
         self, name: object, uf: object = None, limit: object = None
     ) -> MunicipalitiesAnswer:
@@ -699,6 +844,130 @@ def _candidacy(
     return candidate_queries.Candidacy(uf, office, rounds)
 
 
+def _unique(texts: list[str]) -> list[str]:
+    """``texts`` without repeats, first occurrence kept: two datasets generated at the same
+    instant would otherwise repeat the staleness warning."""
+    return list(dict.fromkeys(texts))
+
+
+ComparisonSelector = tuple[Literal["sq_candidato", "number"], tuple[int, ...]]
+
+
+def _comparison_selector(sq_candidatos: object, numbers: object) -> ComparisonSelector | None:
+    """The normalized selector of ``compare_candidates``, or null for "all on the ballot"."""
+    if sq_candidatos is not None and numbers is not None:
+        raise InvalidQuery("informe sq_candidatos ou numbers, não os dois")
+    if sq_candidatos is None and numbers is None:
+        return None
+    kind: Literal["sq_candidato", "number"]
+    if sq_candidatos is not None:
+        kind, values, label = "sq_candidato", sq_candidatos, "sq_candidato inválido"
+    else:
+        kind, values, label = "number", numbers, "número inválido"
+    if isinstance(values, str | bytes) or not isinstance(values, list | tuple):
+        raise InvalidQuery(f"{label}: informe uma lista de {COMPARISON_MIN} a {COMPARISON_MAX}")
+    normalized = tuple(normalize_number(value, label) for value in values)
+    if not COMPARISON_MIN <= len(normalized) <= COMPARISON_MAX:
+        raise InvalidQuery(
+            f"escolha de {COMPARISON_MIN} a {COMPARISON_MAX} candidaturas; "
+            f"foram informadas {len(normalized)}"
+        )
+    repeated = sorted({value for value in normalized if normalized.count(value) > 1})
+    if repeated:
+        raise InvalidQuery(f"candidatura repetida na comparação: {repeated}")
+    return kind, normalized
+
+
+def _comparison_rows(
+    cursor: duckdb.DuckDBPyConnection,
+    uf: str,
+    office: Office,
+    round: int,
+    selector: ComparisonSelector | None,
+) -> tuple[list[CandidateProfileRow], list[MissingCandidacy]]:
+    """The on-ballot profiles the selector names in ``round``, and the requested ones left out.
+
+    Without a selector, every on-ballot candidacy of the round, when there are 2 to 4.
+    """
+    if selector is None:
+        sq_candidatos = candidate_queries.on_ballot_sq_candidatos(
+            cursor, uf, office.value, round, COMPARISON_MAX + 1
+        )
+        if not COMPARISON_MIN <= len(sq_candidatos) <= COMPARISON_MAX:
+            count = (
+                f"mais de {COMPARISON_MAX}"
+                if len(sq_candidatos) > COMPARISON_MAX
+                else str(len(sq_candidatos))
+            )
+            raise InvalidQuery(
+                f"escolha de {COMPARISON_MIN} a {COMPARISON_MAX} candidaturas com sq_candidatos "
+                f"ou numbers: o {_ordinal_round(round)} de {OFFICE_LABELS[office]} no {uf} tem "
+                f"{count} candidatura(s) na urna; liste-as com list_candidates"
+            )
+        selector = ("sq_candidato", tuple(sq_candidatos))
+    kind, values = selector
+    rows: list[CandidateProfileRow] = []
+    missing: list[MissingCandidacy] = []
+    for value in values:
+        if kind == "number":
+            row = candidate_queries.get_candidate_by_number(cursor, uf, office.value, value, round)
+            if row is None:
+                reason = candidate_queries.number_absence(cursor, uf, office.value, value, round)
+                missing.append(MissingCandidacy(requested=value, reason=reason))
+            else:
+                rows.append(row)
+            continue
+        candidacy = candidate_queries.candidacy(cursor, value)
+        if candidacy is None:
+            missing.append(MissingCandidacy(requested=value, reason="nao_encontrado"))
+            continue
+        if (candidacy.uf, candidacy.office) != (uf, office.value):
+            raise InvalidQuery(
+                f"a candidatura {value} é de {OFFICE_LABELS[Office(candidacy.office)]} no "
+                f"{candidacy.uf}, não de {OFFICE_LABELS[office]} no {uf}"
+            )
+        row = candidate_queries.get_candidate(cursor, value, round)
+        if row is None:
+            missing.append(MissingCandidacy(requested=value, reason="fora_do_turno"))
+        elif not row.on_ballot:
+            missing.append(MissingCandidacy(requested=value, reason="fora_da_urna"))
+        else:
+            rows.append(row)
+    return rows, missing
+
+
+def _ordinal_round(round_number: int) -> str:
+    return f"{round_number}º turno"
+
+
+def _compared_candidate(
+    row: CandidateProfileRow,
+    mates: list[RunningMateRow],
+    links: list[str],
+    page_url: str | None,
+    asset_total: Decimal | None,
+) -> ComparedCandidate:
+    profile = _candidate_profile(row, mates, links, page_url)
+    if asset_total is not None:
+        assets = ComparedAssets(state="declarados", total=float(asset_total))
+    elif row.declares_assets is False:
+        assets = ComparedAssets(state="declarou_nao_possuir", total=None)
+    else:
+        assets = ComparedAssets(state="sem_informacao", total=None)
+    fields = profile.model_dump(
+        include=set(ComparedCandidate.model_fields) - {"vote_destination_note", "assets"}
+    )
+    return ComparedCandidate(
+        **fields,
+        vote_destination_note=(
+            None
+            if row.vote_destination is None
+            else VOTE_DESTINATION_NOTES.get(row.vote_destination)
+        ),
+        assets=assets,
+    )
+
+
 def _round_warnings(resolution: RoundResolution | None) -> list[str]:
     if resolution is None or resolution.warning is None:
         return []
@@ -739,6 +1008,7 @@ def _candidate_list_item(row: CandidateRow) -> CandidateListItem:
         on_ballot=row.on_ballot,
         occupation=row.occupation,
         photo_url=row.photo_url,
+        vote_destination=row.vote_destination,
     )
 
 
@@ -816,6 +1086,7 @@ def _candidate_profile(
         on_ballot=row.on_ballot,
         occupation=row.occupation,
         photo_url=row.photo_url,
+        vote_destination=row.vote_destination,
         round=row.round,
         social_name=row.social_name,
         nomination_kind=row.nomination_kind,  # type: ignore[arg-type]

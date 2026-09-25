@@ -20,6 +20,7 @@ import duckdb
 
 from br_elections_mcp.domain import Office
 from br_elections_mcp.index_schema import (
+    CANDIDATE_ASSETS_CSV_COLUMNS,
     CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS,
     CANDIDATES_COMPLEMENTARY_CSV_COLUMNS,
     CANDIDATES_CSV_COLUMNS,
@@ -86,6 +87,7 @@ def build_index(
     candidates: SourceFile,
     candidates_complementary: SourceFile,
     social_links: SourceFile,
+    candidate_assets: SourceFile,
     output_dir: Path,
     *,
     built_at: dt.datetime | None = None,
@@ -108,6 +110,7 @@ def build_index(
         "candidates": candidates,
         "candidates_complementary": candidates_complementary,
         "candidate_social_links": social_links,
+        "candidate_assets": candidate_assets,
     }
     expected_columns: dict[DatasetKey, tuple[str, ...]] = {
         "polling_places": POLLING_PLACES_CSV_COLUMNS,
@@ -115,6 +118,7 @@ def build_index(
         "candidates": CANDIDATES_CSV_COLUMNS,
         "candidates_complementary": CANDIDATES_COMPLEMENTARY_CSV_COLUMNS,
         "candidate_social_links": CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS,
+        "candidate_assets": CANDIDATE_ASSETS_CSV_COLUMNS,
     }
     conn = duckdb.connect(str(tmp_path))
     try:
@@ -125,6 +129,7 @@ def build_index(
         _check_domain_values(conn)
         office_sql = _office_case_sql(conn)
         _check_candidate_values(conn)
+        _check_asset_values(conn)
         complementary_has_round = "NR_TURNO" in headers["candidates_complementary"]
         _prepare_complementary(conn, with_round=complementary_has_round)
         for ddl in TABLES.values():
@@ -135,6 +140,7 @@ def build_index(
         conn.execute(_insert_candidates_sql(office_sql, with_round=complementary_has_round))
         _check_tickets(conn)
         conn.execute(_INSERT_SOCIAL_LINKS)
+        conn.execute(_INSERT_CANDIDATE_ASSETS)
         _apply_display_casing(conn)
         counts = {
             table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # type: ignore[index]
@@ -353,6 +359,23 @@ def _check_candidate_values(conn: duckdb.DuckDBPyConnection) -> None:
         raise BuildError(f"SG_FEDERACAO without NM_FEDERACAO: {nameless_federations}")
 
 
+def _check_asset_values(conn: duckdb.DuckDBPyConnection) -> None:
+    """Fail loudly on a declared value that is not a decimal with a comma separator."""
+    unparseable = [
+        row[0]
+        for row in conn.execute(
+            f"""
+            SELECT DISTINCT VR_BEM_CANDIDATO FROM raw_candidate_assets
+            WHERE {_ASSET_VALUE_SQL} IS NULL
+            ORDER BY 1
+            LIMIT 10
+            """
+        ).fetchall()
+    ]
+    if unparseable:
+        raise BuildError(f"unparseable VR_BEM_CANDIDATO values: {unparseable}")
+
+
 def _check_tickets(conn: duckdb.DuckDBPyConnection) -> None:
     """Every on-ballot ticket has exactly one head (docs/domain-model.md, 3.5 and 7).
 
@@ -398,7 +421,9 @@ def _prepare_complementary(conn: duckdb.DuckDBPyConnection, *, with_round: bool)
             CAST(SQ_CANDIDATO AS BIGINT) AS sq_candidato{round_column},
             trim(DS_SITUACAO_JULGAMENTO) AS adjudication_status,
             {_ON_BALLOT_SQL}
-                AND CAST(SQ_CANDIDATO AS BIGINT) NOT IN ({_SUBSTITUTED_SQL}) AS on_ballot
+                AND CAST(SQ_CANDIDATO AS BIGINT) NOT IN ({_SUBSTITUTED_SQL}) AS on_ballot,
+            {_nullif_markers("NM_TIPO_DESTINACAO_VOTOS")} AS vote_destination,
+            {_DECLARES_ASSETS_SQL} AS declares_assets
         FROM raw_candidates_complementary
         """
     )
@@ -672,6 +697,17 @@ _SUBSTITUTED_SQL = """
       AND try_cast(SQ_SUBSTITUIDO AS BIGINT) <> -1
 """
 
+# ST_DECLARAR_BENS is S/N; anything else (the real file has "Não divulgável") is unknown.
+_DECLARES_ASSETS_SQL = """
+    CASE upper(trim(ST_DECLARAR_BENS))
+        WHEN 'S' THEN TRUE
+        WHEN 'N' THEN FALSE
+    END
+"""
+
+# A declared value comes with a decimal comma and no thousands separator ("31537,50").
+_ASSET_VALUE_SQL = "try_cast(replace(trim(VR_BEM_CANDIDATO), ',', '.') AS DECIMAL(18, 2))"
+
 _SEARCH_TEXT = "upper(strip_accents(trim({column})))"
 
 # "PARTIDO ISOLADO" in NM_COLIGACAO means no coalition (docs/domain-model.md, 3.5).
@@ -691,7 +727,7 @@ def _insert_candidates_sql(office_sql: str, *, with_round: bool) -> str:
             party_number, party_acronym, party_name, search_party_acronym, nomination_kind,
             federation_acronym, federation_name, federation_composition,
             coalition_name, coalition_composition,
-            adjudication_status, on_ballot, occupation,
+            adjudication_status, on_ballot, occupation, vote_destination, declares_assets,
             gender, race_color, marital_status, education,
             election_year, election_date
         )
@@ -720,6 +756,8 @@ def _insert_candidates_sql(office_sql: str, *, with_round: bool) -> str:
                 x.adjudication_status,
                 x.on_ballot,
                 {_nullif_markers("c.DS_OCUPACAO")} AS occupation,
+                x.vote_destination,
+                x.declares_assets,
                 {_nullif_markers("c.DS_GENERO")} AS gender,
                 {_nullif_markers("c.DS_COR_RACA")} AS race_color,
                 {_nullif_markers("c.DS_ESTADO_CIVIL")} AS marital_status,
@@ -738,7 +776,7 @@ def _insert_candidates_sql(office_sql: str, *, with_round: bool) -> str:
             CASE WHEN federation_acronym IS NULL THEN NULL ELSE federation_composition END,
             coalition_name,
             CASE WHEN coalition_name IS NULL THEN NULL ELSE coalition_composition END,
-            adjudication_status, on_ballot, occupation,
+            adjudication_status, on_ballot, occupation, vote_destination, declares_assets,
             gender, race_color, marital_status, education,
             election_year, election_date
         FROM rows
@@ -754,4 +792,15 @@ _INSERT_SOCIAL_LINKS = f"""
     FROM raw_candidate_social_links
     WHERE {_nullif_markers("DS_URL")} IS NOT NULL
       AND CAST(SQ_CANDIDATO AS BIGINT) IN (SELECT sq_candidato FROM candidates)
+"""
+
+# One total per candidacy, summed at build time (ADR 0008): the index never holds an item, its
+# kind or its description. Assets of a candidacy the candidates file does not carry are dropped,
+# like its social links.
+_INSERT_CANDIDATE_ASSETS = f"""
+    INSERT INTO candidate_assets (sq_candidato, total, item_count)
+    SELECT CAST(SQ_CANDIDATO AS BIGINT), sum({_ASSET_VALUE_SQL}), count(*)
+    FROM raw_candidate_assets
+    WHERE CAST(SQ_CANDIDATO AS BIGINT) IN (SELECT sq_candidato FROM candidates)
+    GROUP BY 1
 """

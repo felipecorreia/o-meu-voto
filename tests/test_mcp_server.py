@@ -9,6 +9,7 @@ from mcp.shared.exceptions import MCPError
 from br_elections_mcp.core import (
     CandidateAnswer,
     CandidatesAnswer,
+    CandidatesComparisonAnswer,
     Core,
     ElectionInfoAnswer,
     MunicipalitiesAnswer,
@@ -31,6 +32,7 @@ async def test_tools_are_listed_with_pt_br_texts_annotations_and_generated_schem
         "election_info",
         "list_candidates",
         "get_candidate",
+        "compare_candidates",
         "search_polling_places",
         "resolve_municipality",
     ]
@@ -447,3 +449,89 @@ async def test_resolve_municipality_not_found_is_a_normal_result_with_guidance(c
     assert result.structured_content["data"] is None
     assert result.structured_content["not_found"]["reason"] == "municipio_nao_encontrado"
     assert "Nenhum município" in result.content[0].text
+
+
+# compare_candidates (codebase-design 8.7, ADR 0008)
+
+
+async def test_compare_candidates_tool_is_listed_without_profile_only_fields(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        tools = (await client.list_tools()).tools
+    tool = next(tool for tool in tools if tool.name == "compare_candidates")
+
+    assert tool.title == "Comparar candidatos"
+    assert tool.description is not None
+    assert "ordem de número de urna" in tool.description
+    assert "não recomenda voto" in tool.description
+    assert tool.annotations is not None
+    assert tool.annotations.read_only_hint is True
+    assert tool.annotations.open_world_hint is False
+    assert set(tool.input_schema["properties"]) == {
+        "uf",
+        "office",
+        "sq_candidatos",
+        "numbers",
+        "round",
+    }
+    assert tool.input_schema["required"] == ["uf", "office"]
+    assert tool.output_schema is not None
+    assert set(tool.output_schema["properties"]) == set(
+        CandidatesComparisonAnswer.model_json_schema()["properties"]
+    )
+    serialized = str(tool.output_schema)
+    for field in ("gender", "race_color", "marital_status", "education"):
+        assert f"'{field}'" not in serialized
+
+
+async def test_compare_candidates_returns_the_envelope_and_a_text_in_ballot_order(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "compare_candidates", {"uf": "AC", "office": "governador", "numbers": [45, 13]}
+        )
+
+    assert result.is_error is False
+    expected = core.compare_candidates("AC", "governador", numbers=[45, 13])
+    assert result.structured_content == expected.model_dump(mode="json")
+    text = result.content[0].text
+    assert "2 candidaturas a governador no AC (turno 1), em ordem de número de urna" in text
+    assert "não é ranking nem recomendação de voto" in text
+    assert text.index("13 ZÉ ANTÔNIO") < text.index("45 MARIA DA SILVA")
+    assert "destino dos votos: Anulado sub judice (O registro depende" in text
+    assert "destino dos votos: Válido;" in text
+    assert "chapa: vice governador JOÃO DO ACRE (MDB)" in text
+    assert "bens declarados: R$ 1.216.500,00" in text
+    assert "bens declarados: R$ 115.000,00" in text
+    assert "página oficial: https://divulgacandcontas.tse.jus.br/" in text
+    assert "Bens como declarados ao TSE" in text
+    assert "Fonte: Candidatos - 2026" in text
+    assert "Fonte: Bens de candidatos - 2026" in text
+
+
+async def test_compare_candidates_text_names_who_was_left_out(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "compare_candidates",
+            {
+                "uf": "BR",
+                "office": "presidente",
+                "sq_candidatos": [20000000001, 20000000003, 20000000005],
+            },
+        )
+    text = result.content[0].text
+    assert "Fora da comparação: 20000000001 (não disputa este turno)." in text
+    assert "bens: sem declaração publicada" in text
+
+
+async def test_compare_candidates_not_found_and_invalid_query(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        too_few = await client.call_tool(
+            "compare_candidates", {"uf": "AC", "office": "governador", "numbers": [45, 22]}
+        )
+        invalid = await client.call_tool(
+            "compare_candidates", {"uf": "AC", "office": "governador", "numbers": [45]}
+        )
+    assert too_few.is_error is False
+    assert too_few.structured_content["not_found"]["reason"] == "candidaturas_insuficientes"
+    assert too_few.content[0].text.startswith("Comparação não disponível.")
+    assert invalid.is_error is True
+    assert "escolha de 2 a 4 candidaturas" in invalid.content[0].text

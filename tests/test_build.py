@@ -17,6 +17,7 @@ from br_elections_mcp.index_schema import (
 )
 from br_elections_mcp.pipeline.build import BuildError, apply_photo_urls
 from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_ASSETS_2026,
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
     CANDIDATES_COMPLEMENTARY_2026,
@@ -24,6 +25,7 @@ from br_elections_mcp.pipeline.datasets import (
     POLLING_PLACES_CURRENT,
 )
 from tests.conftest import (
+    ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
     ACRE_CANDIDATES_COMPLEMENTARY,
     ACRE_POLLING_PLACES,
@@ -54,6 +56,9 @@ def test_build_writes_index_and_manifest_from_the_acre_fixtures(acre_index_dir: 
         "polling_sections": 20,
         "candidates": 23,
         "candidate_social_links": 4,
+        # Five candidacies declared assets; the sixth SQ_CANDIDATO of the file is not a
+        # candidacy of the candidates file and is dropped.
+        "candidate_assets": 5,
     }
     assert manifest.election_year == 2026
     assert manifest.election_dates == {1: dt.date(2026, 10, 4), 2: dt.date(2026, 10, 25)}
@@ -254,6 +259,54 @@ def test_social_links_are_loaded_by_candidate_and_order(acre_index_dir: Path):
         (10000000003, 1, "https://www.instagram.com/zeantonio13"),
         (20000000001, 1, "https://www.instagram.com/fernando13"),
     ]
+
+
+def test_vote_destination_and_the_asset_declaration_flag_come_from_the_complementary_file(
+    acre_index_dir: Path,
+):
+    rejected_on_ballot = _candidate(acre_index_dir, 10000000003)
+    assert rejected_on_ballot["vote_destination"] == "Anulado sub judice"
+    assert rejected_on_ballot["declares_assets"] is True
+    assert _candidate(acre_index_dir, 10000000001)["vote_destination"] == "Válido"
+    assert _candidate(acre_index_dir, 10000000005)["vote_destination"] is None  # #NULO
+    assert _candidate(acre_index_dir, 10000000010)["declares_assets"] is False  # N
+    assert _candidate(acre_index_dir, 20000000005)["declares_assets"] is None  # Não divulgável
+
+
+def test_declared_assets_are_one_total_per_candidacy_without_any_item_text(acre_index_dir):
+    conn = duckdb.connect(str(acre_index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute(
+            "SELECT sq_candidato, total, item_count FROM candidate_assets ORDER BY 1"
+        ).fetchall()
+        columns = {row[0] for row in conn.execute("DESCRIBE candidate_assets").fetchall()}
+    finally:
+        conn.close()
+    assert [(sq, float(total), count) for sq, total, count in rows] == [
+        (10000000001, 1216500.0, 3),
+        # A negative item (a loan to a third party) is summed as declared.
+        (10000000003, 115000.0, 2),
+        (10000000009, 12000.5, 1),
+        (20000000001, 4775651.0, 1),
+        (20000000003, 8186556.0, 1),
+    ]
+    assert columns == {"sq_candidato", "total", "item_count"}
+
+
+def test_manifest_cites_the_asset_file(acre_index_dir: Path):
+    assets = read_manifest(acre_index_dir / MANIFEST_FILE_NAME).datasets["candidate_assets"]
+    assert assets.dataset == CANDIDATE_ASSETS_2026.title
+    assert assets.dataset_url == CANDIDATE_ASSETS_2026.dataset_url
+    assert assets.file == "bem_candidato_2026_BRASIL.csv"
+    assert assets.generated_at == dt.datetime(2026, 9, 18, 22, 31, 7, tzinfo=SAO_PAULO)
+
+
+def test_unparseable_asset_value_fails_loudly(tmp_path: Path):
+    broken = tmp_path / "bem_candidato_2026_BRASIL.csv"
+    broken.write_bytes(ACRE_CANDIDATE_ASSETS.read_bytes().replace(b'"450000,00"', b'"450.000,00"'))
+    with pytest.raises(BuildError, match=r"450\.000,00"):
+        build_fixture_index(tmp_path / "out", candidate_assets=broken)
+    assert not (tmp_path / "out" / INDEX_FILE_NAME).exists()
 
 
 def test_unknown_ds_cargo_text_fails_loudly(tmp_path: Path):

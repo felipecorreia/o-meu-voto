@@ -28,6 +28,7 @@ LIST_ITEM_FIELDS = {
     "on_ballot",
     "occupation",
     "photo_url",
+    "vote_destination",
 }
 PROFILE_ONLY_FIELDS = {"gender", "race_color", "marital_status", "education"}
 
@@ -64,6 +65,7 @@ def test_scenario_9_president_is_asked_with_uf_br_and_lists_only_the_heads(core:
         "on_ballot": True,
         "occupation": "ECONOMISTA",
         "photo_url": None,
+        "vote_destination": "Válido",
     }
     forty_five = data.candidates[2]
     assert forty_five.federation is None

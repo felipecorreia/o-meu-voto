@@ -23,6 +23,7 @@ from br_elections_mcp.pipeline.bucket import (
 )
 from br_elections_mcp.pipeline.build import BuildError, apply_photo_urls, build_index
 from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_ASSETS_2026,
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
     CANDIDATES_COMPLEMENTARY_2026,
@@ -95,6 +96,9 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument(
         "--social-links", type=Path, required=True, help="rede_social_candidato CSV"
     )
+    build_parser.add_argument(
+        "--candidate-assets", type=Path, required=True, help="bem_candidato CSV"
+    )
     build_parser.add_argument("--output-dir", type=Path, required=True)
     build_parser.add_argument(
         "--monthly",
@@ -122,6 +126,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument(
         "--social-links", type=Path, required=True, help="rede_social_candidato CSV"
+    )
+    validate_parser.add_argument(
+        "--candidate-assets", type=Path, required=True, help="bem_candidato CSV"
     )
     validate_parser.add_argument(
         "--index-dir",
@@ -247,6 +254,7 @@ def _run_build(args: argparse.Namespace) -> int:
             SourceFile(CANDIDATES_2026, args.candidates),
             SourceFile(CANDIDATES_COMPLEMENTARY_2026, args.candidates_complementary),
             SourceFile(CANDIDATE_SOCIAL_LINKS_2026, args.social_links),
+            SourceFile(CANDIDATE_ASSETS_2026, args.candidate_assets),
             args.output_dir,
         )
     except BuildError as exc:
@@ -266,6 +274,7 @@ def _run_validate(args: argparse.Namespace) -> int:
             SourceFile(CANDIDATES_2026, args.candidates),
             SourceFile(CANDIDATES_COMPLEMENTARY_2026, args.candidates_complementary),
             SourceFile(CANDIDATE_SOCIAL_LINKS_2026, args.social_links),
+            SourceFile(CANDIDATE_ASSETS_2026, args.candidate_assets),
             args.index_dir,
             args.elections,
             args.output_dir,

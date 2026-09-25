@@ -10,14 +10,26 @@ import pytest
 
 from br_elections_mcp.index_schema import FORBIDDEN_COLUMNS, INDEX_FILE_NAME, TABLES
 from tests.conftest import (
+    ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
     ACRE_LGPD_POLLING_PLACES,
     build_fixture_index,
     open_core,
 )
 
-# Placeholder values of the forbidden columns in the fixtures; none may reach an answer.
-PLACEHOLDERS = ("00000000000", "000000000000", "01/01/1970", "NÃO DIVULGÁVEL", "1970-01-01")
+# Placeholder values of the forbidden columns in the fixtures; none may reach an answer. The
+# last ones are fragments of the free-text asset descriptions of bem_candidato (ADR 0009).
+PLACEHOLDERS = (
+    "00000000000",
+    "000000000000",
+    "01/01/1970",
+    "NÃO DIVULGÁVEL",
+    "1970-01-01",
+    "RUA DAS FLORES",
+    "PLACA",
+    "AGÊNCIA",
+    "CNPJ",
+)
 
 EXPECTED_FORBIDDEN = {
     "NR_CPF_CANDIDATO",
@@ -25,19 +37,23 @@ EXPECTED_FORBIDDEN = {
     "DT_NASCIMENTO",
     "SG_UF_NASCIMENTO",
     "DS_EMAIL",
+    "DS_BEM_CANDIDATO",
 }
 
 
-def test_the_forbidden_list_is_exactly_the_one_decided_in_adr_0004():
+def test_the_forbidden_list_is_exactly_the_one_decided_in_adr_0004_and_0009():
     assert FORBIDDEN_COLUMNS == EXPECTED_FORBIDDEN
 
 
 @pytest.fixture(scope="module")
 def lgpd_index_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     directory = tmp_path_factory.mktemp("lgpd-index")
-    for fixture in (ACRE_LGPD_POLLING_PLACES, ACRE_CANDIDATES):
-        header = fixture.read_bytes().split(b"\n", 1)[0].decode("latin-1")
-        assert all(column in header for column in FORBIDDEN_COLUMNS), "fixture must carry them"
+    headers = [
+        fixture.read_bytes().split(b"\n", 1)[0].decode("latin-1")
+        for fixture in (ACRE_LGPD_POLLING_PLACES, ACRE_CANDIDATES, ACRE_CANDIDATE_ASSETS)
+    ]
+    for column in FORBIDDEN_COLUMNS:
+        assert any(f'"{column}"' in header for header in headers), f"no fixture carries {column}"
     build_fixture_index(directory, polling_places=ACRE_LGPD_POLLING_PLACES)
     return directory
 
@@ -82,6 +98,9 @@ def test_no_forbidden_key_appears_in_any_serialized_answer(lgpd_index_dir: Path)
             ),
             core.search_polling_places("AC", "Xanadu"),
             core.resolve_municipality("rio"),
+            core.compare_candidates("AC", "governador"),
+            core.compare_candidates("BR", "presidente", numbers=[13, 45, 22], round=1),
+            core.compare_candidates("AC", "deputado_federal", numbers=[4512, 1313]),
         ]
     finally:
         core.close()

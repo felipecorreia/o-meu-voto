@@ -1,8 +1,11 @@
-"""Candidate queries: the list of one office in one UF and round, and the individual profile."""
+"""Candidate queries: the list of one office in one UF and round, the individual profile and
+the comparison of a few candidacies of one office."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
+from typing import Literal
 
 import duckdb
 
@@ -24,6 +27,7 @@ class CandidateRow:
     on_ballot: bool
     occupation: str | None
     photo_url: str | None
+    vote_destination: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +51,7 @@ _COLUMNS = """
     sq_candidato, number, ballot_name, name, office,
     party_number, party_acronym, party_name,
     federation_acronym, federation_name, coalition_name,
-    adjudication_status, on_ballot, occupation, photo_url
+    adjudication_status, on_ballot, occupation, photo_url, vote_destination
 """
 
 
@@ -122,6 +126,7 @@ class CandidateProfileRow(CandidateRow):
     marital_status: str | None
     education: str | None
     election_year: int
+    declares_assets: bool | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +144,7 @@ _PROFILE_COLUMNS = f"""
     {_COLUMNS},
     round, uf, social_name, nomination_kind,
     federation_composition, coalition_composition,
-    gender, race_color, marital_status, education, election_year
+    gender, race_color, marital_status, education, election_year, declares_assets
 """
 
 
@@ -256,3 +261,56 @@ def social_links(cursor: duckdb.DuckDBPyConnection, sq_candidato: int) -> list[s
         [sq_candidato],
     ).fetchall()
     return [str(row[0]) for row in rows]
+
+
+# The comparison (codebase-design 8.7): up to four candidacies of one office, UF and round.
+
+AbsenceReason = Literal["nao_encontrado", "fora_da_urna", "fora_do_turno"]
+
+
+def number_absence(
+    cursor: duckdb.DuckDBPyConnection, uf: str, office: str, number: int, round: int
+) -> AbsenceReason:
+    """Why no on-ballot candidacy of (``uf``, ``office``) has ``number`` in ``round``: some
+    candidacy has it in that round off the ballot, or only in another round, or none has it."""
+    in_round, anywhere = cursor.execute(
+        """
+        SELECT count(*) FILTER (WHERE round = ?), count(*)
+        FROM candidates WHERE uf = ? AND office = ? AND number = ?
+        """,
+        [round, uf, office, number],
+    ).fetchone()  # type: ignore[misc]
+    if in_round:
+        return "fora_da_urna"
+    if anywhere:
+        return "fora_do_turno"
+    return "nao_encontrado"
+
+
+def on_ballot_sq_candidatos(
+    cursor: duckdb.DuckDBPyConnection, uf: str, office: str, round: int, limit: int
+) -> list[int]:
+    """At most ``limit`` on-ballot candidacies of (``uf``, ``office``) in ``round``, in
+    ballot-number order."""
+    rows = cursor.execute(
+        """
+        SELECT sq_candidato FROM candidates
+        WHERE uf = ? AND office = ? AND round = ? AND on_ballot
+        ORDER BY number, sq_candidato
+        LIMIT ?
+        """,
+        [uf, office, round, limit],
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def asset_totals(cursor: duckdb.DuckDBPyConnection, sq_candidatos: list[int]) -> dict[int, Decimal]:
+    """The declared-assets total of each candidacy of ``sq_candidatos`` that has one."""
+    if not sq_candidatos:
+        return {}
+    placeholders = ", ".join("?" for _ in sq_candidatos)
+    rows = cursor.execute(
+        f"SELECT sq_candidato, total FROM candidate_assets WHERE sq_candidato IN ({placeholders})",
+        sq_candidatos,
+    ).fetchall()
+    return {int(row[0]): row[1] for row in rows}

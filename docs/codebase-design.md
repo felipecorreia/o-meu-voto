@@ -11,7 +11,7 @@ comportamento atrás de pouca interface), **alavancagem** (o que quem chama ganh
 
 ## 1. Princípio
 
-Existe um único módulo profundo, o `core`: ele responde às seis perguntas sobre um índice
+Existe um único módulo profundo, o `core`: ele responde às sete perguntas sobre um índice
 local, sem HTTP, sem rede e sem saber se quem pergunta é um LLM por MCP, um navegador pela
 REST ou um teste. O índice chega ao `core` por uma porta, `IndexSource`, cujo adaptador de
 rede vive fora dele. Tudo o mais é adaptador fino ou pipeline separado. O teste de deleção guia
@@ -26,7 +26,7 @@ src/br_elections_mcp/
   domain.py            entidades e invariantes (já existe)
   elections.py         carregador e esquema de data/elections.yaml (já existe)
   index_schema.py      tabelas do índice e lista de colunas proibidas; compartilhado por core e pipeline
-  core/                MÓDULO PROFUNDO: as seis consultas sobre o índice; sem HTTP, sem rede
+  core/                MÓDULO PROFUNDO: as sete consultas sobre o índice; sem HTTP, sem rede
     __init__.py        exporta Core, IndexSource e os tipos de resposta
     answers.py         modelos de resposta (pydantic): envelope, data, election, source
     index_source.py    porta IndexSource: "qual é a versão corrente do índice e onde está no disco"
@@ -67,7 +67,7 @@ Uma classe, `Core`, construída com um `IndexSource`, o caminho do `elections.ya
 relógio (`Clock`, injetado para os testes de envelhecimento). O construtor não abre índice,
 não chama o `IndexSource` e não inicia thread: `start()` faz a abertura inicial e cria a
 tarefa de verificação, `close()` a encerra e fecha o índice, e os dois são chamados pelo
-lifespan de `app.py`, nunca pelo construtor. Sete métodos de consulta, síncronos, puros em
+lifespan de `app.py`, nunca pelo construtor. Oito métodos de consulta, síncronos, puros em
 relação a rede:
 
 | Método | Pergunta | Retorno |
@@ -76,6 +76,7 @@ relação a rede:
 | `search_polling_places(uf, municipality, neighborhood=None, query=None, near=None, limit=20, round=None)` | locais da cidade ou bairro | `PollingPlacesAnswer` |
 | `list_candidates(uf, office, party=None, name=None, on_ballot_only=True, limit=50, offset=0, round=None)` | candidatos | `CandidatesAnswer` |
 | `get_candidate(sq_candidato=None, *, uf=None, office=None, number=None, round=None)` | ficha do candidato | `CandidateAnswer` |
+| `compare_candidates(uf, office, sq_candidatos=None, numbers=None, round=None)` | comparação de 2 a 4 candidaturas | `CandidatesComparisonAnswer` |
 | `election_info(on=None)` | data e horário | `ElectionInfoAnswer` |
 | `resolve_municipality(name, uf=None, limit=10)` | código do município | `MunicipalitiesAnswer` |
 | `health()` | estado do índice | `IndexHealth` |
@@ -175,7 +176,7 @@ diretório temporário (uma UF fictícia com seções principal e agregada, um l
 município no exterior, uma chapa de governador com vice, um candidato indeferido na urna,
 seções nos turnos 1 e 2, um presidente com linhas nos dois turnos e um presidente eliminado
 no 1º turno, com linha só no turno 1), o entregam por um `LocalDirectoryIndexSource` e
-exercitam os sete métodos com asserções sobre o resultado, incluindo `source`, `election` e
+exercitam os oito métodos com asserções sobre o resultado, incluindo `source`, `election` e
 `warnings`. Nenhum teste de consulta do `core` chama `start()`, então não há thread
 verificando o diretório em paralelo; a única exceção é o teste do ciclo de vida, abaixo. O
 teste de recarga troca os arquivos do diretório por um índice com
@@ -284,19 +285,21 @@ mensagem do `core`; `IndexUnavailable` vira 503.
 | `search_polling_places` | `GET /api/v1/polling-places?uf=&municipality=&neighborhood=&query=&lat=&lon=&limit=&round=` |
 | `list_candidates` | `GET /api/v1/candidates?uf=&office=&party=&name=&on_ballot_only=&limit=&offset=&round=` |
 | `get_candidate` | `GET /api/v1/candidates/by-number?uf=&office=&number=&round=` e `GET /api/v1/candidates/{sq_candidato}?round=` |
+| `compare_candidates` | `GET /api/v1/candidates/compare?uf=&office=&sq=&sq=&round=` ou `...&number=&number=` |
 | `election_info` | `GET /api/v1/election?on=` |
 | `resolve_municipality` | `GET /api/v1/municipalities?name=&uf=&limit=` |
 | (não é tool) | `GET /healthz` |
 
 Ordem de declaração das rotas de candidato, que faz parte do contrato de `api.py`:
-`GET /api/v1/candidates/by-number` é declarada antes de `GET /api/v1/candidates/{sq_candidato}`.
+`GET /api/v1/candidates/by-number` e `GET /api/v1/candidates/compare` são declaradas antes de
+`GET /api/v1/candidates/{sq_candidato}`.
 No FastAPI a primeira rota que casa vence, e a anotação de tipo não muda o casamento: um
 `{sq_candidato}` anotado como `int` continua casando qualquer segmento, e a validação só roda
 depois, devolvendo 422. O que evita a colisão é a ordem de declaração (ou, como alternativa
 equivalente, o conversor de caminho do Starlette, `{sq_candidato:int}`, que restringe o
 casamento a dígitos). A anotação `int` continua existindo, mas só para que um `sq_candidato`
-não numérico produza uma mensagem de erro clara. O teste do adaptador REST cobre `by-number`
-explicitamente.
+não numérico produza uma mensagem de erro clara. O teste do adaptador REST cobre `by-number` e
+`compare` explicitamente.
 
 **`app.py`** é a raiz de composição: escolhe o
 `IndexSource` (`GcsIndexSource` em produção, `LocalDirectoryIndexSource` quando apontado para
@@ -421,7 +424,7 @@ derivação comentada ali; issue #48 (município em caixa mista no crosswalk rea
 Branco Do Ivaí") fechou junto. Fica para depois: nada — a regra já roda desde a primeira
 ingestão real. Implementação, execução local e o que foi verificado: `web/README.md`.
 
-## 8. Contratos das seis tools
+## 8. Contratos das sete tools
 
 Nomes de tool e de campo em inglês; descrições, enums e textos em PT-BR. Toda resposta tem
 este envelope, tanto no `structuredContent` do MCP quanto no JSON da REST:
@@ -551,7 +554,9 @@ opcional; resolução na seção 3.4, linhas C1 a C4).
 `data`: `round` (o turno efetivamente respondido), `candidates[]` com `sq_candidato`,
 `number`, `ballot_name`, `name`, `office`, `party {number, acronym, name}`,
 `federation {acronym, name}` ou nulo, `coalition {name}` ou nulo, `adjudication_status`,
-`on_ballot`, `occupation`, `photo_url`; mais `total`, `limit` e `offset`. Nunca inclui
+`on_ballot`, `occupation`, `photo_url`, `vote_destination` (o destino dos votos como o TSE
+publica: "Válido", "Anulado sub judice", "Nulo técnico", ou nulo; ADR 0008); mais `total`,
+`limit` e `offset`. Nunca inclui
 gênero, cor/raça, estado civil ou grau de instrução: esses campos existem só na ficha
 individual (8.4).
 
@@ -606,6 +611,52 @@ Input: `name`, `uf` (opcional), `limit` (1 a 50, padrão 10).
 
 `data.municipalities[]`: `tse_code`, `ibge_code`, `name`, `uf`, `score`. `source` aponta
 para o crosswalk TSE/IBGE.
+
+### 8.7 `compare_candidates`
+
+Decisão de produto na ADR 0008 (escopo, conteúdo e regras de neutralidade); a regra de LGPD
+dos bens, na ADR 0009.
+
+Descrição: "Compara lado a lado de 2 a 4 candidaturas do mesmo cargo, UF e turno: partido,
+aliança, situação do registro, destino dos votos, ocupação, chapa, foto, total de bens
+declarados e links oficiais. Sempre em ordem de número de urna: não ordena por valor, não
+pontua e não recomenda voto. Sem sq_candidatos nem numbers, compara todas as candidaturas na
+urna quando são de 2 a 4 (o 2º turno). Nunca inclui CPF, título de eleitor, data de
+nascimento, idade, gênero, cor/raça, estado civil ou escolaridade."
+
+Input: `uf` (estados, DF ou BR), `office` (os seis cargos de urna; vice e suplente são
+`InvalidQuery`, porque vêm com a chapa), no máximo um seletor, `sq_candidatos` ou `numbers`
+(lista de 2 a 4 valores distintos; na REST, `sq` ou `number` repetidos), e `round` (inteiro,
+opcional; resolução na seção 3.4, linhas C1 a C4, as mesmas da lista, para que todas as
+entradas compartilhem um turno respondido). Sem seletor, a comparação é de todas as
+candidaturas `on_ballot` do turno respondido quando são de 2 a 4; fora disso, `InvalidQuery`.
+
+`data`: `round`, `uf`, `office`; `candidates[]`, sempre em ordem de número de urna, com os
+campos de 8.3 mais `social_name`, `nomination_kind`, `federation.composition`,
+`coalition.composition`, `vote_destination_note` (uma linha em PT-BR que explica
+`vote_destination`, nula para um valor desconhecido), `running_mates[]` (como em 8.4, só nome
+e partido, sem ficha), `social_links[]`, `divulgacandcontas_url` e `assets {state, total}`
+(`state`: `declarados`, `declarou_nao_possuir` ou `sem_informacao`; `total` em reais, como
+declarado, nulo fora de `declarados`); `missing[]` (`requested`, `reason`:
+`nao_encontrado`, `fora_da_urna` ou `fora_do_turno`), as candidaturas pedidas que ficaram de
+fora; `assets_note`, a ressalva fixa sobre os bens; e `assets_source`, a fonte do arquivo de
+bens no formato de `source` (o envelope tem uma só `source`, a do arquivo de candidatos). Nunca
+inclui gênero, cor/raça, estado civil nem grau de instrução: a comparação tem forma de lista
+(ADR 0004).
+
+Pelo número, conta só a candidatura `on_ballot` do turno, como no trio de 8.4. Por
+`sq_candidato`, uma candidatura de outra UF ou cargo é `InvalidQuery`, com o cargo e a UF do
+TSE na mensagem, nunca misturada. Uma pedida fora da urna ou fora do turno vai para `missing`.
+
+Avisos possíveis: os de turno da seção 3.4 e o de dado envelhecido (seção 9), um por arquivo
+envelhecido (candidatos e bens).
+
+`not_found.reason`: `candidaturas_insuficientes`, quando menos de duas candidaturas pedidas
+ficam na comparação.
+
+O `content` de texto do MCP lista as candidaturas na mesma ordem de número de urna e diz que
+não é ranking nem recomendação de voto; nunca ordena por valor nem compara as entradas entre
+si.
 
 ## 9. Dado envelhecido
 

@@ -182,6 +182,7 @@ def test_published_manifest_carries_the_election_of_an_all_election_files_index(
         "candidates",
         "candidates_complementary",
         "candidate_social_links",
+        "candidate_assets",
     }
     assert all(source.generated_at for source in published.datasets.values())
     assert published.index_built_at == BUILT_AT

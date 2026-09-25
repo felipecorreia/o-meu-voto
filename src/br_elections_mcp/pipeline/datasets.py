@@ -74,6 +74,14 @@ CANDIDATE_SOCIAL_LINKS_2026 = Dataset(
     url=f"{CDN_BASE_URL}/consulta_cand/rede_social_candidato_2026.zip",
 )
 
+CANDIDATE_ASSETS_2026 = Dataset(
+    id="candidate_assets_2026",
+    ckan_dataset="candidatos-2026",
+    title="Bens de candidatos - 2026",
+    file_name="bem_candidato_2026.zip",
+    url=f"{CDN_BASE_URL}/bem_candidato/bem_candidato_2026.zip",
+)
+
 MUNICIPALITIES_TSE_IBGE = Dataset(
     id="municipalities_tse_ibge",
     ckan_dataset="codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge",
@@ -99,6 +107,7 @@ DATASETS: tuple[Dataset, ...] = (
     CANDIDATES_2026,
     CANDIDATES_COMPLEMENTARY_2026,
     CANDIDATE_SOCIAL_LINKS_2026,
+    CANDIDATE_ASSETS_2026,
     MUNICIPALITIES_TSE_IBGE,
 )
 

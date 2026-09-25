@@ -26,6 +26,7 @@ import duckdb
 from br_elections_mcp.domain import Office
 from br_elections_mcp.elections import load_elections
 from br_elections_mcp.index_schema import (
+    CANDIDATE_ASSETS_CSV_COLUMNS,
     CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS,
     CANDIDATES_COMPLEMENTARY_CSV_COLUMNS,
     CANDIDATES_CSV_COLUMNS,
@@ -124,6 +125,7 @@ def validate(
     candidates: SourceFile,
     candidates_complementary: SourceFile,
     social_links: SourceFile,
+    candidate_assets: SourceFile,
     index_dir: Path,
     elections_path: Path,
     output_dir: Path,
@@ -148,6 +150,7 @@ def validate(
                 conn, "raw_candidates_complementary", candidates_complementary.path
             ),
             "candidate_social_links": _csv_header(conn, "raw_social_links", social_links.path),
+            "candidate_assets": _csv_header(conn, "raw_candidate_assets", candidate_assets.path),
         }
         with_round = "NR_TURNO" in headers["candidates_complementary"]
         with contextlib.suppress(duckdb.Error):
@@ -227,6 +230,7 @@ def _gate_csv_header(headers: dict[str, list[str]]) -> GateResult:
         "candidates": CANDIDATES_CSV_COLUMNS,
         "candidates_complementary": CANDIDATES_COMPLEMENTARY_CSV_COLUMNS,
         "candidate_social_links": CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS,
+        "candidate_assets": CANDIDATE_ASSETS_CSV_COLUMNS,
     }
     problems = []
     for key, columns in expected.items():

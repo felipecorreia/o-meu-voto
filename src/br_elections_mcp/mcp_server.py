@@ -19,6 +19,7 @@ from br_elections_mcp import __version__
 from br_elections_mcp.core import (
     CandidateAnswer,
     CandidatesAnswer,
+    CandidatesComparisonAnswer,
     Core,
     ElectionInfoAnswer,
     IndexUnavailable,
@@ -36,8 +37,8 @@ SERVER_NAME = "br-elections-mcp"
 SERVER_INSTRUCTIONS = (
     "Responde às perguntas do eleitor brasileiro a partir dos dados abertos do TSE: onde votar, "
     "a partir da UF, zona e seção do título; quem são os candidatos de um cargo numa UF e a "
-    "ficha de cada um; e quais são os locais de votação de uma cidade ou bairro, para quem não "
-    "sabe a zona e a seção. "
+    "ficha de cada um; a comparação lado a lado de 2 a 4 candidaturas do mesmo cargo; e quais são "
+    "os locais de votação de uma cidade ou bairro, para quem não sabe a zona e a seção. "
     "Nunca consulta o cadastro eleitoral: para descobrir a própria zona e seção pelo nome ou "
     "CPF, o eleitor usa o e-Título. Nenhuma resposta traz CPF, título de eleitor, data de "
     "nascimento ou e-mail de candidato. Toda resposta cita a fonte (dataset, arquivo e data de "
@@ -69,6 +70,16 @@ GET_CANDIDATE_DESCRIPTION = (
     "Ficha de um candidato, pelo sq_candidato ou por UF, cargo e número. Inclui vice ou "
     "suplentes da chapa, redes sociais declaradas ao TSE e o link da página oficial no "
     "DivulgaCandContas. Nunca inclui CPF, título de eleitor, data de nascimento ou e-mail."
+)
+
+COMPARE_CANDIDATES_TITLE = "Comparar candidatos"
+COMPARE_CANDIDATES_DESCRIPTION = (
+    "Compara lado a lado de 2 a 4 candidaturas do mesmo cargo, UF e turno: partido, aliança, "
+    "situação do registro, destino dos votos, ocupação, chapa, foto, total de bens declarados e "
+    "links oficiais. Sempre em ordem de número de urna: não ordena por valor, não pontua e não "
+    "recomenda voto. Sem sq_candidatos nem numbers, compara todas as candidaturas na urna "
+    "quando são de 2 a 4 (o 2º turno). Nunca inclui CPF, título de eleitor, data de nascimento, "
+    "idade, gênero, cor/raça, estado civil ou escolaridade."
 )
 
 BallotOffice = Literal[
@@ -251,6 +262,45 @@ def create_mcp_server(core: Core, *, telemetry: Telemetry | None = None) -> MCPS
         )
 
     @server.tool(
+        name="compare_candidates",
+        title=COMPARE_CANDIDATES_TITLE,
+        description=COMPARE_CANDIDATES_DESCRIPTION,
+        annotations=READ_ONLY,
+    )
+    def compare_candidates(
+        uf: Annotated[
+            str, Field(description="Sigla da UF, 2 letras: estados, DF ou BR para presidente")
+        ],
+        office: Annotated[BallotOffice, Field(description="Cargo de urna")],
+        sq_candidatos: Annotated[
+            list[int | str] | None,
+            Field(description="2 a 4 números sequenciais de candidatura no TSE; ou numbers"),
+        ] = None,
+        numbers: Annotated[
+            list[int | str] | None,
+            Field(description="2 a 4 números de urna do cargo; ou sq_candidatos"),
+        ] = None,
+        round: Annotated[
+            int | None, Field(description="Turno, opcional; sem ele, o turno mais recente do cargo")
+        ] = None,
+    ) -> Annotated[CallToolResult, CandidatesComparisonAnswer]:
+        try:
+            answer = telemetry.call(
+                "compare_candidates",
+                lambda: core.compare_candidates(
+                    uf, office, sq_candidatos=sq_candidatos, numbers=numbers, round=round
+                ),
+            )
+        except InvalidQuery as exc:
+            return CallToolResult(content=[TextContent(type="text", text=str(exc))], is_error=True)
+        except IndexUnavailable as exc:
+            raise MCPError(code=INTERNAL_ERROR, message=f"índice indisponível: {exc}") from exc
+        return CallToolResult(
+            content=[TextContent(type="text", text=comparison_text(answer))],
+            structured_content=answer.model_dump(mode="json"),
+        )
+
+    @server.tool(
         name="search_polling_places",
         title=SEARCH_POLLING_PLACES_TITLE,
         description=SEARCH_POLLING_PLACES_DESCRIPTION,
@@ -385,6 +435,87 @@ def candidate_text(answer: CandidateAnswer) -> str:
     lines.extend(answer.warnings)
     lines.append(_source_text(answer.source))
     return " ".join(lines)
+
+
+_MISSING_REASON_LABELS = {
+    "nao_encontrado": "não encontrada",
+    "fora_da_urna": "fora da urna",
+    "fora_do_turno": "não disputa este turno",
+}
+
+
+def comparison_text(answer: CandidatesComparisonAnswer) -> str:
+    """The short PT-BR text of a comparison, for clients without structured output.
+
+    One line per candidacy in the order of ``data.candidates`` (ballot number), so the text
+    never reads as a ranking: no sort, no superlative, no difference between entries.
+    """
+    if answer.data is None:
+        assert answer.not_found is not None
+        lines = [f"Comparação não disponível. {answer.not_found.guidance}"]
+    else:
+        d = answer.data
+        office_label = d.office.value.replace("_", " ")
+        lines = [
+            f"{len(d.candidates)} candidaturas a {office_label} no {d.uf} (turno {d.round}), em "
+            "ordem de número de urna; não é ranking nem recomendação de voto."
+        ]
+        for c in d.candidates:
+            nomination = c.party.acronym
+            if c.federation is not None:
+                nomination += f", federação {c.federation.name}"
+            if c.coalition is not None:
+                nomination += f", coligação {c.coalition.name}"
+            parts = [f"{c.number} {c.ballot_name} ({nomination})"]
+            parts.append(f"registro {c.adjudication_status}")
+            if c.vote_destination is not None:
+                destination = f"destino dos votos: {c.vote_destination}"
+                if c.vote_destination != "Válido" and c.vote_destination_note is not None:
+                    destination += f" ({c.vote_destination_note})"
+                parts.append(destination)
+            if c.occupation is not None:
+                parts.append(f"ocupação declarada: {c.occupation}")
+            if c.running_mates:
+                parts.append(
+                    "chapa: "
+                    + ", ".join(
+                        f"{m.office.value.replace('_', ' ')} {m.ballot_name} ({m.party.acronym})"
+                        for m in c.running_mates
+                    )
+                )
+            parts.append(_assets_text(c.assets.state, c.assets.total))
+            if c.divulgacandcontas_url is not None:
+                parts.append(f"página oficial: {c.divulgacandcontas_url}")
+            lines.append("; ".join(parts) + ".")
+        if d.missing:
+            lines.append(
+                "Fora da comparação: "
+                + "; ".join(
+                    f"{m.requested} ({_MISSING_REASON_LABELS[m.reason]})" for m in d.missing
+                )
+                + "."
+            )
+        lines.append(d.assets_note)
+    lines.extend(answer.warnings)
+    lines.append(_source_text(answer.source))
+    if answer.data is not None:
+        lines.append(_source_text(answer.data.assets_source))
+    return " ".join(lines)
+
+
+def _assets_text(state: str, total: float | None) -> str:
+    if state == "declarados" and total is not None:
+        return f"bens declarados: {_brl(total)}"
+    if state == "declarou_nao_possuir":
+        return "declarou não possuir bens"
+    return "bens: sem declaração publicada"
+
+
+def _brl(value: float) -> str:
+    """``1216500.0`` as ``R$ 1.216.500,00``."""
+    sign = "-" if value < 0 else ""
+    grouped = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"{sign}R$ {grouped}"
 
 
 def polling_place_text(answer: PollingPlaceAnswer) -> str:

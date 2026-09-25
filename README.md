@@ -32,12 +32,13 @@ request path and a PostHog outage never delays or fails a query. See
 
 ## Status
 
-Six tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
+Seven tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
 vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the election"
 (MCP tool `election_info`, `GET /api/v1/election`), the sanitized candidate list (MCP tool
 `list_candidates`, `GET /api/v1/candidates`), the candidate profile (MCP tool `get_candidate`,
-`GET /api/v1/candidates/by-number` and `GET /api/v1/candidates/{sq_candidato}`), "what is this
-municipality's TSE code" (MCP tool
+`GET /api/v1/candidates/by-number` and `GET /api/v1/candidates/{sq_candidato}`), the candidate
+comparator (MCP tool `compare_candidates`, `GET /api/v1/candidates/compare`; ADR 0008), "what
+is this municipality's TSE code" (MCP tool
 `resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
 neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). The voter
 page in [`web/`](web/README.md) (static, no build) answers the same four questions over the
@@ -49,7 +50,7 @@ built from the real TSE files from the service image (`Dockerfile`, `compose.yam
 - [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
   TSE CSV columns, including the columns discarded for privacy (LGPD).
 - [`docs/codebase-design.md`](docs/codebase-design.md) - module boundaries and the contracts of
-  the six tools.
+  the seven tools.
 - [`docs/adr/`](docs/adr/) - architecture decision records.
 - [`data/elections.yaml`](data/elections.yaml) - the hand-curated electoral calendar.
 

@@ -17,10 +17,12 @@ updates a dataset; the `Last-Modified` header of each ZIP is the one the CDN ret
 | `consulta_cand_2026_leiame.pdf` | [`consulta_cand_2026.zip`](https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_2026.zip) ([`candidatos-2026`](https://dadosabertos.tse.jus.br/dataset/candidatos-2026)) | 2026-09-18 22:35:56 GMT | `f30553fb57dddd4ea6a3b1a636b50cb90edf2ac40ada27fe5cb7993d0c0cad70` |
 | `consulta_cand_complementar_2026_leiame.pdf` | [`consulta_cand_complementar_2026.zip`](https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand_complementar/consulta_cand_complementar_2026.zip) ([`candidatos-2026`](https://dadosabertos.tse.jus.br/dataset/candidatos-2026)) | 2026-09-18 22:35:52 GMT | `67141c06dbc17ea0a803e9decd14893b328d0309cc1afc4986d307ae9297ca96` |
 | `rede_social_candidato_2026_leiame.pdf` | [`rede_social_candidato_2026.zip`](https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/rede_social_candidato_2026.zip) ([`candidatos-2026`](https://dadosabertos.tse.jus.br/dataset/candidatos-2026)) | 2026-09-18 22:33:33 GMT | `6c3339f3d54069eea25d8d2cffc0d79e56fc3d97cb7d1f9d5f2a1421e3727e61` |
+| `bem_candidato_2026_leiame.pdf` | [`bem_candidato_2026.zip`](https://cdn.tse.jus.br/estatistica/sead/odsele/bem_candidato/bem_candidato_2026.zip) ([`candidatos-2026`](https://dadosabertos.tse.jus.br/dataset/candidatos-2026)) | 2026-09-25 19:33:28 GMT (downloaded 2026-09-25) | `e46cb76c0124f0002d4480c49680ae2e01f21e5711bb7134c949843dfd64c947` |
 | `municipio_tse_ibge_leiame.pdf` | [`municipio_tse_ibge.zip`](https://cdn.tse.jus.br/estatistica/sead/odsele/municipio_tse_ibge/municipio_tse_ibge.zip) ([`codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge`](https://dadosabertos.tse.jus.br/dataset/codigos-oficiais-de-uf-e-municipios-segundo-o-tse-e-o-ibge)) | 2026-09-13 12:00:27 GMT | `c6995db3ca1e0e2edb16cca0c78b7081953374c9b371619b5f5e4d326f18ee95` |
 
 The three CKAN datasets are the ones the pipeline ingests (polling places, candidates and the
-TSE/IBGE municipality crosswalk); `candidatos-2026` ships three ZIPs, each with its own
-`leiame.pdf`, so all three are here. `consulta_cand_2026_leiame.pdf`, page 1, is the source of
+TSE/IBGE municipality crosswalk); `candidatos-2026` ships four ZIPs the pipeline reads, each
+with its own `leiame.pdf`, so all four are here (`bem_candidato_2026` since the comparator,
+ADR 0008). `consulta_cand_2026_leiame.pdf`, page 1, is the source of
 the citation in ADR 0004: Res. TSE 23.609/2019, art. 33, § 2º (as amended by Res. 23.729/2024)
 makes `NR_CPF_CANDIDATO` non-disclosable, even though the CSV still carries it.

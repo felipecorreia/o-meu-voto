@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 INDEX_FILE_NAME = "index.duckdb"
 MANIFEST_FILE_NAME = "manifest.json"
@@ -35,9 +35,11 @@ FORBIDDEN_COLUMNS: frozenset[str] = frozenset(
         "DT_NASCIMENTO",
         "SG_UF_NASCIMENTO",
         "DS_EMAIL",
+        "DS_BEM_CANDIDATO",
     }
 )
-"""Personal-data columns dropped before any write. The exact list of ADR 0004."""
+"""Personal-data columns dropped before any write: the list of ADR 0004, plus the free-text
+description of a declared asset (``DS_BEM_CANDIDATO``) added by ADR 0009."""
 
 POLLING_PLACES_CSV_COLUMNS: tuple[str, ...] = (
     "DT_GERACAO",
@@ -141,8 +143,14 @@ CANDIDATES_COMPLEMENTARY_CSV_COLUMNS: tuple[str, ...] = (
     "ST_CANDIDATO_INSERIDO_URNA",
     "DS_SITUACAO_JULGAMENTO",
     "SQ_SUBSTITUIDO",
+    "NM_TIPO_DESTINACAO_VOTOS",
+    "ST_DECLARAR_BENS",
 )
 """Columns of ``consulta_cand_complementar_*.csv`` the build reads.
+
+``NM_TIPO_DESTINACAO_VOTOS`` is the vote destination ("Válido", "Anulado sub judice",
+"Nulo técnico"), kept verbatim; ``ST_DECLARAR_BENS`` (S/N) tells a candidacy that declared
+having no assets from one whose declaration is simply absent (ADR 0008).
 
 ``SQ_SUBSTITUIDO`` names the candidacy a substitute replaced; a candidacy some other row
 names there is off the ballot whatever its ``ST_CANDIDATO_INSERIDO_URNA`` says
@@ -161,6 +169,16 @@ CANDIDATE_SOCIAL_LINKS_CSV_COLUMNS: tuple[str, ...] = (
     "DS_URL",
 )
 """Columns of ``rede_social_candidato_*.csv`` the build reads."""
+
+CANDIDATE_ASSETS_CSV_COLUMNS: tuple[str, ...] = (
+    "DT_GERACAO",
+    "HH_GERACAO",
+    "SQ_CANDIDATO",
+    "VR_BEM_CANDIDATO",
+)
+"""Columns of ``bem_candidato_*.csv`` the build reads: one row per declared asset, summed
+into one total per candidacy. The free-text ``DS_BEM_CANDIDATO`` is forbidden (ADR 0009),
+and the asset kind is not kept: the comparator shows the total only (ADR 0008)."""
 
 TABLES: dict[str, str] = {
     "municipalities": """
@@ -239,6 +257,8 @@ TABLES: dict[str, str] = {
             adjudication_status    VARCHAR NOT NULL,
             on_ballot              BOOLEAN NOT NULL,
             occupation             VARCHAR,
+            vote_destination       VARCHAR,
+            declares_assets        BOOLEAN,
             gender                 VARCHAR,
             race_color             VARCHAR,
             marital_status         VARCHAR,
@@ -257,6 +277,13 @@ TABLES: dict[str, str] = {
             PRIMARY KEY (sq_candidato, position)
         )
     """,
+    "candidate_assets": """
+        CREATE TABLE candidate_assets (
+            sq_candidato BIGINT NOT NULL PRIMARY KEY,
+            total        DECIMAL(18, 2) NOT NULL,
+            item_count   INTEGER NOT NULL
+        )
+    """,
 }
 """DDL of every table in ``index.duckdb``, keyed by table name."""
 
@@ -266,6 +293,7 @@ DatasetKey = Literal[
     "candidates",
     "candidates_complementary",
     "candidate_social_links",
+    "candidate_assets",
 ]
 
 
