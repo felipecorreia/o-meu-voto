@@ -5,11 +5,16 @@
 # temporary directory that the last step removes even on failure (ADR 0004). Only
 # index.duckdb and manifest.json leave the runner, through the publish stage.
 #
-# Secrets (the captain sets them; see README, "Publishing the index"):
-#   INDEX_BUCKET          name of the GCS bucket that holds the index
-#   GCP_CREDENTIALS_JSON  key of a service account that can write that bucket
+# Google Cloud access is keyless, through Workload Identity Federation: each run exchanges its
+# GitHub OIDC token for a short-lived token of the publisher service account, and the provider
+# accepts only this repository's main branch (docs/deploy-runbook.md, step B3). Configuration
+# the captain sets (see README, "Publishing the index"):
+#   INDEX_BUCKET                    secret: name of the GCS bucket that holds the index
+#   GCP_WORKLOAD_IDENTITY_PROVIDER  variable: full resource name of the WIF provider,
+#                                   projects/<number>/locations/global/workloadIdentityPools/...
+#   GCP_PUBLISHER_SA                variable: email of the service account that can write that bucket
 # Optional repository variable:
-#   INDEX_BUCKET_PREFIX   object name prefix inside the bucket (default: none)
+#   INDEX_BUCKET_PREFIX             object name prefix inside the bucket (default: none)
 #
 # Secrets for the mirror-photos step (see README, "Mirroring candidate photos to R2"), all
 # optional: until the captain provisions them, the step logs why and skips, and the rest of
@@ -38,6 +43,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # the GitHub OIDC token that Workload Identity Federation exchanges
 
 # One refresh at a time: two runs publishing concurrently could interleave their writes.
 concurrency:
@@ -52,6 +58,8 @@ jobs:
     env:
       INDEX_BUCKET: ${{ secrets.INDEX_BUCKET }}
       INDEX_BUCKET_PREFIX: ${{ vars.INDEX_BUCKET_PREFIX }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PUBLISHER_SA: ${{ vars.GCP_PUBLISHER_SA }}
     steps:
       - uses: actions/checkout@v4
 
@@ -67,15 +75,24 @@ jobs:
 
       - name: Check the bucket configuration
         run: |
+          missing=0
           if [ -z "$INDEX_BUCKET" ]; then
             echo "::error::the INDEX_BUCKET secret is not set; see README, 'Publishing the index'"
-            exit 1
+            missing=1
           fi
+          for var in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_PUBLISHER_SA; do
+            if [ -z "${!var}" ]; then
+              echo "::error::the $var repository variable is not set; see README, 'Publishing the index'"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
 
       - name: Create the temporary work directory
         # Under RUNNER_TEMP, removed by the last step: raw ZIPs and CSVs never leave it.

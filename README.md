@@ -112,10 +112,15 @@ cadences the TSE declares (daily after 06:25 for polling places, four times a da
 08:30, 12:30, 16:30 and 19:30 for candidates, all America/Sao_Paulo) and on
 `workflow_dispatch`; it stops at the first failed stage and writes the fetch statuses, the
 manifest (generation timestamp per dataset, counts, election, SHA-256), the validation gates
-and the published version to the job summary. It needs two repository secrets, which are not
-in the repo and are set by the maintainer: `INDEX_BUCKET` (the GCS bucket name) and
-`GCP_CREDENTIALS_JSON` (the key of a service account allowed to write that bucket);
-`INDEX_BUCKET_PREFIX` is an optional repository variable. Production writes go through
+and the published version to the job summary. It reaches Google Cloud without a stored key,
+through Workload Identity Federation: each run trades its GitHub OIDC token for a short-lived
+token of the publisher service account, and the provider accepts only this repository's
+`main` branch. The configuration is not in the repo and is set by the maintainer
+(`docs/deploy-runbook.md`, step B3): the `INDEX_BUCKET` secret (the GCS bucket name) and two
+repository variables, `GCP_WORKLOAD_IDENTITY_PROVIDER` (the provider's full resource name) and
+`GCP_PUBLISHER_SA` (the email of the service account allowed to write that bucket);
+`INDEX_BUCKET_PREFIX` is an optional repository variable. The first step fails with a message
+naming whatever is missing. Production writes go through
 `GcsBucketClient` (`pipeline/bucket.py`), the only pipeline code that talks to GCS; the tests
 use an in-memory fake of the same port. The off-season run over the monthly `ATUAL` file is
 not wired into the workflow yet.
