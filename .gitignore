@@ -20,6 +20,7 @@ data/index/
 *.parquet
 
 # Local tooling
+.wrangler/
 .claude/settings.local.json
 .env
 .DS_Store

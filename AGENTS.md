@@ -11,8 +11,10 @@ Pointers only; the content lives in the files below.
   there; a change that contradicts them needs a new ADR, not a silent override.
 - **Guardrails**: no personal data in the index or in any response (ADR 0004); PostHog
   telemetry anonymous.
-- **Voter page**: `web/` is static, no build, REST only; `web/README.md` says what it does and
-  how to open it locally (`--web-dir web`), `tests/test_web.py` what CI checks of it.
+- **Voter page**: `web/` is static, no build, REST only, plus the Cloudflare Pages edge
+  (`functions/[[path]].js` proxying `/api/*` and `/mcp` to Cloud Run, `_routes.json`,
+  `404.html`); `web/README.md` says what it does and how to open it locally (`--web-dir web`,
+  or `wrangler pages dev` for the edge), `tests/test_web.py` what CI checks of it.
 - **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)
@@ -24,7 +26,8 @@ Pointers only; the content lives in the files below.
   Local run, the Claude Desktop connection and the service image over real TSE data
   (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
   refresh workflow: README, "Publishing the index". Cloud Run + Cloudflare deploy checklist,
-  costs and open decisions: `docs/deploy-runbook.md` (nothing provisioned yet).
+  costs and open decisions: `docs/deploy-runbook.md` (nothing provisioned yet); after a deploy,
+  `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four voter questions over REST and MCP.
 
 ## Sharp edges
 

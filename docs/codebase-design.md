@@ -41,7 +41,7 @@ src/br_elections_mcp/
   app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, limite por IP, telemetria
   pipeline/            SEPARADO DO SERVIÇO: fetch, build, validate, publish, mirror_photos
 data/elections.yaml    calendário curado à mão
-web/                   página estática (Cloudflare Pages) e a Pages Function que fala com o Jev
+web/                   página estática (Cloudflare Pages), o proxy de borda para /api e /mcp e a Pages Function que fala com o Jev
 ```
 
 Dependências permitidas, e só estas:
@@ -52,7 +52,7 @@ index_store.py ──▶ core (só a porta IndexSource)   (adaptadores do índic
 app.py ──▶ mcp_server.py, api.py, index_store.py, telemetry.py   (composição; nunca lógica)
 core ──▶ domain.py, elections.py, index_schema.py  (nunca index_store.py; nunca rede)
 pipeline ──▶ domain.py, elections.py, index_schema.py     (nunca core; nunca os adaptadores)
-web/ ──▶ REST (HTTP), Jev (HTTP, só a Pages Function)      (nunca importa Python)
+web/ ──▶ REST e MCP (HTTP, via o proxy de borda), Jev (HTTP, só a Pages Function)      (nunca importa Python)
 ```
 
 O pipeline e o serviço se falam por um contrato de dados, não por importação: o arquivo do
@@ -364,7 +364,12 @@ Não contém URLs de datasets nem configuração de infraestrutura; isso fica no
 ## 7. Página estática e Jev
 
 A página em `web/` é HTML, CSS e JavaScript sem build, publicada no Cloudflare Pages, e
-consome apenas a REST. Ela tem sempre os formulários estruturados (UF, zona e seção; cidade e
+consome apenas a REST. No mesmo domínio, uma Pages Function de borda
+(`web/functions/[[path]].js`, com `web/_routes.json` restringindo-a a `/api/*` e `/mcp`)
+encaminha a REST e o MCP ao Cloud Run, porque no plano Free da Cloudflare não há outro jeito
+de servir o `run.app` sob o domínio da página (`docs/deploy-runbook.md`, passo D0). Ela não
+tem lógica de domínio: responde `405` ao `GET /mcp`, manda o segredo de borda como
+`x-edge-secret` e pede cache curto só para `GET` da REST sem coordenadas (ADR 0004). Ela tem sempre os formulários estruturados (UF, zona e seção; cidade e
 bairro; cargo e nome ou número; data da eleição) e, acima deles, uma caixa de linguagem
 natural. A caixa é um adaptador com dois componentes:
 
