@@ -38,7 +38,9 @@ src/br_elections_mcp/
   mcp_server.py        adaptador MCP (Streamable HTTP, SDK oficial mcp)
   api.py               adaptador REST (FastAPI sobre Starlette, que o SDK mcp já traz)
   telemetry.py         telemetria PostHog anônima (ticket #17): um evento por chamada, `Telemetry.call` envolve cada tool/rota
-  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, limite por IP, telemetria
+  rate_limit.py        limite por IP (ticket #10): token bucket por instância, só usado por app.py
+  edge.py              checagem do segredo de borda e confiança em CF-Connecting-IP (ADR 0010), só usado por app.py
+  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, segredo de borda, limite por IP, telemetria
   pipeline/            SEPARADO DO SERVIÇO: fetch, build, validate, publish, mirror_photos
 data/elections.yaml    calendário curado à mão
 web/                   página estática (Cloudflare Pages), o proxy de borda para /api e /mcp e a Pages Function que fala com o Jev
@@ -49,7 +51,7 @@ Dependências permitidas, e só estas:
 ```
 mcp_server.py ──▶ core, telemetry ◀── api.py   (adaptadores só conhecem a interface do core e a de telemetry)
 index_store.py ──▶ core (só a porta IndexSource)   (adaptadores do índice; GCS fica aqui)
-app.py ──▶ mcp_server.py, api.py, index_store.py, telemetry.py   (composição; nunca lógica)
+app.py ──▶ mcp_server.py, api.py, index_store.py, telemetry.py, edge.py, rate_limit.py   (composição; nunca lógica)
 core ──▶ domain.py, elections.py, index_schema.py  (nunca index_store.py; nunca rede)
 pipeline ──▶ domain.py, elections.py, index_schema.py     (nunca core; nunca os adaptadores)
 web/ ──▶ REST e MCP (HTTP, via o proxy de borda), Jev (HTTP, só a Pages Function)      (nunca importa Python)
@@ -305,13 +307,20 @@ não numérico produza uma mensagem de erro clara. O teste do adaptador REST cob
 `IndexSource` (`GcsIndexSource` em produção, `LocalDirectoryIndexSource` quando apontado para
 um diretório), cria o `Core` e chama `start()` e `close()` no lifespan ASGI (abertura
 inicial e tarefa de verificação começam e terminam com o processo, nunca no construtor),
-monta as duas aplicações ASGI, expõe `/healthz` (repassa
+monta as duas aplicações ASGI, responde `405` ao `GET /mcp` (o servidor não tem sessão nem
+mensagens iniciadas por ele, então recusa o fluxo de eventos opcional, como a especificação
+do Streamable HTTP permite, em vez de segurar uma requisição ociosa que mantém uma instância
+do Cloud Run cobrada), expõe `/healthz` (repassa
 `health()` do `core`: `generated_at` de cada dataset, `index_built_at`, `stale`,
 `index_version`, `last_index_check_at`, o instante da última verificação bem-sucedida do
 `IndexSource`, e `last_index_check_error`, instante e mensagem da última falha, ou nulo) e
-aplica o limite por IP: token bucket em memória por instância,
-`429` com `Retry-After`, IP lido de `CF-Connecting-IP` apenas quando a requisição vem das
-faixas da Cloudflare (ADR 0005). Logs registram o IP truncado, nunca completo.
+aplica dois middlewares ASGI, nesta ordem. Primeiro o segredo de borda (`edge.py`, ADR 0010):
+com `BR_ELECTIONS_EDGE_SECRET` definido, toda requisição exceto `/healthz` (as sondas do Cloud
+Run) precisa trazer o mesmo valor em `x-edge-secret`, que a Pages Function de `web/` envia, ou
+recebe `403`; numa requisição que o trouxe, `CF-Connecting-IP` passa a ser o endereço do
+cliente. Sem segredo definido nada é checado e o cabeçalho é ignorado. Depois o limite por IP:
+token bucket em memória por instância, `429` com `Retry-After`, contando pelo endereço do
+cliente que o middleware anterior deixou. Logs registram o IP truncado, nunca completo.
 
 Ao contrário do limite por IP, que fica inteiramente no ASGI middleware acima, a telemetria
 (`telemetry.py`, ticket #17) atravessa os próprios adaptadores: `create_mcp_server` e

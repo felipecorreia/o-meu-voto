@@ -11,6 +11,10 @@ variables read by ``Settings.from_env``. ``--web-dir web`` (or
 ``BR_ELECTIONS_WEB_DIR``) also serves the static page under ``/web`` so it
 reaches ``/api/v1`` on the same origin; that is a local-run convenience only,
 the page is published on Cloudflare Pages (ADR 0005), never by the service.
+
+In production the service sits behind the Pages Function of ``web/`` (ADR 0005, ADR 0010):
+``BR_ELECTIONS_EDGE_SECRET`` makes it refuse traffic that did not come through that edge,
+and ``GET /mcp`` answers ``405`` so no idle event stream holds an instance.
 """
 
 from __future__ import annotations
@@ -26,12 +30,13 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.core import Core, IndexSource, IndexUnavailable
+from br_elections_mcp.edge import EdgeSecretMiddleware
 from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
 from br_elections_mcp.mcp_server import create_mcp_server
 from br_elections_mcp.rate_limit import Clock, RateLimitConfig, RateLimitMiddleware
@@ -49,6 +54,7 @@ ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
 ENV_RATE_LIMIT_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS"
 ENV_RATE_LIMIT_WINDOW_SECONDS = "BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS"
+ENV_EDGE_SECRET = "BR_ELECTIONS_EDGE_SECRET"
 ENV_POSTHOG_API_KEY = "BR_ELECTIONS_POSTHOG_API_KEY"
 ENV_POSTHOG_HOST = "BR_ELECTIONS_POSTHOG_HOST"
 ENV_POSTHOG_DISTINCT_ID = "BR_ELECTIONS_POSTHOG_DISTINCT_ID"
@@ -77,6 +83,7 @@ class Settings:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
+    edge_secret: str | None = None
     telemetry: TelemetryConfig | None = None
 
     def build_index_source(self) -> IndexSource:
@@ -132,6 +139,7 @@ class Settings:
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
             rate_limit=rate_limit,
+            edge_secret=os.environ.get(ENV_EDGE_SECRET) or None,
             telemetry=telemetry,
         )
 
@@ -142,16 +150,20 @@ def build_app(
     host: str = DEFAULT_HOST,
     rate_limit: RateLimitConfig | None = None,
     rate_limit_clock: Clock = time.monotonic,
+    edge_secret: str | None = None,
     telemetry: Telemetry | None = None,
     web_dir: Path | None = None,
 ) -> Starlette:
     """Mount the two adapters over an already-constructed ``Core``; tests use this directly.
 
-    The per-IP rate limit (codebase-design 4, ticket #10) wraps both mounts as ASGI
-    middleware, the only cross-cutting concern of this composition root; ``rate_limit=None``
-    (the default, and the default in tests) disables it entirely. ``telemetry=None`` (the
-    default, and the default in tests) likewise disables product telemetry (ticket #17).
-    ``web_dir`` (local run only) mounts the static page of ``web/`` under ``/web``.
+    Two ASGI middlewares wrap both mounts, the only cross-cutting concerns of this
+    composition root (codebase-design 4): outermost the edge-secret check (ADR 0010), which
+    also makes ``CF-Connecting-IP`` the client address of a request that passed it, then the
+    per-IP rate limit (ticket #10), which counts by that address. ``edge_secret=None`` and
+    ``rate_limit=None`` (the defaults, and the defaults in tests) disable each entirely.
+    ``telemetry=None`` (the default, and the default in tests) likewise disables product
+    telemetry (ticket #17). ``web_dir`` (local run only) mounts the static page of ``web/``
+    under ``/web``.
     """
     telemetry = telemetry if telemetry is not None else Telemetry()
     mcp_server = create_mcp_server(core, telemetry=telemetry)
@@ -177,10 +189,22 @@ def build_app(
             return JSONResponse({"detail": str(exc)}, status_code=503)
         return JSONResponse(health.model_dump(mode="json"))
 
-    middleware = [Middleware(RateLimitMiddleware, config=rate_limit, clock=rate_limit_clock)]
+    async def mcp_stream_not_allowed(_: Request) -> Response:
+        # The server is stateless and never sends server-initiated messages, so it declines
+        # the optional GET event stream, as the Streamable HTTP spec allows, instead of
+        # holding an idle request open that keeps a Cloud Run instance billed.
+        return Response(status_code=405, headers={"allow": "POST"})
+
+    middleware = [
+        Middleware(EdgeSecretMiddleware, secret=edge_secret),
+        Middleware(RateLimitMiddleware, config=rate_limit, clock=rate_limit_clock),
+    ]
     routes = [
         Route("/healthz", healthz),
         Mount("/api/v1", app=create_api(core, telemetry=telemetry)),
+        # Before the MCP mount, which would otherwise take GET /mcp; POST and DELETE only
+        # match partially here and fall through to it.
+        Route("/mcp", mcp_stream_not_allowed, methods=["GET"]),
     ]
     if web_dir is not None:
         routes.append(Mount("/web", app=StaticFiles(directory=web_dir, html=True), name="web"))
@@ -199,6 +223,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         core,
         host=settings.host,
         rate_limit=settings.rate_limit,
+        edge_secret=settings.edge_secret,
         telemetry=build_telemetry(settings.telemetry),
         web_dir=settings.web_dir,
     )

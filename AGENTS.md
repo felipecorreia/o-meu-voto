@@ -23,7 +23,9 @@ Pointers only; the content lives in the files below.
   Tests build their DuckDB index from `tests/fixtures/` with the pipeline's own `build_index`
   (`tests/conftest.py`), deliver it through `LocalDirectoryIndexSource` and exercise a real
   `Core`; MCP tests use the SDK's in-memory `mcp.Client(server)`, REST tests the Starlette
-  `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts).
+  `TestClient` with `base_url="http://localhost"` (the MCP transport rejects other hosts; an
+  HTTP call to `/mcp` itself needs `"http://localhost:8000"`, since the SDK's DNS-rebinding
+  guard accepts only `localhost:<port>`).
   Local run, the Claude Desktop connection and the service image over real TSE data
   (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
   refresh workflow: README, "Publishing the index". Cloud Run + Cloudflare deploy checklist,

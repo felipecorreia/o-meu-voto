@@ -40,9 +40,10 @@ def make_client(
     rate_limit: RateLimitConfig | None,
     clock: ManualClock,
     peer: tuple[str, int] = ("198.51.100.7", 12345),
+    edge_secret: str | None = None,
 ) -> TestClient:
     core = Core(LocalDirectoryIndexSource(acre_index_dir), ELECTIONS_FILE, clock=fixed_clock())
-    app = build_app(core, rate_limit=rate_limit, rate_limit_clock=clock)
+    app = build_app(core, rate_limit=rate_limit, rate_limit_clock=clock, edge_secret=edge_secret)
     return TestClient(app, base_url="http://localhost", client=peer)
 
 
@@ -118,58 +119,78 @@ def test_default_is_disabled(acre_index_dir: Path):
             assert response.status_code == 200
 
 
-def test_cf_connecting_ip_is_honored_when_the_peer_is_a_cloudflare_range(acre_index_dir: Path):
+# On Cloud Run the socket peer is Google's front end for every client, so the limit can
+# only tell voters apart through CF-Connecting-IP, and only once the edge secret proves the
+# request came through Cloudflare (ADR 0010).
+EDGE_SECRET = "s3cret"
+# A Google front-end address: the same peer for every client, as on Cloud Run.
+CLOUD_RUN_PEER = ("169.254.169.126", 443)
+
+
+def test_cf_connecting_ip_is_honored_when_the_edge_secret_matched(acre_index_dir: Path):
     clock = ManualClock()
     with make_client(
         acre_index_dir,
         rate_limit=RateLimitConfig(max_requests=1, window_seconds=60),
         clock=clock,
-        peer=("173.245.48.1", 443),
+        peer=CLOUD_RUN_PEER,
+        edge_secret=EDGE_SECRET,
     ) as client:
-        first = client.get(
-            "/api/v1/polling-place",
-            params=POLLING_PLACE_PARAMS,
-            headers={"CF-Connecting-IP": "203.0.113.10"},
-        )
-        assert first.status_code == 200
-        # Same Cloudflare peer, a different declared client: its own, unspent bucket.
-        second = client.get(
-            "/api/v1/polling-place",
-            params=POLLING_PLACE_PARAMS,
-            headers={"CF-Connecting-IP": "203.0.113.20"},
-        )
-        assert second.status_code == 200
-        # The first declared client again: its bucket is already spent.
-        third = client.get(
-            "/api/v1/polling-place",
-            params=POLLING_PLACE_PARAMS,
-            headers={"CF-Connecting-IP": "203.0.113.10"},
-        )
-        assert third.status_code == 429
+
+        def get(client_ip: str) -> int:
+            headers = {"x-edge-secret": EDGE_SECRET, "CF-Connecting-IP": client_ip}
+            return client.get(
+                "/api/v1/polling-place", params=POLLING_PLACE_PARAMS, headers=headers
+            ).status_code
+
+        assert get("203.0.113.10") == 200
+        # Same peer, a different client behind the edge: its own, unspent bucket.
+        assert get("203.0.113.20") == 200
+        assert get("2001:db8::1") == 200
+        # The first client again: its bucket is already spent.
+        assert get("203.0.113.10") == 429
 
 
-def test_cf_connecting_ip_is_ignored_when_the_peer_is_not_cloudflare(acre_index_dir: Path):
+def test_cf_connecting_ip_is_ignored_without_a_configured_edge_secret(acre_index_dir: Path):
     clock = ManualClock()
     with make_client(
         acre_index_dir,
         rate_limit=RateLimitConfig(max_requests=1, window_seconds=60),
         clock=clock,
-        peer=("203.0.113.99", 443),
+        peer=CLOUD_RUN_PEER,
     ) as client:
         first = client.get(
             "/api/v1/polling-place",
             params=POLLING_PLACE_PARAMS,
-            headers={"CF-Connecting-IP": "203.0.113.10"},
+            headers={"CF-Connecting-IP": "203.0.113.10", "x-edge-secret": EDGE_SECRET},
         )
         assert first.status_code == 200
-        # Same, non-Cloudflare peer, a different (forged) declared client: the header
-        # is ignored, so the socket address's bucket, already spent, applies.
+        # A different (forged) declared client: the header is ignored, so the socket
+        # address's bucket, already spent, applies.
         second = client.get(
             "/api/v1/polling-place",
             params=POLLING_PLACE_PARAMS,
-            headers={"CF-Connecting-IP": "203.0.113.20"},
+            headers={"CF-Connecting-IP": "203.0.113.20", "x-edge-secret": EDGE_SECRET},
         )
         assert second.status_code == 429
+
+
+def test_an_unparseable_cf_connecting_ip_falls_back_to_the_peer(acre_index_dir: Path):
+    clock = ManualClock()
+    with make_client(
+        acre_index_dir,
+        rate_limit=RateLimitConfig(max_requests=1, window_seconds=60),
+        clock=clock,
+        peer=CLOUD_RUN_PEER,
+        edge_secret=EDGE_SECRET,
+    ) as client:
+        for expected in (200, 429):
+            response = client.get(
+                "/api/v1/polling-place",
+                params=POLLING_PLACE_PARAMS,
+                headers={"x-edge-secret": EDGE_SECRET, "CF-Connecting-IP": "not-an-ip"},
+            )
+            assert response.status_code == expected
 
 
 def test_log_lines_carry_only_the_truncated_ip(

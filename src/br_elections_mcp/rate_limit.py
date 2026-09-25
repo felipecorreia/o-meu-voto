@@ -1,11 +1,12 @@
 """Per-IP rate limiting for the composition root (codebase-design 4, ADR 0005).
 
 A pure ASGI middleware: an in-memory token bucket per client IP, ``429`` with
-``Retry-After`` over the configured rate, ``CF-Connecting-IP`` honored only
-when the peer socket address is inside Cloudflare's published ranges (the
-header is forgeable otherwise), and log lines carrying the truncated IP only,
-never the full address (ADR 0004). Used by ``app.py`` alone: neither adapter
-(``mcp_server.py``, ``api.py``) imports this module or knows limits or IPs
+``Retry-After`` over the configured rate, and log lines carrying the truncated IP
+only, never the full address (ADR 0004). The client IP is the ASGI ``client``
+address: behind the edge, ``edge.py`` has already replaced it with
+``CF-Connecting-IP`` for requests that carried a valid edge secret (ADR 0010), so
+this module never reads a forgeable header. Used by ``app.py`` alone: neither
+adapter (``mcp_server.py``, ``api.py``) imports this module or knows limits or IPs
 exist.
 """
 
@@ -23,45 +24,7 @@ logger = logging.getLogger(__name__)
 Clock = Callable[[], float]
 """Returns a monotonically increasing instant, in seconds."""
 
-# Cloudflare's published edge ranges (https://www.cloudflare.com/ips/). Refresh with:
-#   curl -s https://www.cloudflare.com/ips-v4 https://www.cloudflare.com/ips-v6
-CLOUDFLARE_IP_RANGES: tuple[str, ...] = (
-    "173.245.48.0/20",
-    "103.21.244.0/22",
-    "103.22.200.0/22",
-    "103.31.4.0/22",
-    "141.101.64.0/18",
-    "108.162.192.0/18",
-    "190.93.240.0/20",
-    "188.114.96.0/20",
-    "197.234.240.0/22",
-    "198.41.128.0/17",
-    "162.158.0.0/15",
-    "104.16.0.0/13",
-    "104.24.0.0/14",
-    "172.64.0.0/13",
-    "131.0.72.0/22",
-    "2400:cb00::/32",
-    "2606:4700::/32",
-    "2803:f800::/32",
-    "2405:b500::/32",
-    "2405:8100::/32",
-    "2a06:98c0::/29",
-    "2c0f:f248::/32",
-)
-
-_CLOUDFLARE_NETWORKS = tuple(ipaddress.ip_network(cidr) for cidr in CLOUDFLARE_IP_RANGES)
-
 EXEMPT_PATHS = frozenset({"/healthz"})
-
-
-def is_cloudflare_ip(host: str) -> bool:
-    """Whether ``host``, a socket peer address, is inside a Cloudflare range."""
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return any(address in network for network in _CLOUDFLARE_NETWORKS)
 
 
 def truncate_ip(host: str) -> str:
@@ -75,21 +38,9 @@ def truncate_ip(host: str) -> str:
 
 
 def client_ip(scope: dict) -> str:
-    """The client IP to rate-limit by: ``CF-Connecting-IP`` only from a Cloudflare peer."""
+    """The client IP to rate-limit by: the ASGI client address (see the module docstring)."""
     client = scope.get("client")
-    peer = client[0] if client else ""
-    if is_cloudflare_ip(peer):
-        header = _header(scope, b"cf-connecting-ip")
-        if header:
-            return header
-    return peer
-
-
-def _header(scope: dict, name: bytes) -> str | None:
-    for key, value in scope.get("headers", ()):
-        if key.lower() == name:
-            return value.decode("latin-1")
-    return None
+    return client[0] if client else ""
 
 
 @dataclass(frozen=True, slots=True)

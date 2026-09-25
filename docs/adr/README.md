@@ -16,3 +16,4 @@ do repositório), com a seção indicada.
 | [0007](0007-product-recorte-mvp-then-comparator.md) | Product recorte: finish the MVP before round 1, candidate comparator as the first new scope |
 | [0008](0008-candidate-comparator-v1-scope.md) | Candidate comparator v1: scope, content and neutrality rules (amends 0007) |
 | [0009](0009-titulo-transient-join-key-and-asset-free-text.md) | The título as a transient join key for asset growth; asset free text dropped (amends 0004) |
+| [0010](0010-edge-secret-instead-of-cloudflare-ranges.md) | Edge secret instead of Cloudflare IP ranges; `CF-Connecting-IP` trusted on a valid secret (amends 0005) |
