@@ -16,6 +16,9 @@ Pointers only; the content lives in the files below.
   (`functions/[[path]].js` proxying `/api/*` and `/mcp` to Cloud Run, `_routes.json`,
   `404.html`); `web/README.md` says what it does and how to open it locally (`--web-dir web`,
   or `wrangler pages dev` for the edge), `tests/test_web.py` what CI checks of it.
+- **Comparison page (next)**: `web-next/` is the React + Astryx page, comparison first, that
+  replaces `web/` once wired to the comparator API; `web-next/README.md` says how to run it,
+  what is still mock and the follow-ups. Vite build, not deployed yet.
 - **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)

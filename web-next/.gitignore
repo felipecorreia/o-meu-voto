@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build-check/
+.vite/
+.env
+.env.*.local
+tsconfig.tsbuildinfo

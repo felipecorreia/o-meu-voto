@@ -1,6 +1,7 @@
 # 0007. Product recorte: finish the MVP before round 1, candidate comparator as the first new scope
 
-Status: accepted, 2026-09-24.
+Status: accepted, 2026-09-24; amended by ADR 0008 (2026-09-25) on the launch order: the
+comparator leads the public launch of 2026-09-30, where-to-vote is secondary.
 
 ## Context
 
