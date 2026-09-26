@@ -5,8 +5,9 @@ candidacies, read them side by side; then the candidate profile, the FAQ and, as
 the where-to-vote searches (my polling place, places by city, election dates). Built with Vite,
 React 19 and `@astryxdesign/core` (Astryx, beta) on the TSE "CDE 2026" colour pattern, and
 reviewed by the captain on 2026-09-25 (design review report:
-`[private]`). It lands as reviewed; `web/` stays the deployed
-static page until this one replaces it (ADR 0005 keeps the page on Cloudflare Pages).
+`[private]`). It is the page Cloudflare Pages publishes (ADR
+0005), with the edge function next to it (below); `web/`, the old six-card page, is no longer
+deployed and waits for its removal.
 
 Identifiers are English, UI copy is PT-BR.
 
@@ -30,16 +31,53 @@ default `http://127.0.0.1:8000`, the local run of `docs/local-run.md`:
 BR_ELECTIONS_API_ORIGIN=http://127.0.0.1:8080 npm run dev   # e.g. the compose.yaml container
 ```
 
-In production nothing is proxied: Cloudflare Pages serves `dist/` and routes `/api/*` to the
-service (`docs/deploy-runbook.md`), so `wrangler pages deploy web-next/dist` is the deploy step.
-`_redirects` or `_headers` belong in `public/` so Vite copies them into `dist/`.
+In production nothing is proxied by Vite: Cloudflare Pages serves `dist/` and its function
+routes `/api/*` and `/mcp` to the service (next section).
+
+## Deploy and the Pages edge
+
+Three files make the Pages edge (ADR 0005, `docs/deploy-runbook.md` step D0), one copy each:
+
+- `functions/[[path]].js`: a Pages Function that proxies `/api/*` and `/mcp` to the Cloud Run
+  service, so the page and the API share one origin. It reads two Pages secrets: `ORIGIN_URL`
+  (the `run.app` URL) and `EDGE_SECRET` (optional, sent to the service as `x-edge-secret`). It
+  answers `GET /mcp` itself with `405`, so an idle MCP event stream never holds a Cloud Run
+  instance, and asks the edge for a 60 s cache on REST `GET`s except those carrying `lat` or
+  `lon` (ADR 0004).
+- `public/_routes.json`: only `/api/*` and `/mcp` invoke the function; every other request is a
+  static asset, free on Pages. `/healthz` is not routed, so it answers only on `run.app`. A
+  future function (the Jev box of ADR 0006) needs its path added here.
+- `public/404.html`: without it Pages treats the site as a single-page app and answers every
+  unknown path, the MCP OAuth discovery probes (`/.well-known/oauth-*`) included, with `200`
+  and `index.html`. The page's own routes are in the hash, so it needs no fallback.
+
+Vite copies `public/` into `dist/`; wrangler reads `functions/` from the directory it runs in.
+So the deploy is the build plus one command, from this directory (step D3 of the runbook):
+
+```sh
+npm ci && npm run build
+npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --branch=main
+```
+
+The same edge runs locally in front of a local service, no Cloudflare account needed:
+
+```sh
+uv run python -m br_elections_mcp.app --index-dir data/index --port 8791   # repo root
+npm run build && npx wrangler pages dev dist --port 8788 --binding ORIGIN_URL=http://127.0.0.1:8791
+scripts/smoke.sh http://localhost:8788 http://localhost:8791                # repo root
+```
+
+`tests/test_web.py` checks the route list, the 404 page and that `web/` holds no second copy,
+and runs the function under Node with a stub `fetch`. CI (`.github/workflows/ci.yml`, job
+`web-next`) runs `npm ci` and `npm run build` on Node 22, so a type error or a broken build
+fails the PR, and checks that `_routes.json` and `404.html` reach `dist/`.
 
 ## Routes (hash router, `src/router.ts`)
 
 | Route | Page | Notes |
 |---|---|---|
 | `#/` | Compare (home) | UF + office selectors, name and party filters, "incluir fora da urna", add by ballot number; the marked set lives in the URL (`sq=`), so a comparison is a link |
-| `#/?uf=&office=&sq=a,b,c` | Comparison | `CompareGrid`, tabs layout (below) |
+| `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `CompareGrid`, tabs layout (below) |
 | `#/candidato/:sq` | Profile | ADR 0004 fields only here, collapsed |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
 | `#/onde-voto`, `#/locais`, `#/quando` | Appendix | polling place by zone and section, places by city, election dates |
@@ -52,22 +90,27 @@ icons, Chapa e registro, Patrimônio (2026 total, evolution row collapsed behind
 evolução"), Ocupação e transparência (`tab=` in the URL); registration badges neutral in the
 comparison and coloured in the picker and the profile; vote destination as a neutral badge plus
 one explanatory line; a 3:4 photo slot of one size in every column (`photo_url`, neutral
-placeholder when absent).
+placeholder when absent or when the image fails to load).
 
-## What is not real yet
+## Where the data comes from
 
-`src/mock.ts` fills three rows the API does not serve: the vote destination (derived from the
-registration status), the declared assets of 2026 and their evolution (static figures from the
-comparator research, presidente only). Every such cell carries the "simulado" tag, the
-destination wording also "texto provisório". Follow-up: wire the page to the
-`compare_candidates` API (branch `fm/bre-comparador-v1`) and delete `mock.ts`; the row renderers
-stay.
+Every value is the API's (codebase-design 8.7 for the comparison): the vote destination and its
+one-line note, the 2026 declared-asset total (`assets.state`, `assets.total`), the photo, the
+candidacies the service left out (`missing[]`, named in a notice) and both sources (candidates
+and assets file) in the footer. The page owns only labels and two texts: the assets caveat
+(the service's `assets_note` names an API field for MCP clients) and the wording of
+`candidaturas_insuficientes`. The picker uses `GET /candidates` and `GET /candidates/by-number`,
+the profile `GET /candidates/{sq}` (destination without its note, no assets: see the comparison).
+
+Not served yet, and shown as such: the evolution of the declared assets (ADR 0009), a row
+tagged "em preparação" with one line across the columns and nothing invented; the FAQ says the
+same. When it lands, the captain's choice is to collapse it behind "Ver evolução".
 
 Review switches still in the code, as query parameters: `?theme=matcha|butter` (outside the
 hash; Butter + CDE is the default), `layout=pair|columns|stacked` (tabs is the default),
-`dest=badge|sentence|both`, `growth=line|timeline`, `status=neutral`, `photos=demo`
-(`public/photo-sample.svg`, a labelled sample). Follow-up: drop the losing options, the Matcha
-theme and the switcher in the top nav.
+`dest=badge|sentence|both`, `status=neutral`, `photos=demo` (`public/photo-sample.svg`, a
+labelled sample). Follow-up: drop the losing options, the Matcha theme and the switcher in the
+top nav, which is still visible.
 
 ## Theme
 
@@ -102,12 +145,13 @@ the footer and the FAQ. Contrast pairs are listed in the design review report.
 
 ## Follow-ups after landing
 
-1. Wire `compare_candidates` and remove `mock.ts`.
+1. Remove `web/` (the old page, no longer deployed) and its `--web-dir` tests.
 2. Drop the review switches and the Matcha theme; ship one pre-built theme.
-3. CI: a Node 22 job running `npm ci`, `npx tsc -p tsconfig.json` and `npm run build`; a
-   counterpart of `tests/test_web.py` for the built page.
+3. The asset evolution row, once the service serves it.
 4. Self-host Inter (`public/fonts/`) instead of Google Fonts.
 5. Candidate photos once the R2 mirror exists (`photo_url`).
 6. An ARIA pass on the grid roles; occupation casing at index build (`_CASED_COLUMNS`).
-7. Bundle: 824 KB minified / 240 KB gzip of JS today (react-dom, Astryx i18n and theme engine
+7. Bundle: 821 KB minified / 239 KB gzip of JS today (react-dom, Astryx i18n and theme engine
    are the bulk); lazy chunks for the appendix pages and the pre-built theme bring it down.
+8. The profile's "Comparar com outras" link carries no UF for a state race (the profile answer
+   has no `uf`), so the picker opens on the default UF.

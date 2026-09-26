@@ -378,9 +378,11 @@ Não contém URLs de datasets nem configuração de infraestrutura; isso fica no
 
 ## 7. Página estática e Jev
 
-A página em `web/` é HTML, CSS e JavaScript sem build, publicada no Cloudflare Pages, e
-consome apenas a REST. No mesmo domínio, uma Pages Function de borda
-(`web/functions/[[path]].js`, com `web/_routes.json` restringindo-a a `/api/*` e `/mcp`)
+A página publicada no Cloudflare Pages é a de `web-next/` (React + Astryx, build do Vite,
+comparação primeiro; `web-next/README.md`), e consome apenas a REST; a página sem build de
+`web/` não é mais publicada. No mesmo domínio, uma Pages Function de borda
+(`web-next/functions/[[path]].js`, com `web-next/public/_routes.json` restringindo-a a `/api/*`
+e `/mcp`)
 encaminha a REST e o MCP ao Cloud Run, porque no plano Free da Cloudflare não há outro jeito
 de servir o `run.app` sob o domínio da página (`docs/deploy-runbook.md`, passo D0). Ela não
 tem lógica de domínio: responde `405` ao `GET /mcp`, manda o segredo de borda como
@@ -388,7 +390,7 @@ tem lógica de domínio: responde `405` ao `GET /mcp`, manda o segredo de borda 
 bairro; cargo e nome ou número; data da eleição) e, acima deles, uma caixa de linguagem
 natural. A caixa é um adaptador com dois componentes:
 
-- Uma **Pages Function** (`web/functions/ask.js`) que guarda a chave do Jev como segredo,
+- Uma **Pages Function** (`web-next/functions/ask.js`) que guarda a chave do Jev como segredo,
   aplica seu próprio limite por IP e faz ao Jev uma única pergunta do tipo Choice: a intenção
   do texto entre `onde_voto`, `locais_da_cidade`, `candidatos`, `data_e_horario`,
   `cadastro_individual` e `fora_do_escopo`, com a confiança da resposta.

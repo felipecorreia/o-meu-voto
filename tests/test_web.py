@@ -1,8 +1,9 @@
-"""The static page under ``web/`` (codebase-design 7) and the local-only mount that serves it.
+"""The static page under ``web/`` (codebase-design 7), the local-only mount that serves it, and
+the Cloudflare Pages edge that ships with the comparison page in ``web-next/``.
 
-The page is deployed on Cloudflare Pages, never by the service; ``web_dir`` exists so a local
-run can open the page and the REST API on one origin (no CORS) and so this file can check that
-every file the page references is committed.
+Pages publishes the ``web-next/`` build, never the service; ``web_dir`` exists so a local run can
+open the old page and the REST API on one origin (no CORS) and so this file can check that every
+file the page references is committed.
 """
 
 from __future__ import annotations
@@ -78,12 +79,23 @@ def test_settings_read_web_dir_from_the_environment(monkeypatch: pytest.MonkeyPa
 # The Pages edge (ADR 0005, docs/deploy-runbook.md step D0): the function that proxies /api
 # and /mcp to Cloud Run on the page's own domain, the route list that keeps every other path
 # a static asset, and the 404 page that stops Pages answering unknown paths with index.html.
+# They live with the page Pages publishes: `wrangler pages deploy dist` run in web-next/ reads
+# functions/ from there, and Vite copies public/ into dist/.
 
-EDGE_FUNCTION = WEB_DIR / "functions" / "[[path]].js"
+PAGES_DIR = REPO / "web-next"
+EDGE_FUNCTION = PAGES_DIR / "functions" / "[[path]].js"
+PAGES_PUBLIC = PAGES_DIR / "public"
+
+
+def test_the_edge_has_one_source_of_truth():
+    # web/ is no longer deployed; a second copy of the edge there would drift.
+    assert EDGE_FUNCTION.is_file()
+    for stale in ("functions", "_routes.json", "404.html"):
+        assert not (WEB_DIR / stale).exists(), stale
 
 
 def test_only_the_api_and_mcp_reach_the_edge_function():
-    routes = json.loads((WEB_DIR / "_routes.json").read_text(encoding="utf-8"))
+    routes = json.loads((PAGES_PUBLIC / "_routes.json").read_text(encoding="utf-8"))
     # /healthz stays off the page's domain, and static requests never invoke the function.
     assert routes == {"version": 1, "include": ["/api/*", "/mcp"], "exclude": []}
 
@@ -91,7 +103,7 @@ def test_only_the_api_and_mcp_reach_the_edge_function():
 def test_unknown_paths_get_a_real_404_page():
     # Without 404.html, Pages answers every unknown path, the MCP OAuth discovery probes
     # (/.well-known/oauth-*) included, with 200 and index.html.
-    html = (WEB_DIR / "404.html").read_text(encoding="utf-8")
+    html = (PAGES_PUBLIC / "404.html").read_text(encoding="utf-8")
     assert '<html lang="pt-BR">' in html
     assert 'href="/"' in html
 

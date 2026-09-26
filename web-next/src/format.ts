@@ -71,3 +71,18 @@ export const fmtStamp = (iso: string) =>
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 export const gmapsUrl = (lat: number, lon: number) => `https://www.google.com/maps/search/?api=1&query=${lat}%2C${lon}`;
 export const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+/** "R$ 8,2 mi", "R$ 33 mil", "R$ 3.365": money in reais, compact, pt-BR. */
+export function brl(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '−' : '';
+  if (abs >= 1_000_000_000) return `${sign}R$ ${(abs / 1_000_000_000).toLocaleString('pt-BR', {maximumFractionDigits: 2})} bi`;
+  if (abs >= 1_000_000) return `${sign}R$ ${(abs / 1_000_000).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})} mi`;
+  if (abs >= 10_000) return `${sign}R$ ${Math.round(abs / 1_000).toLocaleString('pt-BR')} mil`;
+  if (abs >= 1_000) return `${sign}R$ ${(abs / 1_000).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})} mil`;
+  return `${sign}R$ ${abs.toLocaleString('pt-BR', {maximumFractionDigits: 2})}`;
+}
+/** The declared value to the cent, as the TSE publishes it: "R$ 4.775.650,64". */
+export function brlFull(n: number): string {
+  return `R$ ${n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+}

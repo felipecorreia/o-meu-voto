@@ -41,8 +41,9 @@ const GROUPS: Group[] = [
   {id: 'bens', title: 'Bens declarados', items: [
     {id: 'evolucao', q: 'Como é calculada a evolução dos bens?', a: (
       <>
-        <Text as="p">Comparamos o total de bens declarado em 2026 com a última declaração anterior da mesma pessoa em uma eleição de 2018, 2020, 2022 ou 2024, seja qual for o cargo disputado. Mostramos o ano e o cargo dessa declaração ao lado do valor, para ninguém comparar 2 anos com 8 sem saber.</Text>
-        <Text as="p">A diferença aparece de duas formas: em reais, como está nos arquivos, e corrigida pela inflação (IPCA de agosto do ano da declaração anterior até agosto de 2026, o mês do registro). Não mostramos porcentagem: com valores pequenos ela vira um número enorme que não diz nada.</Text>
+        <Text as="p"><b>Em preparação:</b> a comparação ainda mostra só o total declarado em 2026. A evolução entra quando o serviço reconhecer a mesma pessoa entre eleições; até lá, nenhum valor anterior aparece.</Text>
+        <Text as="p">A evolução vai comparar o total de bens declarado em 2026 com a última declaração anterior da mesma pessoa em uma eleição de 2018, 2020, 2022 ou 2024, seja qual for o cargo disputado, com o ano e o cargo dessa declaração ao lado do valor, para ninguém comparar 2 anos com 8 sem saber.</Text>
+        <Text as="p">A diferença vai aparecer de duas formas: em reais, como está nos arquivos, e corrigida pela inflação (IPCA de agosto do ano da declaração anterior até agosto de 2026, o mês do registro). Sem porcentagem: com valores pequenos ela vira um número enorme que não diz nada.</Text>
         <Text as="p">Os valores são os que a pessoa declarou ao TSE, pelo custo de aquisição, não pelo valor de mercado. Uma diferença entre duas declarações pode ser venda, herança, mudança de regime de bens ou só uma declaração refeita.</Text>
       </>
     )},

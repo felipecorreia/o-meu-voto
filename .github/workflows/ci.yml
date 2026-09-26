@@ -24,3 +24,24 @@ jobs:
         run: uv run ruff format --check .
       - name: Test
         run: uv run pytest
+
+  web-next:
+    name: Comparison page type check and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check and build
+        run: npm run build
+      # What `wrangler pages deploy dist` publishes next to functions/ (docs/deploy-runbook.md D3).
+      - name: Check the Pages files are in the build
+        run: test -f dist/index.html && test -f dist/_routes.json && test -f dist/404.html

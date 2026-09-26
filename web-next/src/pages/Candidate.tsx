@@ -2,13 +2,13 @@ import {useEffect, useState} from 'react';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
 import {Collapsible} from '@astryxdesign/core/Collapsible';
+import {Link} from '@astryxdesign/core/Link';
 import {MetadataList, MetadataListItem} from '@astryxdesign/core/MetadataList';
 import {Text} from '@astryxdesign/core/Text';
 import {VStack} from '@astryxdesign/core/VStack';
 import {ArrowLeft, Columns3, ExternalLink as ExternalIcon} from 'lucide-react';
 import {api, type CandidateData, type Envelope} from '../api';
 import {NOMINATION, OFFICE, type Office} from '../labels';
-import {VOTE_DESTINATION_EXPLANATION, brl, brlFull, mockAssets, mockVoteDestination} from '../mock';
 import {href} from '../router';
 import {CandidateAvatar, ErrorState, Loading, NotFoundState, NumberBadge, OnBallotBadge, SocialLinks, SourceFooter, StatusBadge, Warnings} from '../components/common';
 
@@ -46,8 +46,7 @@ export function CandidatePage({sq, backHref}: {sq: number; backHref: string}) {
           <MetadataListItem label="Concorre por">{NOMINATION[c.nomination_kind] ?? c.nomination_kind}{c.federation ? ` · ${c.federation.acronym}: ${c.federation.name}` : ''}{c.coalition ? ` · ${c.coalition.name}` : ''}</MetadataListItem>
           {(c.coalition?.composition || c.federation?.composition) ? <MetadataListItem label="Composição">{c.coalition?.composition || c.federation?.composition}</MetadataListItem> : null}
           <MetadataListItem label="Ocupação declarada"><span className="sentence">{c.occupation ?? '—'}</span></MetadataListItem>
-          <MetadataListItem label="Destino dos votos (simulado)">{mockVoteDestination(c.adjudication_status, c.on_ballot)}. {VOTE_DESTINATION_EXPLANATION[mockVoteDestination(c.adjudication_status, c.on_ballot)]}</MetadataListItem>
-          {(() => { const a = mockAssets(c.office, c.number); return a ? <MetadataListItem label="Bens declarados em 2026 (simulado)">{a.total != null ? `${brl(a.total)} (${brlFull(a.total)}), como declarado ao TSE` : a.state === 'declarou_nao_possuir' ? 'Declarou não possuir bens' : 'Sem informação de bens no TSE'}</MetadataListItem> : null; })()}
+          <MetadataListItem label="Destino dos votos">{c.vote_destination ?? 'Não informado pelo TSE'} · <Link href={href('/duvidas', {abrir: 'destino'})}>o que significa</Link></MetadataListItem>
           <MetadataListItem label="Chapa">{c.running_mates.length ? c.running_mates.map(m => `${m.ballot_name} (${m.party.acronym}, ${OFFICE[m.office as Office] ?? m.office})`).join('; ') : 'Não se aplica'}</MetadataListItem>
         </MetadataList>
         <div className="profile-section">

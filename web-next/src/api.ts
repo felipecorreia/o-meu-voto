@@ -9,6 +9,8 @@ export interface CandidateListItem {
   sq_candidato: number; number: number; ballot_name: string; name: string; office: string; party: Party;
   federation: Federation | null; coalition: Coalition | null; adjudication_status: string; on_ballot: boolean;
   occupation: string | null; photo_url: string | null;
+  /** NM_TIPO_DESTINACAO_VOTOS as the TSE publishes it ('Válido', 'Anulado sub judice', ...); null when not informed. */
+  vote_destination: string | null;
 }
 export interface RunningMate { sq_candidato: number; office: string; ballot_name: string; name: string; party: Party }
 export interface CandidateProfile extends CandidateListItem {
@@ -27,6 +29,20 @@ export interface Envelope<T> { data: T | null; not_found: NotFound | null; warni
 
 export interface CandidatesData { round: number; candidates: CandidateListItem[]; total: number; limit: number; offset: number }
 export interface CandidateData { candidate: CandidateProfile }
+
+/** compare_candidates (codebase-design 8.7): the list fields plus the alliance, the ticket, the
+ *  links and the 2026 declared-asset total, never gender, race/color, marital status or education. */
+export interface ComparedAssets { state: 'declarados' | 'declarou_nao_possuir' | 'sem_informacao'; total: number | null }
+export interface ComparedCandidate extends CandidateListItem {
+  social_name: string | null; nomination_kind: string; vote_destination_note: string | null;
+  running_mates: RunningMate[]; social_links: string[]; divulgacandcontas_url: string | null; assets: ComparedAssets;
+}
+export interface MissingCandidacy { requested: number; reason: 'nao_encontrado' | 'fora_da_urna' | 'fora_do_turno' }
+export interface ComparisonData {
+  round: number; uf: string; office: string;
+  /** Always in ballot-number order, as the service answers them. */
+  candidates: ComparedCandidate[]; missing: MissingCandidacy[]; assets_note: string; assets_source: Source;
+}
 export interface PollingPlace {
   number: number; name: string; kind: string; address: string; neighborhood: string; postal_code: string; phone: string | null;
   latitude: number | null; longitude: number | null; status: string; section_count: number; accessible_section_count: number;
@@ -50,9 +66,14 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function callApi<T>(path: string, params: Record<string, string | number | boolean | null | undefined> = {}): Promise<Envelope<T>> {
+type Param = string | number | boolean | null | undefined;
+
+/** An array value repeats the parameter (`sq=1&sq=2`), as the compare endpoint expects. */
+export async function callApi<T>(path: string, params: Record<string, Param | Param[]> = {}): Promise<Envelope<T>> {
   const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+  for (const [k, v] of Object.entries(params)) {
+    for (const item of Array.isArray(v) ? v : [v]) if (item !== undefined && item !== null && item !== '') q.append(k, String(item));
+  }
   const url = `${API_BASE}${path}${q.toString() ? `?${q}` : ''}`;
   const res = await fetch(url, {headers: {Accept: 'application/json'}});
   if (!res.ok) {
@@ -69,6 +90,7 @@ export const api = {
     callApi<CandidatesData>('/candidates', {...p, on_ballot_only: p.on_ballot_only === false ? 'false' : undefined}),
   candidate: (sq: number, round?: string) => callApi<CandidateData>(`/candidates/${sq}`, {round}),
   candidateByNumber: (p: {uf: string; office: string; number: string; round?: string}) => callApi<CandidateData>('/candidates/by-number', p),
+  compare: (p: {uf: string; office: string; sq: number[]; round?: string}) => callApi<ComparisonData>('/candidates/compare', p),
   pollingPlace: (p: {uf: string; zone: string; section: string; round?: string}) => callApi<PollingPlaceData>('/polling-place', p),
   pollingPlaces: (p: {uf: string; municipality: string; neighborhood?: string; query?: string; lat?: string; lon?: string; limit?: number}) =>
     callApi<PollingPlacesData>('/polling-places', p),

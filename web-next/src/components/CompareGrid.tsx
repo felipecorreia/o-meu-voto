@@ -5,15 +5,14 @@ import {Badge} from '@astryxdesign/core/Badge';
 import {Link} from '@astryxdesign/core/Link';
 import {ToggleButton} from '@astryxdesign/core/ToggleButton';
 import {TabList, Tab} from '@astryxdesign/core/TabList';
-import {X, ExternalLink as ExternalIcon, UserRound, ArrowLeftRight, ChevronDown, ChevronUp, Users, Wallet, Briefcase, type LucideIcon} from 'lucide-react';
-import type {CandidateProfile} from '../api';
+import {X, ExternalLink as ExternalIcon, UserRound, ArrowLeftRight, Users, Wallet, Briefcase, type LucideIcon} from 'lucide-react';
+import type {ComparedAssets, ComparedCandidate} from '../api';
 import {NOMINATION, OFFICE} from '../labels';
 import {href} from '../router';
-import {VOTE_DESTINATION_EXPLANATION, brl, brlDelta, brlFull, mockAssets, mockVoteDestination, type AssetsMock} from '../mock';
+import {brl, brlFull} from '../format';
 import {CandidateAvatar, CandidatePhoto, NumberBadge, OnBallotBadge, SocialLinks, StatusBadge} from './common';
 
 export type DestinationStyle = 'badge' | 'sentence' | 'both';
-export type GrowthStyle = 'line' | 'timeline';
 /** columns: one column per candidacy, horizontal scroll on phones; stacked: one column, each
  *  attribute lists the candidacies; pair: sectioned continuous scroll, exactly two columns on
  *  phones (the pair chosen from the marked set), every column on wider screens; tabs: the pair
@@ -25,51 +24,35 @@ export type Pair = [number, number];
 
 interface Row {
   key: string; label: string; hint?: string;
-  /** Data not in the API yet (see mock.ts). */
-  mock?: boolean;
-  /** Wording still provisional (labels and explanatory lines of the vote destination). */
-  draft?: boolean;
-  /** Row hidden until the reader opens it (pair layout only). */
-  collapsed?: boolean;
-  when?: (ps: CandidateProfile[]) => boolean;
-  cell: (c: CandidateProfile, ctx: Ctx) => ReactNode;
+  /** A row the service does not serve yet: the label carries "em preparação" and one line
+   *  across every column says so, instead of a value per candidacy (no invented data). */
+  pending?: string;
+  cell?: (c: ComparedCandidate, ctx: Ctx) => ReactNode;
 }
-interface Ctx { destinationStyle: DestinationStyle; growthStyle: GrowthStyle }
+interface Ctx { destinationStyle: DestinationStyle }
 
-const MockTag = () => <span className="mock-tag" title="Dados simulados: ainda não estão no índice">simulado</span>;
-const DraftTag = () => <span className="mock-tag" title="Texto provisório: os rótulos e as explicações ainda serão revisados">texto provisório</span>;
+const PendingTag = () => <span className="pending-tag" title="Ainda não está no serviço">em preparação</span>;
 
-function assetsCell(a: AssetsMock | null): ReactNode {
-  if (!a) return <Text color="secondary">Ainda não no índice (só presidente neste protótipo)</Text>;
+function assetsCell(a: ComparedAssets): ReactNode {
   if (a.state === 'declarou_nao_possuir') return <Text>Declarou não possuir bens</Text>;
   if (a.state === 'sem_informacao' || a.total == null) return <Text color="secondary">Sem informação de bens no TSE</Text>;
   return <><span className="money">{brl(a.total)}</span><Text as="p" size="sm" color="secondary">{brlFull(a.total)} · como declarado ao TSE</Text></>;
 }
 
-function growthCell(a: AssetsMock | null, style: GrowthStyle): ReactNode {
-  if (!a || a.total == null) return <Text color="secondary">—</Text>;
-  const p = a.previous;
-  if (!p) return <Text color="secondary">Sem declaração anterior (2018 a 2024)</Text>;
-  const base = `${brl(p.total)} em ${p.year}${p.office ? ` (${OFFICE[p.office as keyof typeof OFFICE] ?? p.office})` : ''}`;
-  const deltas = `${brlDelta(p.change_nominal_brl)} (${brlDelta(p.change_real_brl)} corrigido pelo IPCA)`;
-  if (style === 'timeline') {
-    return (
-      <>
-        <div className="timeline" aria-label={`${base}; ${brl(a.total)} em 2026`}>
-          <div className="tl-pt"><span className="tl-year">{p.year}{p.office ? ` · ${OFFICE[p.office as keyof typeof OFFICE] ?? p.office}` : ''}</span><br /><span className="money">{brl(p.total)}</span></div>
-          <div className="tl-pt"><span className="tl-year">2026</span><br /><span className="money">{brl(a.total)}</span></div>
-        </div>
-        <Text as="p" size="sm">{deltas}</Text>
-      </>
-    );
-  }
-  return <Text as="p"><span className="money">{brl(a.total)}</span> em 2026 · {base} · {deltas}</Text>;
+/** The TSE's value verbatim with the service's one-line explanation (ADR 0008); neither is
+ *  derived here. */
+function destinationCell(c: ComparedCandidate, style: DestinationStyle): ReactNode {
+  const d = c.vote_destination;
+  if (!d) return <Text color="secondary">Não informado pelo TSE</Text>;
+  const note = c.vote_destination_note ? <Text as="p" size="sm" color="secondary">{c.vote_destination_note}</Text> : null;
+  if (style === 'badge') return <Badge variant="neutral" label={d} />;
+  if (style === 'sentence') return <><Text as="p">Voto {d.toLowerCase()}.</Text>{note}</>;
+  return <><div><Badge variant="neutral" label={d} /></div>{note}</>;
 }
 
 /**
- * Working field set of the comparator research (report section 5.1, v1 + the v1.1 growth
- * line), provisional until the captain's grilling. Order and content follow the research:
- * columns by ballot number, no sort, no colour and no bar scaled by money.
+ * The field set of ADR 0008 (codebase-design 8.7), plus the v1.1 growth line still pending.
+ * Columns by ballot number, no sort, no colour and no bar scaled by money.
  */
 const ROWS: Row[] = [
   {key: 'name', label: 'Nome civil', cell: c => <>{c.name}{c.social_name ? <Text as="p" size="sm" color="secondary">nome social: {c.social_name}</Text> : null}</>},
@@ -89,17 +72,13 @@ const ROWS: Row[] = [
   ) : <Text color="secondary">Não se aplica</Text>},
   // Captain's Q20 answer (2026-09-25): neutral in the comparison, coloured in the picker and the profile.
   {key: 'status', label: 'Registro no TSE', hint: 'situação de julgamento e presença na urna', cell: c => <div className="chips chips-compact"><StatusBadge status={c.adjudication_status} tone="neutral" /><OnBallotBadge onBallot={c.on_ballot} tone="neutral" /></div>},
-  {key: 'destination', label: 'Destino dos votos', hint: 'como o TSE classifica o voto nesta candidatura', mock: true, draft: true, cell: (c, ctx) => {
-    const d = mockVoteDestination(c.adjudication_status, c.on_ballot);
-    const explain = VOTE_DESTINATION_EXPLANATION[d];
-    if (ctx.destinationStyle === 'badge') return <Badge variant="neutral" label={d} />;
-    if (ctx.destinationStyle === 'sentence') return <><Text as="p">Voto {d.toLowerCase()}.</Text><Text as="p" size="sm" color="secondary">{explain}</Text></>;
-    return <><div><Badge variant="neutral" label={d} /></div><Text as="p" size="sm" color="secondary">{explain}</Text></>;
-  }},
+  {key: 'destination', label: 'Destino dos votos', hint: 'como o TSE classifica o voto nesta candidatura', cell: (c, ctx) => destinationCell(c, ctx.destinationStyle)},
   {key: 'occupation', label: 'Ocupação declarada', cell: c => <span className="sentence">{c.occupation ?? '—'}</span>},
-  {key: 'assets', label: 'Bens declarados em 2026', hint: 'total, como declarado ao TSE', mock: true, cell: c => assetsCell(mockAssets(c.office, c.number))},
-  {key: 'growth', label: 'Evolução dos bens', hint: 'em reais, contra a última declaração anterior', mock: true, collapsed: true,
-    when: ps => ps.some(c => mockAssets(c.office, c.number)?.previous), cell: (c, ctx) => growthCell(mockAssets(c.office, c.number), ctx.growthStyle)},
+  {key: 'assets', label: 'Bens declarados em 2026', hint: 'total, como declarado ao TSE', cell: c => assetsCell(c.assets)},
+  // Growth needs the same person across elections (ADR 0009); until the service serves it the
+  // row says so. When it lands, the captain's choice is to collapse it behind "Ver evolução".
+  {key: 'growth', label: 'Evolução dos bens', hint: 'em reais, contra a última declaração anterior',
+    pending: 'A comparação com as declarações de 2018 a 2024 ainda não está no serviço. Até lá, só o total de 2026.'},
   {key: 'social', label: 'Redes declaradas', cell: c => <SocialLinks links={c.social_links} compact />},
   {key: 'official', label: 'Ficha oficial', cell: c => c.divulgacandcontas_url
     ? <Button size="sm" variant="ghost" label="DivulgaCandContas" icon={<ExternalIcon size={14} aria-hidden />} href={c.divulgacandcontas_url} target="_blank" rel="noopener noreferrer" />
@@ -134,14 +113,24 @@ function useMedia(query: string): boolean {
   return matches;
 }
 
+function RowCells({r, shown, ctx, who = false}: {r: Row; shown: ComparedCandidate[]; ctx: Ctx; who?: boolean}) {
+  if (r.pending || !r.cell) return <div className="cmp-cell cmp-pending" role="cell"><Text color="secondary">{r.pending}</Text></div>;
+  const cell = r.cell;
+  return <>{shown.map(c => (
+    <div key={c.sq_candidato} className="cmp-cell" role="cell">
+      {who ? <span className="cmp-who">{c.number} · {c.ballot_name}</span> : null}
+      {cell(c, ctx)}
+    </div>
+  ))}</>;
+}
+
 function RowLabel({r, extra}: {r: Row; extra?: ReactNode}) {
   return (
     <div className="cmp-label" role="rowheader">
       <span className="cmp-label-inner">
         <span className="cmp-label-text">{r.label}</span>
         {r.hint ? <span className="cmp-label-hint">{r.hint}</span> : null}
-        {r.mock ? <MockTag /> : null}
-        {r.draft ? <DraftTag /> : null}
+        {r.pending ? <PendingTag /> : null}
         {extra}
       </span>
     </div>
@@ -151,7 +140,7 @@ function RowLabel({r, extra}: {r: Row; extra?: ReactNode}) {
 /** Pair layout ("Lado a lado"). `profiles` are already sorted by ballot number.
  *  `tabs` swaps the sectioned page for a tab strip (same header, chips and swap). */
 function PairGrid({profiles, ctx, pair, onPairChange, onRemove, tabs = false, tab = null, onTabChange}: {
-  profiles: CandidateProfile[]; ctx: Ctx; pair: Pair | null; onPairChange?: (p: Pair) => void; onRemove?: (sq: number) => void;
+  profiles: ComparedCandidate[]; ctx: Ctx; pair: Pair | null; onPairChange?: (p: Pair) => void; onRemove?: (sq: number) => void;
   tabs?: boolean; tab?: string | null; onTabChange?: (key: string) => void;
 }) {
   const phone = useMedia('(max-width: 639px)');
@@ -165,7 +154,6 @@ function PairGrid({profiles, ctx, pair, onPairChange, onRemove, tabs = false, ta
   const cols = {gridTemplateColumns: `repeat(${k}, minmax(0, 1fr))`};
   // The slot changed least recently is the one a chip tap replaces, so successive taps rotate.
   const lastSlot = useRef<0 | 1>(0);
-  const [open, setOpen] = useState<Record<string, boolean>>({});
   // Active tab (tabs variant): from the URL when valid, else the first section.
   const [activeTab, setActiveTab] = useState<string>(() => SECTIONS.some(s => s.key === tab) ? tab! : SECTIONS[0].key);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -219,19 +207,13 @@ function PairGrid({profiles, ctx, pair, onPairChange, onRemove, tabs = false, ta
     }
   };
 
-  const renderRows = (rows: Row[]) => rows.map(r => {
-    const isOpen = !r.collapsed || !!open[r.key];
-    const toggle = r.collapsed ? (
-      <Button size="sm" variant="ghost" label={isOpen ? 'Ocultar evolução' : 'Ver evolução'} icon={isOpen ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />} aria-expanded={isOpen} onClick={() => setOpen(o => ({...o, [r.key]: !isOpen}))} />
-    ) : null;
-    return (
-      <div key={r.key} className="cmp-row" role="rowgroup">
-        <RowLabel r={r} extra={toggle} />
-        {isOpen ? shown.map(c => <div key={c.sq_candidato} className="cmp-cell" role="cell">{r.cell(c, ctx)}</div>) : null}
-      </div>
-    );
-  });
-  const sectionRows = (s: typeof SECTIONS[number]) => s.rows.map(key => ROWS.find(r => r.key === key)!).filter(r => !r.when || r.when(profiles));
+  const renderRows = (rows: Row[]) => rows.map(r => (
+    <div key={r.key} className="cmp-row" role="rowgroup">
+      <RowLabel r={r} />
+      <RowCells r={r} shown={shown} ctx={ctx} />
+    </div>
+  ));
+  const sectionRows = (s: typeof SECTIONS[number]) => s.rows.map(key => ROWS.find(r => r.key === key)!);
   const active = SECTIONS.find(s => s.key === activeTab) ?? SECTIONS[0];
 
   return (
@@ -300,15 +282,16 @@ function PairGrid({profiles, ctx, pair, onPairChange, onRemove, tabs = false, ta
   );
 }
 
-export function CompareGrid({profiles: input, onRemove, destinationStyle = 'both', growthStyle = 'line', layout = 'tabs', pair = null, onPairChange, tab = null, onTabChange}: {
-  profiles: CandidateProfile[]; onRemove?: (sq: number) => void; destinationStyle?: DestinationStyle; growthStyle?: GrowthStyle; layout?: GridLayout;
+export function CompareGrid({profiles: input, onRemove, destinationStyle = 'both', layout = 'tabs', pair = null, onPairChange, tab = null, onTabChange}: {
+  profiles: ComparedCandidate[]; onRemove?: (sq: number) => void; destinationStyle?: DestinationStyle; layout?: GridLayout;
   pair?: Pair | null; onPairChange?: (p: Pair) => void; tab?: string | null; onTabChange?: (key: string) => void;
 }) {
-  const profiles = [...input].sort((a, b) => a.number - b.number); // by ballot number, never by any value
+  // The service already answers in ballot-number order; sorting again only guards the invariant
+  // (never by any value).
+  const profiles = [...input].sort((a, b) => a.number - b.number);
   const n = profiles.length;
-  const ctx: Ctx = {destinationStyle, growthStyle};
+  const ctx: Ctx = {destinationStyle};
   const stacked = layout === 'stacked';
-  const hasMock = profiles.some(c => mockAssets(c.office, c.number));
   return (
     <>
       {layout === 'pair' || layout === 'tabs' ? <PairGrid profiles={profiles} ctx={ctx} pair={pair} onPairChange={onPairChange} onRemove={onRemove} tabs={layout === 'tabs'} tab={tab} onTabChange={onTabChange} /> : (
@@ -336,15 +319,10 @@ export function CompareGrid({profiles: input, onRemove, destinationStyle = 'both
               ))}
             </div>
           )}
-          {ROWS.filter(r => !r.when || r.when(profiles)).map(r => (
+          {ROWS.map(r => (
             <div key={r.key} className="cmp-row" role="rowgroup">
               <RowLabel r={r} />
-              {profiles.map(c => (
-                <div key={c.sq_candidato} className="cmp-cell" role="cell">
-                  {stacked ? <span className="cmp-who">{c.number} · {c.ballot_name}</span> : null}
-                  {r.cell(c, ctx)}
-                </div>
-              ))}
+              <RowCells r={r} shown={profiles} ctx={ctx} who={stacked} />
             </div>
           ))}
         </div>
@@ -352,8 +330,8 @@ export function CompareGrid({profiles: input, onRemove, destinationStyle = 'both
       )}
       <div className="caveats">
         <Text as="p" size="sm" color="secondary">Ordem por número de urna. Sem ranking, sem pontuação, sem recomendação de voto. Gênero, cor/raça, estado civil e escolaridade nunca entram nesta comparação (ADR 0004). Entenda <Link href={href('/duvidas', {abrir: 'destino'})}>o destino dos votos</Link>, <Link href={href('/duvidas', {abrir: 'evolucao'})}>a evolução dos bens</Link> e <Link href={href('/duvidas', {abrir: 'cpf'})}>o que fazemos com os seus dados</Link>.</Text>
-        {hasMock ? <Text as="p" size="sm" color="secondary">Bens: valores como declarados ao TSE (custo de aquisição, não valor de mercado). Uma diferença entre declarações pode ser venda, herança, mudança de regime de bens ou nova declaração. Detalhe oficial de cada bem na ficha do DivulgaCandContas.</Text> : null}
-        <Text as="p" size="sm" color="secondary"><span className="mock-tag">simulado</span> Destino dos votos, bens e evolução ainda não estão na API: neste protótipo o destino é derivado da situação do registro e os bens vêm da tabela do relatório de pesquisa do comparador (arquivo TSE de 25/09/2026, só presidente).</Text>
+        {/* The page's own wording of the service's assets_note, which names an API field for MCP clients. */}
+        <Text as="p" size="sm" color="secondary">Bens: valores como declarados ao TSE pela própria candidatura, em geral pelo custo de aquisição, não pelo valor de mercado; nada é corrigido nem avaliado aqui. Detalhe oficial de cada bem na ficha do DivulgaCandContas.</Text>
       </div>
     </>
   );

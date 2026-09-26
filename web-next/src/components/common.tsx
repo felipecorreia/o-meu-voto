@@ -26,10 +26,12 @@ export function CandidateAvatar({c, size = 'lg'}: {c: Pick<CandidateListItem, 'b
  *  the R2 mirror lands; the `photos=demo` review switch shows a sample labelled as such. */
 export function CandidatePhoto({c}: {c: Pick<CandidateListItem, 'ballot_name' | 'photo_url'>}) {
   const {photoDemo} = usePresentation();
+  // A photo_url that fails to load (mirror gap, network) falls back to the same placeholder.
+  const [failed, setFailed] = useState(false);
   const demo = !c.photo_url && photoDemo;
-  const src = c.photo_url ?? (demo ? `${import.meta.env.BASE_URL}photo-sample.svg` : null);
+  const src = failed ? null : c.photo_url ?? (demo ? `${import.meta.env.BASE_URL}photo-sample.svg` : null);
   if (!src) return <span className="pair-photo pair-photo-empty" aria-hidden="true"><UserRound size={22} aria-hidden /></span>;
-  return <span className="pair-photo"><img src={src} alt={demo ? 'Exemplo de foto, não é a candidatura' : `Foto de ${c.ballot_name}`} loading="lazy" width={60} height={80} /></span>;
+  return <span className="pair-photo"><img src={src} alt={demo ? 'Exemplo de foto, não é a candidatura' : `Foto de ${c.ballot_name}`} loading="lazy" width={60} height={80} onError={() => setFailed(true)} /></span>;
 }
 
 /** Registration status verbatim from the TSE. `tone="neutral"` (review switch, `?status=neutral`)

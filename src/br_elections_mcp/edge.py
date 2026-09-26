@@ -1,8 +1,8 @@
 """The edge check of the composition root (ADR 0010, amending ADR 0005; codebase-design 4).
 
 Cloud Run cannot restrict its ingress to Cloudflare, so the service checks a shared secret
-instead: the Pages Function (``web/functions/[[path]].js``) sends it as ``x-edge-secret``, and
-when a secret is configured every request except ``/healthz`` (the platform's probes) and
+instead: the Pages Function (``web-next/functions/[[path]].js``) sends it as ``x-edge-secret``,
+and when a secret is configured every request except ``/healthz`` (the platform's probes) and
 ``/health`` (the same check, reachable from outside run.app) must carry it or gets ``403``.
 A request that carries it provably crossed the edge, so its
 ``CF-Connecting-IP``, which Cloudflare sets and a client cannot alter, becomes the client

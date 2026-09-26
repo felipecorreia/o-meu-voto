@@ -12,13 +12,14 @@ Pointers only; the content lives in the files below.
 - **Guardrails**: no personal data in the index or in any response (ADR 0004; ADR 0009 adds
   the asset free text and allows the título only as an in-memory join key); the comparator
   never ranks, sorts by value or scores (ADR 0008); PostHog telemetry anonymous.
-- **Voter page**: `web/` is static, no build, REST only, plus the Cloudflare Pages edge
-  (`functions/[[path]].js` proxying `/api/*` and `/mcp` to Cloud Run, `_routes.json`,
-  `404.html`); `web/README.md` says what it does and how to open it locally (`--web-dir web`,
-  or `wrangler pages dev` for the edge), `tests/test_web.py` what CI checks of it.
-- **Comparison page (next)**: `web-next/` is the React + Astryx page, comparison first, that
-  replaces `web/` once wired to the comparator API; `web-next/README.md` says how to run it,
-  what is still mock and the follow-ups. Vite build, not deployed yet.
+- **Public page**: `web-next/` (React + Astryx, Vite build, comparison first, REST only) is what
+  Cloudflare Pages publishes, with the edge next to it: `functions/[[path]].js` proxying
+  `/api/*` and `/mcp` to Cloud Run, `public/_routes.json`, `public/404.html` (one copy each;
+  `wrangler pages deploy dist` runs inside `web-next/`). `web-next/README.md` says how to run,
+  build, deploy and serve it behind a local edge, what the page owns and the follow-ups; CI job
+  `web-next` type-checks and builds it, `tests/test_web.py` checks the edge.
+- **Old voter page**: `web/` (static, six cards) is no longer deployed and waits for removal;
+  `web/README.md`, `--web-dir web` to open it locally.
 - **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)

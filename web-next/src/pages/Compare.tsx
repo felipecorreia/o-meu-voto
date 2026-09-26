@@ -7,18 +7,25 @@ import {SelectableCard} from '@astryxdesign/core/SelectableCard';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {Badge} from '@astryxdesign/core/Badge';
+import {Banner} from '@astryxdesign/core/Banner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {ArrowLeft, Columns3, Share2, Users, X} from 'lucide-react';
-import {api, type CandidateListItem, type CandidateProfile, type Envelope, type CandidatesData, type Source, type ElectionInfo} from '../api';
+import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData, type MissingCandidacy} from '../api';
 import {BALLOT_OFFICES, OFFICE, UFS, officesFor, type Office} from '../labels';
 import {href, navigate} from '../router';
-import {CandidateAvatar, ErrorState, Loading, NumberBadge, SourceFooter, StatusBadge, Warnings} from '../components/common';
-import {CompareGrid, type DestinationStyle, type GrowthStyle, type GridLayout, type Pair} from '../components/CompareGrid';
-import {ApiError} from '../api';
+import {plural} from '../format';
+import {CandidateAvatar, ErrorState, Loading, NotFoundState, NumberBadge, SourceFooter, StatusBadge, Warnings} from '../components/common';
+import {CompareGrid, type DestinationStyle, type GridLayout, type Pair} from '../components/CompareGrid';
 
 const MAX = 4;
 const MIN = 2;
 const UF_OPTIONS = [{value: 'BR', label: 'Brasil (presidente)'}, ...UFS.map(([v, l]) => ({value: v, label: `${v} · ${l}`}))];
+
+const MISSING_REASON: Record<MissingCandidacy['reason'], string> = {
+  nao_encontrado: 'não foi encontrada neste cargo e estado',
+  fora_da_urna: 'não está na urna',
+  fora_do_turno: 'não disputa este turno',
+};
 
 function officeOptions(uf: string) {
   return officesFor(uf).map(o => ({value: o, label: OFFICE[o] + (o === 'deputado_distrital' ? ' (DF)' : '')}));
@@ -31,7 +38,6 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const initialSq = (params.get('sq') || '').split(',').filter(Boolean).map(Number);
   // Presentation switches for the design review (Lavish board questions 17 to 19); defaults are the recommendation.
   const destinationStyle = (params.get('dest') as DestinationStyle) || 'both';
-  const growthStyle = (params.get('growth') as GrowthStyle) || 'line';
   // `tabs` (captain, 2026-09-25 evening: "gostei muito mais desse aqui! Vamos focar nessa") is the
   // default; `pair`, `columns` and `stacked` stay reachable for the review until the landing PR.
   const layout = (params.get('layout') as GridLayout) || 'tabs';
@@ -48,10 +54,12 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Map<number, CandidateListItem>>(new Map());
   const [view, setView] = useState<'pick' | 'compare'>(initialSq.length >= MIN ? 'compare' : 'pick');
-  const [profiles, setProfiles] = useState<CandidateProfile[] | null>(null);
-  const [profileMeta, setProfileMeta] = useState<{source: Source; election: ElectionInfo | null; warnings: string[]} | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [booting, setBooting] = useState(initialSq.length > 0);
+  // The candidacies the comparison asks for, by sq_candidato; one call to compare_candidates answers them all.
+  const [compareSq, setCompareSq] = useState<number[]>(initialSq.length >= MIN ? initialSq : []);
+  const [comparison, setComparison] = useState<Envelope<ComparisonData> | null>(null);
+  const [compareError, setCompareError] = useState<string | null>(null);
+  // Ballot name and number of the requested candidacies the service left out, to name them in the notice.
+  const [missingNames, setMissingNames] = useState<Map<number, string>>(new Map());
   const [byNumber, setByNumber] = useState('');
   const [byNumberMsg, setByNumberMsg] = useState<string | null>(null);
   // The two candidacies on screen in the pair layout on phones; kept in the URL so the link reproduces the screen.
@@ -78,16 +86,17 @@ export function ComparePage({params}: {params: URLSearchParams}) {
 
   useEffect(() => { const t = setTimeout(() => { void fetchList(0); }, name || party ? 250 : 0); return () => clearTimeout(t); }, [fetchList, name, party]);
 
-  // Selected candidacies that arrived through the link but are not (yet) in the list: load them by profile.
+  // A link that opens the picker with candidacies already marked (the profile's "Comparar com
+  // outras"): load them by profile. A comparison link marks them from the comparison instead.
   useEffect(() => {
-    if (!initialSq.length) return;
+    if (!initialSq.length || initialSq.length >= MIN) return;
     let alive = true;
     Promise.all(initialSq.map(sq => api.candidate(sq))).then(envs => {
       if (!alive) return;
       const m = new Map<number, CandidateListItem>();
       for (const e of envs) if (e.data) m.set(e.data.candidate.sq_candidato, e.data.candidate);
       setSelected(m);
-    }).catch(() => { /* the picker still works without them */ }).finally(() => { if (alive) setBooting(false); });
+    }).catch(() => { /* the picker still works without them */ });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -113,40 +122,57 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   };
 
   const compare = () => {
-    navigate('/', {uf, office, sq: selectedList.map(c => c.sq_candidato).join(',')});
+    const sqs = selectedList.map(c => c.sq_candidato);
+    navigate('/', {uf, office, sq: sqs.join(',')});
+    setCompareSq(sqs);
     setView('compare');
   };
 
+  const compareKey = compareSq.join(',');
   useEffect(() => {
-    if (view !== 'compare' || booting) return;
-    const sqs = selectedList.map(c => c.sq_candidato);
-    if (sqs.length < MIN) { setView('pick'); return; }
+    if (view !== 'compare') return;
+    if (compareSq.length < MIN) { setView('pick'); return; }
     let alive = true;
-    setProfiles(null); setProfileError(null);
-    Promise.all(sqs.map(sq => api.candidate(sq))).then(envs => {
+    setComparison(null); setCompareError(null); setMissingNames(new Map());
+    api.compare({uf, office, sq: compareSq}).then(env => {
       if (!alive) return;
-      const ps = envs.map(e => e.data?.candidate).filter((c): c is CandidateProfile => !!c);
-      setProfiles(ps);
-      setProfileMeta({source: envs[0].source, election: envs[0].election, warnings: Array.from(new Set(envs.flatMap(e => e.warnings)))});
-    }).catch(e => { if (alive) setProfileError(String((e as Error).message ?? e)); });
+      setComparison(env);
+      if (env.data) setSelected(new Map(env.data.candidates.map(c => [c.sq_candidato, c])));
+      const missing = env.data?.missing ?? [];
+      if (missing.length) {
+        Promise.all(missing.map(m => api.candidate(m.requested).then(e => e.data?.candidate, () => undefined))).then(cs => {
+          if (!alive) return;
+          setMissingNames(new Map(cs.flatMap(c => c ? [[c.sq_candidato, `${c.ballot_name} (${c.number})`] as [number, string]] : [])));
+        });
+      }
+    }).catch(e => { if (alive) setCompareError(e instanceof ApiError ? e.message : String((e as Error).message ?? e)); });
     return () => { alive = false; };
-  }, [view, selectedList, booting]);
+    // compareKey stands for compareSq; uf and office only change in the picker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, compareKey]);
+
+  const removeFromComparison = (sq: number) => {
+    setCompareSq(prev => prev.filter(x => x !== sq));
+    setSelected(prev => { const m = new Map(prev); m.delete(sq); return m; });
+  };
 
   // Swapping a column or a tab must not remount the page (the route key is the hash), so both go in with replaceState.
   const paired = layout === 'pair' || layout === 'tabs';
   useEffect(() => {
-    if (view !== 'compare' || !paired) return;
+    if (view !== 'compare') return;
     const q = new URLSearchParams(location.hash.replace(/^#\/?\??/, ''));
-    if (pair) q.set('pair', pair.join(',')); else q.delete('pair');
-    if (layout === 'tabs' && tab) q.set('tab', tab); else q.delete('tab');
+    q.set('sq', compareKey);
+    if (paired && pair) q.set('pair', pair.join(',')); else q.delete('pair');
+    if (paired && layout === 'tabs' && tab) q.set('tab', tab); else q.delete('tab');
     history.replaceState(null, '', `#/?${q}`);
-  }, [pair, tab, view, layout, paired]);
+  }, [pair, tab, view, layout, paired, compareKey]);
 
-  const shareParams = {uf, office, sq: selectedList.map(c => c.sq_candidato).join(','), layout: layout === 'tabs' ? undefined : layout, pair: paired && pair ? pair.join(',') : undefined, tab: layout === 'tabs' && tab ? tab : undefined};
+  const shareParams = {uf, office, sq: compareKey, layout: layout === 'tabs' ? undefined : layout, pair: paired && pair ? pair.join(',') : undefined, tab: layout === 'tabs' && tab ? tab : undefined};
   const shareUrl = `${location.origin}${location.pathname}${location.search}${href('/', shareParams)}`;
   const waHref = `https://wa.me/?text=${encodeURIComponent(`Compare as candidaturas a ${OFFICE[office]} (${uf}) lado a lado, com os dados abertos do TSE: ${shareUrl}`)}`;
 
   if (view === 'compare') {
+    const data = comparison?.data;
     return (
       <div className="page">
         <div className="bar">
@@ -157,12 +183,22 @@ export function ComparePage({params}: {params: URLSearchParams}) {
           <h1 className="h1">{OFFICE[office]} · {uf === 'BR' ? 'Brasil' : uf}</h1>
           <p className="lead">O que cada candidatura declarou ao TSE, lado a lado. Sem ranking, sem recomendação de voto.</p>
         </header>
-        {profileMeta ? <Warnings warnings={profileMeta.warnings} /> : null}
-        {profileError ? <ErrorState message={profileError} /> : null}
-        {!profiles && !profileError ? <Loading label="Montando a comparação…" /> : null}
-        {profiles ? <CompareGrid profiles={profiles} destinationStyle={destinationStyle} growthStyle={growthStyle} layout={layout} pair={pair} onPairChange={setPair} tab={tab} onTabChange={setTab} onRemove={sq => setSelected(prev => { const m = new Map(prev); m.delete(sq); return m; })} /> : null}
-        <Text as="p" size="sm" color="secondary">Conjunto de campos provisório (pesquisa do comparador, 25/09/2026): identidade, partido e aliança, chapa, registro, destino dos votos, ocupação, bens declarados e evolução em reais, redes e ficha oficial.</Text>
-        {profileMeta ? <SourceFooter source={profileMeta.source} election={profileMeta.election} /> : null}
+        {comparison ? <Warnings warnings={comparison.warnings} /> : null}
+        {compareError ? <ErrorState message={compareError} /> : null}
+        {!comparison && !compareError ? <Loading label="Montando a comparação…" /> : null}
+        {comparison && !data && comparison.not_found ? (
+          // The service's guidance names MCP tools; the page words the one reason it expects itself.
+          comparison.not_found.reason === 'candidaturas_insuficientes'
+            ? <EmptyState isCompact title="Não há candidaturas suficientes para comparar" description="Menos de duas das candidaturas marcadas estão na urna neste turno. Volte à lista e marque de 2 a 4 candidaturas na urna." />
+            : <NotFoundState nf={comparison.not_found} />
+        ) : null}
+        {data && data.missing.length ? (
+          <Banner status="info" container="card" elevation="none" collapsible={false} title="Ficaram fora da comparação"
+            description={data.missing.map(m => `${missingNames.get(m.requested) ?? 'Uma candidatura marcada'}: ${MISSING_REASON[m.reason]}.`).join(' ')} />
+        ) : null}
+        {data ? <CompareGrid profiles={data.candidates} destinationStyle={destinationStyle} layout={layout} pair={pair} onPairChange={setPair} tab={tab} onTabChange={setTab} onRemove={removeFromComparison} /> : null}
+        {comparison ? <SourceFooter source={comparison.source} election={comparison.election} /> : null}
+        {data ? <SourceFooter source={data.assets_source} /> : null}
       </div>
     );
   }
@@ -196,7 +232,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
       <section aria-labelledby="pick-title">
         <div className="bar">
           <h2 id="pick-title" className="h2">
-            <Users size={18} aria-hidden /> {data ? `${data.total} candidaturas · ${OFFICE[office]} · ${data.round}º turno` : 'Candidaturas'}
+            <Users size={18} aria-hidden /> {data ? `${plural(data.total, 'candidatura', 'candidaturas')} · ${OFFICE[office]} · ${data.round}º turno` : 'Candidaturas'}
           </h2>
           <Badge variant={selected.size >= MIN ? 'success' : 'neutral'} label={`${selected.size} de ${MAX} marcadas`} />
         </div>
