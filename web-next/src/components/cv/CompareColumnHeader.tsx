@@ -29,9 +29,10 @@ export interface CompareColumnHeaderProps {
   c: ColumnCandidacy;
   slot: Slot;
   action?: ColumnAction | null;
+  profileHref?: string;
 }
 
-export function CompareColumnHeader({c, slot, action}: CompareColumnHeaderProps) {
+export function CompareColumnHeader({c, slot, action, profileHref}: CompareColumnHeaderProps) {
   const name = toTitleCase(c.ballot_name);
   const style = {'--cv-slot-tint': slotColor(slot).tint} as CSSProperties;
   return (
@@ -41,7 +42,7 @@ export function CompareColumnHeader({c, slot, action}: CompareColumnHeaderProps)
         {action?.kind === 'swap' ? <IconButton variant="white" spin label={`Trocar ${name} pela próxima marcada`} icon={<ArrowLeftRight size={18} aria-hidden />} onClick={action.onClick} /> : null}
         {action?.kind === 'remove' ? <IconButton variant="white" label={`Tirar ${name} da comparação`} icon={<X size={18} aria-hidden />} onClick={action.onClick} /> : null}
       </div>
-      <a className="cv-colhead-name" href={href(`/candidato/${c.sq_candidato}`)}>
+      <a className="cv-colhead-name" href={profileHref ?? href(`/candidato/${c.sq_candidato}`)}>
         <span>{name}</span>
         <ChevronRight size={16} strokeWidth={2.2} aria-hidden />
         <span className="sr-only">, ver ficha</span>

@@ -31,9 +31,9 @@ export function App() {
   const variant = currentVariant();
   const theme = variants[variant].theme;
   const isCandidate = route.path.startsWith('/candidato/');
-  // Review switch (Lavish board): `status=neutral` drops green/red from the registration badges of
-  // the picker and the profile; comparison registration badges are always neutral.
-  // The old `photos=demo` query is still parsed but comparison no longer uses it.
+  // `status=neutral` is parsed but no longer read anywhere: choice and profile badges now use
+  // the shared cv status tokens unconditionally (Tela 3); comparison registration badges are
+  // always neutral. The old `photos=demo` query is still parsed but comparison no longer uses it.
   const presentation: Presentation = {statusTone: route.params.get('status') === 'neutral' ? 'neutral' : 'colored', photoDemo: route.params.get('photos') === 'demo'};
   const selectedPath = isCandidate ? '/' : route.path;
 

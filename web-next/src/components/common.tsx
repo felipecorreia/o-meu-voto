@@ -1,5 +1,4 @@
-import {useState, type ReactNode} from 'react';
-import {Avatar} from '@astryxdesign/core/Avatar';
+import type {ReactNode} from 'react';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
@@ -9,69 +8,10 @@ import {HStack} from '@astryxdesign/core/HStack';
 import {VStack} from '@astryxdesign/core/VStack';
 import {Spinner} from '@astryxdesign/core/Spinner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
-import {Link2, AtSign, SearchX, ShieldCheck} from 'lucide-react';
-import {Facebook, Instagram, Tiktok, XBrand, Youtube} from './brandIcons';
-import type {CandidateListItem, ElectionInfo, NotFound, Source} from '../api';
-import {fmtStamp, normalizeSocialUrl, socialNetwork} from '../format';
+import {SearchX, ShieldCheck} from 'lucide-react';
+import type {ElectionInfo, NotFound, Source} from '../api';
+import {fmtStamp} from '../format';
 import {INDEPENDENT_NOTICE} from '../labels';
-import {usePresentation, type StatusTone} from '../presentation';
-
-export function CandidateAvatar({c, size = 'lg'}: {c: Pick<CandidateListItem, 'ballot_name' | 'photo_url'>; size?: 'sm' | 'md' | 'lg' | 'xl'}) {
-  return <Avatar src={c.photo_url ?? undefined} name={c.ballot_name} size={size} shape="rounded" tooltip={false} />;
-}
-
-/** Registration status verbatim from the TSE. `tone="neutral"` (review switch, `?status=neutral`)
- *  drops the green/red reading so the badge states a fact instead of a verdict. */
-export function StatusBadge({status, tone}: {status: string; tone?: StatusTone}) {
-  const presentation = usePresentation();
-  const t = tone ?? presentation.statusTone;
-  const s = status.toUpperCase();
-  const colored = s === 'DEFERIDO' ? 'success' : s.includes('INDEFERIDO') || s.includes('CASSADO') || s.includes('RENÚNCIA') ? 'error' : s.includes('PENDENTE') ? 'warning' : 'neutral';
-  const variant = t === 'neutral' ? 'neutral' : colored;
-  return <span className="status-badge"><Badge variant={variant} label={<span className="sentence">{status}</span>} /></span>;
-}
-
-export function OnBallotBadge({onBallot, tone}: {onBallot: boolean; tone?: StatusTone}) {
-  const presentation = usePresentation();
-  const t = tone ?? presentation.statusTone;
-  if (t === 'neutral') return <Badge variant="neutral" label={onBallot ? 'Na urna' : 'Fora da urna'} />;
-  return onBallot ? <Badge variant="info" label="Na urna" /> : <Badge variant="error" label="Fora da urna" />;
-}
-
-export function NumberBadge({n}: {n: number}) {
-  return <span className="num-badge" aria-label={`número ${n}`}>{n}</span>;
-}
-
-const NET_ICON = {instagram: Instagram, facebook: Facebook, x: XBrand, youtube: Youtube, tiktok: Tiktok, kwai: Tiktok, threads: AtSign, site: Link2} as const;
-
-const SOCIAL_PREVIEW = 6;
-
-export function SocialLinks({links, compact = false}: {links: string[]; compact?: boolean}) {
-  const [open, setOpen] = useState(false);
-  if (!links.length) return <Text color="secondary">Nenhuma rede declarada</Text>;
-  // Normalise once, drop exact duplicates the TSE file carries, keep the TSE order.
-  const items: Array<{key: string; href: string | null; label: string}> = [];
-  const seen = new Set<string>();
-  for (const raw of links) {
-    const n = normalizeSocialUrl(raw);
-    const key = n.href ?? n.label;
-    if (!key || seen.has(key)) continue;
-    seen.add(key); items.push({key, ...n});
-  }
-  const shown = open ? items : items.slice(0, SOCIAL_PREVIEW);
-  const hidden = items.length - shown.length;
-  return (
-    <div className={compact ? 'chips chips-compact' : 'chips'}>
-      {shown.map(it => {
-        if (!it.href) return <Text key={it.key} color="secondary" size="sm">{it.label}</Text>;
-        const Ic = NET_ICON[socialNetwork(it.href)];
-        return <Button key={it.key} size="sm" variant="secondary" label={it.label} icon={<Ic size={14} aria-hidden />} href={it.href} target="_blank" rel="noopener noreferrer" />;
-      })}
-      {hidden > 0 ? <Button size="sm" variant="ghost" label={`+${hidden} ${hidden === 1 ? 'rede' : 'redes'}`} onClick={() => setOpen(true)} /> : null}
-      {open && items.length > SOCIAL_PREVIEW ? <Button size="sm" variant="ghost" label="Mostrar menos" onClick={() => setOpen(false)} /> : null}
-    </div>
-  );
-}
 
 export function SourceFooter({source, election}: {source: Source; election?: ElectionInfo | null}) {
   return (

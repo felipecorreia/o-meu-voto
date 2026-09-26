@@ -155,9 +155,10 @@ export interface ComparisonBodyProps {
   onTabChange: (tab: CompareTab) => void;
   /** Wide screens with more than two columns: redo the comparison without one candidacy. */
   onRemove: (sq: number) => void;
+  profileContext: {uf: string; office: string};
 }
 
-export function ComparisonBody({candidates, sqOrder, pair, onPairChange, tab, onTabChange, onRemove}: ComparisonBodyProps) {
+export function ComparisonBody({candidates, sqOrder, pair, onPairChange, tab, onTabChange, onRemove, profileContext}: ComparisonBodyProps) {
   const phone = useMedia('(max-width: 639px)');
   const wide = useMedia('(min-width: 1024px)');
   // The service already answers in ballot-number order; sorting again only guards the
@@ -200,6 +201,7 @@ export function ComparisonBody({candidates, sqOrder, pair, onPairChange, tab, on
         <div className="comp-cols" style={grid} role="group" aria-label="Candidaturas na comparação">
           {shown.map((c, i) => (
             <CompareColumnHeader key={c.sq_candidato} c={c} slot={slotFor(c)}
+              profileHref={href(`/candidato/${c.sq_candidato}`, {...profileContext, cmp: sqOrder.join(','), pair: pair?.join(','), tab})}
               action={pairMode ? {kind: 'swap', onClick: () => swap(i as Column)} : sorted.length > 2 ? {kind: 'remove', onClick: () => onRemove(c.sq_candidato)} : null} />
           ))}
         </div>

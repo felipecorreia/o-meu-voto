@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking order, slots, pair replacement and comparison rows
+npm test             # vitest: marking, slots, pairs, comparison rows and profile contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -81,7 +81,7 @@ reach `dist/`.
 | `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`, in the order of marking), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`): the reusable pieces in `src/components/cv/` and `src/lib/` (below), the page-only ones in `src/components/Picker.tsx` |
 | `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `ComparisonBody`, reusable headers and rows (below) |
 | `#/?uf=&office=&marcar=a,b,c` | Choice with preselection | loads available profiles in the written order, keeps successful results if another load fails, and preserves marks changed while loading; "Escolher outras" uses this route |
-| `#/candidato/:sq` | Profile | ADR 0004 fields only here, collapsed |
+| `#/candidato/:sq` | Profile | Tela 3: direct links are neutral; `cmp` plus `uf`, `office`, `pair` and `tab` preserves comparison context and slot colour. Personal fields appear only in the collapsed panel |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
 | `#/onde-voto`, `#/locais`, `#/quando` | Appendix | polling place by zone and section, places by city, election dates |
 
@@ -99,7 +99,8 @@ The action bar and the column headers with `SlidingTabs` stay sticky; the existi
 header's height is measured on wider screens so they sit below it. The three tabs are Chapa,
 Patrimônio and Ocupação (`tab=chapa|patrimonio|ocupacao`). `sq` retains marking order for slot
 colours, while displayed columns always follow ballot numbers; `sq`, `pair` and `tab` update
-with `replaceState`. Names link to the profile. "Escolher outras" keeps the state, office
+with `replaceState`. Names link to the profile with the marking order in `cmp`, the race, pair
+and current tab. "Escolher outras" keeps the state, office
 and marked set through `marcar`; sharing uses `navigator.share`, with WhatsApp as fallback.
 Registration badges are neutral. Assets show a compact total and its exact declared value;
 photos occupy the shared circular `CvAvatar`, with initials when absent or when loading fails.
@@ -113,7 +114,13 @@ candidacies the service left out (`missing[]`, named in a notice) and both sourc
 and assets file) in the footer. The page owns labels and explanatory texts: the assets caveat
 (the service's `assets_note` names an API field for MCP clients) and the wording of
 `candidaturas_insuficientes`. The picker uses `GET /candidates` and `GET /candidates/by-number`,
-the profile `GET /candidates/{sq}` (destination without its note, no assets: see the comparison).
+the profile `GET /candidates/{sq}` (no assets). The profile answer has neither a UF nor a
+destination explanation: `src/lib/profile.ts` reads the electoral unit from the service-generated
+DivulgaCandContas URL (the last fragment segment, per `core/divulgacandcontas.py`), falling back
+to valid route context, and holds the exact `VOTE_DESTINATION_NOTES` explanations from
+`core/core.py`. An unknown destination gets no invented explanation. A direct state profile
+with neither an official URL nor route context still has no UF to recover; the current 2026
+calendar provides the official URL.
 
 Not served yet, and shown as such: the evolution of the declared assets (ADR 0009), a row
 tagged "Em preparação" with a neutral panel across the values and nothing invented; the FAQ
@@ -123,8 +130,9 @@ codes or service guidance. Warnings retain the service's text. When a missing ca
 profile name or number, its notice reads `Candidatura {sq}: não foi encontrada neste cargo e estado.`
 
 The comparison's `layout` and `dest` review variants are removed; `status` and `photos` have
-no effect on it. The shell's `?theme=matcha|butter` switch and the profile's `status=neutral`
-switch remain. Butter + CDE is the default. Removing those switches and the Matcha theme is
+no effect on it. The shell's `?theme=matcha|butter` switch remains. Choice and profile use the
+shared cv status badges; the legacy `status=neutral` parameter no longer changes them. Butter
++ CDE is the default. Removing those switches and the Matcha theme is
 a separate follow-up.
 
 ## Theme
@@ -139,7 +147,7 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The redesigned screens (Tela 1 and Tela 2, both modes of the Comparar page) add their own
+The redesigned screens (Telas 1 to 3: both modes of the Comparar page and the profile) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
@@ -156,7 +164,7 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `CandidateCard` | `src/components/cv/CandidateCard.tsx` | the whole-card `<button aria-pressed>` |
 | `CvAvatar` | `src/components/cv/CvAvatar.tsx` | initials or photo; `size`, `slot` (1 to 4) paints it with the slot colour, `ring` for the tray |
 | `NumberPill` | `src/components/cv/NumberPill.tsx` | the yellow ballot-number pill |
-| `CompareTray` | `src/components/cv/CompareTray.tsx` | the floating tray |
+| `CompareTray` | `src/components/cv/CompareTray.tsx` | the floating tray, using the shared `FloatingBar` container |
 | `toTitleCase` | `src/lib/titleCase.ts` | ballot name in title case, particles lower-cased |
 | `slotColor(i)` | `src/lib/slotColor.ts` | `{bg, fg, tint}` of marking slot `i`, as `var(--cv-*)` references |
 | `compareParams`, `MIN_MARKED`, `MAX_MARKED` | `src/lib/marking.ts` | the exit link (`sq` in the order of marking) and the 2..4 rule |
@@ -165,6 +173,10 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `CompareRow` | `src/components/cv/CompareRow.tsx` | labelled group, hints, named cells, neutral badges, link pills or a full-width note |
 | `IconButton` | `src/components/cv/IconButton.tsx` | round 44 px button or link with an accessible name |
 | `resolvePair`, `bringIn`, `swapNext` | `src/lib/pair.ts` | pair membership, oldest replacement, cycling and ballot order |
+| `ProfileHero`, `StatusBadge` | `src/components/cv/` | slot-tinted or neutral profile hero; icon and exact registration term with shared status tokens, also used in choice mode |
+| `DetailRow`, `LinkCard`, `FloatingBar` | `src/components/cv/` | labelled details, external link cards and the original tray container including safe area |
+| `PrivateDataPanel` | `src/components/cv/PrivateDataPanel.tsx` | closed on every new profile; personal values mounted only when expanded in an associated region |
+| `profileUf`, `profileNavigation`, `profileShare` | `src/lib/profile.ts` | race recovery, comparison return, `marcar` action and a direct share link without `cmp` |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -175,6 +187,28 @@ text. Layout: one column under 640 px (the prints), two columns and a 32 px gutt
 and from 1024 px a 1120 px content width, the pill and the tabs on one line, the search with the
 chip beside it, three columns of cards that keep their own height, the tray 560 px wide and 24 px
 from the bottom, and a hover border (fine pointers only) on unmarked cards.
+
+## Candidate profile (Tela 3)
+
+`src/pages/Candidate.tsx` owns the sticky back/share bar, details, declared networks, source,
+problem states and responsive composition. It imports the prior screens' `CvAvatar`,
+`NumberPill` and `IconButton` through the shared pieces. A profile opened from comparison
+returns the complete `cmp` as `sq`, preserving `pair` and `tab`; a direct profile returns to
+choice in its race. "Comparar com outras" opens choice with `marcar`, keeping either the
+comparison's marking order or this single candidacy. Native sharing has a WhatsApp fallback;
+both share the exact profile text and the direct URL. State is never persisted in storage.
+
+Below 640 px the hero stacks above the details with a floating action bar; from 640 px the
+hero is horizontal in a page up to 720 px. From 1024 px the page is up to 1120 px, with a
+360 px vertical hero sticky 84 px below the shell header (24 px under the back bar) with its
+action inside, details on the right and no floating bar. Networks preview four links (eight on desktop), then expand; personal fields stay in the
+closed-by-default two-column panel. Loading, error and not-found use the exact Tela 3 copy,
+with no service guidance or technical codes. Source and warning text are preserved. Assets
+remain exclusively in comparison. Reduced motion disables hero and panel animations.
+
+The six `--cv-status-{ok,bad,wait}-{fg,bg}` tokens live only in `cvTokens`. Choice and profile
+use them with an icon and the registration term; comparison stays neutral. The extraction of
+`FloatingBar` retains all of the choice tray's geometry, shadows and responsive placement.
 
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 
@@ -211,5 +245,5 @@ from the bottom, and a hover border (fine pointers only) on unmarked cards.
    and announce pair changes through a polite live region.
 7. Bundle: 821 KB minified / 239 KB gzip of JS today (react-dom, Astryx i18n and theme engine
    are the bulk); lazy chunks for the appendix pages and the pre-built theme bring it down.
-8. The profile's "Comparar com outras" link carries no UF for a state race (the profile answer
-   has no `uf`), so the picker opens on the default UF.
+8. Add UF and vote-destination explanation to the profile response so the page no longer
+   needs to recover the electoral unit from its official URL or mirror the service copy.

@@ -1,11 +1,11 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode} from 'react';
-import {Badge} from '@astryxdesign/core/Badge';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData} from '../api';
 import {BALLOT_OFFICES, OFFICE, OFFICE_SHORT, officesFor, ufName, type Office} from '../labels';
 import {href, navigate} from '../router';
 import {plural} from '../format';
-import {ErrorState, Loading, SourceFooter, StatusBadge, Warnings} from '../components/common';
+import {ErrorState, Loading, SourceFooter, Warnings} from '../components/common';
+import {StatusBadge} from '../components/cv/StatusBadge';
 import {CompareBar, CompareFoot, CompareProblem, CompareSkeleton, CompareTitle, ComparisonBody, DEFAULT_TAB, GuardrailsNote, isCompareTab, MissingNotice, placeName, useTopNavOffset, type CompareTab, type MissingName} from '../components/Comparison';
 import {FilteredEmpty, LoadMore, OffBallotChip, PickFooter, PickHero, SearchField} from '../components/Picker';
 import {CandidateCard} from '../components/cv/CandidateCard';
@@ -265,7 +265,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     else body = (
       <>
         {data.missing.length ? <MissingNotice missing={data.missing} names={missingNames} /> : null}
-        <ComparisonBody candidates={data.candidates} sqOrder={compareSq} pair={pair} onPairChange={setPair} tab={tab ?? DEFAULT_TAB} onTabChange={setTab} onRemove={removeFromComparison} />
+        <ComparisonBody candidates={data.candidates} sqOrder={compareSq} pair={pair} onPairChange={setPair} tab={tab ?? DEFAULT_TAB} onTabChange={setTab} onRemove={removeFromComparison} profileContext={{uf, office}} />
         <GuardrailsNote />
       </>
     );
@@ -290,7 +290,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     const flagged = c.adjudication_status.toUpperCase() !== 'DEFERIDO' || !c.on_ballot;
     return (
       <CandidateCard key={c.sq_candidato} c={c} on={selected.has(c.sq_candidato)} disabled={full && !selected.has(c.sq_candidato)} onToggle={() => toggle(c)}
-        badges={flagged ? <><StatusBadge status={c.adjudication_status} />{!c.on_ballot ? <Badge variant="error" label="Fora da urna" /> : null}</> : undefined} />
+        badges={flagged ? <><StatusBadge status={c.adjudication_status} />{!c.on_ballot ? <StatusBadge status="Fora da urna" kind="bad" /> : null}</> : undefined} />
     );
   };
   // "{Cargo} em {UF por extenso}" of the spec 5.11 phrases ("Governador em São Paulo"; the

@@ -9,6 +9,7 @@ import type {CandidateListItem} from '../../api';
 import {MAX_MARKED, MIN_MARKED} from '../../lib/marking';
 import type {Slot} from '../../lib/slotColor';
 import {CvAvatar} from './CvAvatar';
+import {FloatingBar} from './FloatingBar';
 
 export type TrayCandidacy = Pick<CandidateListItem, 'sq_candidato' | 'ballot_name'>;
 
@@ -23,7 +24,7 @@ export function CompareTray({marked, onRemove, onCompare}: CompareTrayProps) {
   const title = n === 0 ? `Marque ${MIN_MARKED} para comparar` : n === 1 ? '1 marcada' : `${n} marcadas`;
   const sub = n === 0 ? 'Toque nos cards da lista' : n === 1 ? 'Falta mais 1' : n < MAX_MARKED ? `Cabem mais ${MAX_MARKED - n}` : `Limite de ${MAX_MARKED}`;
   return (
-    <div className="cv-tray" role="region" aria-label="Candidaturas marcadas">
+    <FloatingBar className="cv-tray" role="region" aria-label="Candidaturas marcadas">
       {n ? (
         <span className="cv-tray-avs">
           {marked.map((c, i) => (
@@ -41,6 +42,6 @@ export function CompareTray({marked, onRemove, onCompare}: CompareTrayProps) {
         {n >= MIN_MARKED ? `Comparar ${n}` : 'Comparar'}
         <ArrowRight size={18} strokeWidth={2.2} aria-hidden />
       </button>
-    </div>
+    </FloatingBar>
   );
 }

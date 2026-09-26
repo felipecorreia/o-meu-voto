@@ -319,4 +319,10 @@ export const cvTokens = {
   '--cv-slot-2-tint': '#F1F6EC',
   '--cv-slot-3-tint': '#FFF8E0',
   '--cv-slot-4-tint': '#EEF1F6',
+  '--cv-status-ok-fg': '#1F6B3E',
+  '--cv-status-ok-bg': '#E3F1E8',
+  '--cv-status-bad-fg': '#A8201F',
+  '--cv-status-bad-bg': '#FBE8E7',
+  '--cv-status-wait-fg': '#6A4B00',
+  '--cv-status-wait-bg': '#FFF1C2',
 } as const;
