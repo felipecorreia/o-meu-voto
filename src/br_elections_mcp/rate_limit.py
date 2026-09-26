@@ -25,6 +25,7 @@ Clock = Callable[[], float]
 """Returns a monotonically increasing instant, in seconds."""
 
 EXEMPT_PATHS = frozenset({"/healthz", "/health"})
+MCP_PATH = "/mcp"
 
 
 def truncate_ip(host: str) -> str:
@@ -98,7 +99,11 @@ class TokenBucketLimiter:
 class RateLimitMiddleware:
     """ASGI middleware wrapping the whole composition root, above both mounts.
 
-    ``config=None`` disables the limit entirely, the default in tests (ticket #10).
+    ``config=None`` disables the general limit entirely, the default in tests (ticket #10).
+    ``mcp_config`` (ticket #64) gives ``/mcp`` its own bucket, independent of the general one,
+    so REST traffic and ``/mcp`` traffic from the same IP do not drain each other; unset, ``/mcp``
+    falls back to the general limiter and bucket, today's behavior. ``mcp_config`` can be set
+    even when ``config`` is ``None``, limiting only ``/mcp``.
     """
 
     def __init__(
@@ -106,20 +111,34 @@ class RateLimitMiddleware:
         app,
         *,
         config: RateLimitConfig | None,
+        mcp_config: RateLimitConfig | None = None,
         clock: Clock = time.monotonic,
         exempt_paths: Iterable[str] = EXEMPT_PATHS,
     ) -> None:
         self._app = app
         self._exempt_paths = frozenset(exempt_paths)
         self._limiter = TokenBucketLimiter(config, clock) if config is not None else None
+        self._mcp_limiter = (
+            TokenBucketLimiter(mcp_config, clock) if mcp_config is not None else None
+        )
+
+    def _limiter_for(self, path: str) -> TokenBucketLimiter | None:
+        if path == MCP_PATH and self._mcp_limiter is not None:
+            return self._mcp_limiter
+        return self._limiter
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http" or self._limiter is None or scope["path"] in self._exempt_paths:
+        if scope["type"] != "http" or scope["path"] in self._exempt_paths:
+            await self._app(scope, receive, send)
+            return
+
+        limiter = self._limiter_for(scope["path"])
+        if limiter is None:
             await self._app(scope, receive, send)
             return
 
         ip = client_ip(scope)
-        decision = self._limiter.check(ip)
+        decision = limiter.check(ip)
         if decision.allowed:
             await self._app(scope, receive, send)
             return

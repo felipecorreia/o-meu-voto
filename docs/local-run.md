@@ -66,10 +66,14 @@ BR_ELECTIONS_INDEX_DIR=data/index uv run uvicorn --factory br_elections_mcp.app:
 ```
 
 `BR_ELECTIONS_ELECTIONS_FILE` (default `data/elections.yaml`) and `BR_ELECTIONS_HOST`
-(default `127.0.0.1`) are two of the other variables. Two more configure the per-IP rate
-limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
+(default `127.0.0.1`) are two of the other variables. Two more configure the general per-IP
+rate limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
 default) and `BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS` (default `60`), both must be positive.
-`BR_ELECTIONS_EDGE_SECRET` (unset by default, and unset locally) makes the service refuse with
+Two more give `/mcp` its own, independent bucket (ticket #64, `docs/deploy-runbook.md` D3b):
+`BR_ELECTIONS_RATE_LIMIT_MCP_MAX_REQUESTS` and `BR_ELECTIONS_RATE_LIMIT_MCP_WINDOW_SECONDS`
+(same default, `60`); unset (the default), `/mcp` falls back to sharing the general bucket
+above with `/api/v1`. `BR_ELECTIONS_EDGE_SECRET` (unset by default, and unset locally) makes the
+service refuse with
 `403` every request but `/healthz` and `/health` that lacks the same value in `x-edge-secret`,
 the header the Cloudflare Pages Function sends; only such requests have their
 `CF-Connecting-IP` trusted as the client address (ADR 0010).

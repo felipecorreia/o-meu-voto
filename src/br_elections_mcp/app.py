@@ -55,6 +55,8 @@ ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
 ENV_RATE_LIMIT_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS"
 ENV_RATE_LIMIT_WINDOW_SECONDS = "BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS"
+ENV_RATE_LIMIT_MCP_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MCP_MAX_REQUESTS"
+ENV_RATE_LIMIT_MCP_WINDOW_SECONDS = "BR_ELECTIONS_RATE_LIMIT_MCP_WINDOW_SECONDS"
 ENV_EDGE_SECRET = "BR_ELECTIONS_EDGE_SECRET"
 ENV_POSTHOG_API_KEY = "BR_ELECTIONS_POSTHOG_API_KEY"
 ENV_POSTHOG_HOST = "BR_ELECTIONS_POSTHOG_HOST"
@@ -84,6 +86,7 @@ class Settings:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
+    rate_limit_mcp: RateLimitConfig | None = None
     edge_secret: str | None = None
     telemetry: TelemetryConfig | None = None
 
@@ -117,6 +120,19 @@ class Settings:
             if max_requests
             else None
         )
+        mcp_max_requests = os.environ.get(ENV_RATE_LIMIT_MCP_MAX_REQUESTS)
+        rate_limit_mcp = (
+            RateLimitConfig(
+                max_requests=int(mcp_max_requests),
+                window_seconds=float(
+                    os.environ.get(
+                        ENV_RATE_LIMIT_MCP_WINDOW_SECONDS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS
+                    )
+                ),
+            )
+            if mcp_max_requests
+            else None
+        )
         web_dir = os.environ.get(ENV_WEB_DIR)
         posthog_api_key = os.environ.get(ENV_POSTHOG_API_KEY)
         telemetry = (
@@ -140,6 +156,7 @@ class Settings:
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
             rate_limit=rate_limit,
+            rate_limit_mcp=rate_limit_mcp,
             edge_secret=os.environ.get(ENV_EDGE_SECRET) or None,
             telemetry=telemetry,
         )
@@ -150,6 +167,7 @@ def build_app(
     *,
     host: str = DEFAULT_HOST,
     rate_limit: RateLimitConfig | None = None,
+    rate_limit_mcp: RateLimitConfig | None = None,
     rate_limit_clock: Clock = time.monotonic,
     edge_secret: str | None = None,
     telemetry: Telemetry | None = None,
@@ -162,6 +180,8 @@ def build_app(
     also makes ``CF-Connecting-IP`` the client address of a request that passed it, then the
     per-IP rate limit (ticket #10), which counts by that address. ``edge_secret=None`` and
     ``rate_limit=None`` (the defaults, and the defaults in tests) disable each entirely.
+    ``rate_limit_mcp`` (ticket #64) gives ``/mcp`` its own, independent bucket; unset, ``/mcp``
+    falls back to ``rate_limit``'s bucket, shared with REST, today's behavior.
     ``telemetry=None`` (the default, and the default in tests) likewise disables product
     telemetry (ticket #17). ``web_dir`` (local run only) mounts the static page of ``web/``
     under ``/web``.
@@ -203,7 +223,12 @@ def build_app(
 
     middleware = [
         Middleware(EdgeSecretMiddleware, secret=edge_secret),
-        Middleware(RateLimitMiddleware, config=rate_limit, clock=rate_limit_clock),
+        Middleware(
+            RateLimitMiddleware,
+            config=rate_limit,
+            mcp_config=rate_limit_mcp,
+            clock=rate_limit_clock,
+        ),
     ]
     routes = [
         Route("/healthz", healthz),
@@ -230,6 +255,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         core,
         host=settings.host,
         rate_limit=settings.rate_limit,
+        rate_limit_mcp=settings.rate_limit_mcp,
         edge_secret=settings.edge_secret,
         telemetry=build_telemetry(settings.telemetry),
         web_dir=settings.web_dir,

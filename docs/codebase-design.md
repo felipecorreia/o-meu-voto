@@ -323,7 +323,9 @@ sondas do Cloud Run e as checagens externas equivalentes) precisa trazer o mesmo
 trouxe, `CF-Connecting-IP` passa a ser o endereço do cliente. Sem segredo definido nada é
 checado e o cabeçalho é ignorado. Depois o limite por IP:
 token bucket em memória por instância, `429` com `Retry-After`, contando pelo endereço do
-cliente que o middleware anterior deixou. Logs registram o IP truncado, nunca completo.
+cliente que o middleware anterior deixou. `/mcp` pode ter seu próprio bucket, independente do
+geral (ticket #64): sem `BR_ELECTIONS_RATE_LIMIT_MCP_MAX_REQUESTS` configurado, `/mcp` cai no
+bucket geral, compartilhado com a REST. Logs registram o IP truncado, nunca completo.
 
 Ao contrário do limite por IP, que fica inteiramente no ASGI middleware acima, a telemetria
 (`telemetry.py`, ticket #17) atravessa os próprios adaptadores: `create_mcp_server` e
