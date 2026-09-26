@@ -9,8 +9,7 @@ export type StatusTone = 'colored' | 'neutral';
 
 export interface Presentation {
   statusTone: StatusTone;
-  /** `photos=demo` (review switch): fill the photo slot with a labelled sample where the API
-   *  has no `photo_url`, so the filled state can be seen before the R2 mirror lands. */
+  /** Legacy `photos=demo` review switch; comparison no longer consumes it. */
   photoDemo: boolean;
 }
 

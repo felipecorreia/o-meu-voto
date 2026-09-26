@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: src/lib/*.test.ts (title case, slot colours, exit-link order)
+npm test             # vitest: marking order, slots, pair replacement and comparison rows
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -79,40 +79,53 @@ reach `dist/`.
 | Route | Page | Notes |
 |---|---|---|
 | `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`, in the order of marking), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`): the reusable pieces in `src/components/cv/` and `src/lib/` (below), the page-only ones in `src/components/Picker.tsx` |
-| `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `CompareGrid`, tabs layout (below) |
+| `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `ComparisonBody`, reusable headers and rows (below) |
+| `#/?uf=&office=&marcar=a,b,c` | Choice with preselection | loads available profiles in the written order, keeps successful results if another load fails, and preserves marks changed while loading; "Escolher outras" uses this route |
 | `#/candidato/:sq` | Profile | ADR 0004 fields only here, collapsed |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
 | `#/onde-voto`, `#/locais`, `#/quando` | Appendix | polling place by zone and section, places by city, election dates |
 
-The comparison (`src/components/CompareGrid.tsx`, captain's choices of 2026-09-25): columns
-ordered by ballot number, never ranked, no party colours, no bars or percentages; on phones
-exactly two columns chosen from the marked set through a chip row and a per-column swap
-(`pair=` in the URL), every column on wider screens; three sections as Astryx tabs with lucide
-icons, Chapa e registro, Patrimônio (2026 total, evolution row collapsed behind "Ver
-evolução"), Ocupação e transparência (`tab=` in the URL); registration badges neutral in the
-comparison and coloured in the picker and the profile; vote destination as a neutral badge plus
-one explanatory line; a 3:4 photo slot of one size in every column (`photo_url`, neutral
-placeholder when absent or when the image fails to load).
+The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
+`src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
+in `src/components/cv/`. Below 640 px, three or four candidacies show as a pair: "Trazer"
+replaces the candidacy changed least recently, and a column's swap picks the next candidacy
+off screen in ballot-number order, wrapping at the end. The pair is then put in ballot-number
+order, as the spec requires; the untouched candidacy remains the older one even when it moves
+columns. From 640 px every candidacy appears, with removal buttons when there are more than
+two. Removing a candidacy from the pair recalculates `pair` for the two now shown. From
+1024 px a 220 px label column precedes the values, within a 1120 px page.
+
+The action bar and the column headers with `SlidingTabs` stay sticky; the existing shell
+header's height is measured on wider screens so they sit below it. The three tabs are Chapa,
+Patrimônio and Ocupação (`tab=chapa|patrimonio|ocupacao`). `sq` retains marking order for slot
+colours, while displayed columns always follow ballot numbers; `sq`, `pair` and `tab` update
+with `replaceState`. Names link to the profile. "Escolher outras" keeps the state, office
+and marked set through `marcar`; sharing uses `navigator.share`, with WhatsApp as fallback.
+Registration badges are neutral. Assets show a compact total and its exact declared value;
+photos occupy the shared circular `CvAvatar`, with initials when absent or when loading fails.
+No ranking, party colours, bars, percentages or profile-only demographics.
 
 ## Where the data comes from
 
 Every value is the API's (codebase-design 8.7 for the comparison): the vote destination and its
 one-line note, the 2026 declared-asset total (`assets.state`, `assets.total`), the photo, the
 candidacies the service left out (`missing[]`, named in a notice) and both sources (candidates
-and assets file) in the footer. The page owns only labels and two texts: the assets caveat
+and assets file) in the footer. The page owns labels and explanatory texts: the assets caveat
 (the service's `assets_note` names an API field for MCP clients) and the wording of
 `candidaturas_insuficientes`. The picker uses `GET /candidates` and `GET /candidates/by-number`,
 the profile `GET /candidates/{sq}` (destination without its note, no assets: see the comparison).
 
 Not served yet, and shown as such: the evolution of the declared assets (ADR 0009), a row
-tagged "em preparação" with one line across the columns and nothing invented; the FAQ says the
-same. When it lands, the captain's choice is to collapse it behind "Ver evolução".
+tagged "Em preparação" with a neutral panel across the values and nothing invented; the FAQ
+says the same. Loading shows two column skeletons and four grey rows. Comparison errors and
+not-found answers use only the exact Tela 2 phrases, never HTTP details, technical reason
+codes or service guidance. Warnings retain the service's text. When a missing candidacy has no
+profile name or number, its notice reads `Candidatura {sq}: não foi encontrada neste cargo e estado.`
 
-Review switches still in the code, as query parameters: `?theme=matcha|butter` (outside the
-hash; Butter + CDE is the default), `layout=pair|columns|stacked` (tabs is the default),
-`dest=badge|sentence|both`, `status=neutral`, `photos=demo` (`public/photo-sample.svg`, a
-labelled sample). Follow-up: drop the losing options, the Matcha theme and the switcher in the
-top nav, which is still visible.
+The comparison's `layout` and `dest` review variants are removed; `status` and `photos` have
+no effect on it. The shell's `?theme=matcha|butter` switch and the profile's `status=neutral`
+switch remain. Butter + CDE is the default. Removing those switches and the Matcha theme is
+a separate follow-up.
 
 ## Theme
 
@@ -126,7 +139,7 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The redesigned screens (Tela 1, the choice mode of the Comparar page, today) add their own
+The redesigned screens (Tela 1 and Tela 2, both modes of the Comparar page) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
@@ -139,7 +152,7 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | Piece | Where | What |
 |---|---|---|
 | `StatePill` | `src/components/cv/StatePill.tsx` | the Astryx Selector restyled as the 64 px pill; sheet title "Escolha o estado" |
-| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup on a rail with the sliding highlight; `options`, `value`, `onChange`, `ariaLabel` |
+| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup with a sliding highlight; `fill` uses equal-width options below 1024 px |
 | `CandidateCard` | `src/components/cv/CandidateCard.tsx` | the whole-card `<button aria-pressed>` |
 | `CvAvatar` | `src/components/cv/CvAvatar.tsx` | initials or photo; `size`, `slot` (1 to 4) paints it with the slot colour, `ring` for the tray |
 | `NumberPill` | `src/components/cv/NumberPill.tsx` | the yellow ballot-number pill |
@@ -147,6 +160,11 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `toTitleCase` | `src/lib/titleCase.ts` | ballot name in title case, particles lower-cased |
 | `slotColor(i)` | `src/lib/slotColor.ts` | `{bg, fg, tint}` of marking slot `i`, as `var(--cv-*)` references |
 | `compareParams`, `MIN_MARKED`, `MAX_MARKED` | `src/lib/marking.ts` | the exit link (`sq` in the order of marking) and the 2..4 rule |
+| `CompareColumnHeader` | `src/components/cv/CompareColumnHeader.tsx` | slot-tinted card, avatar, profile link, number and party, optional swap or removal |
+| `PairPicker` | `src/components/cv/PairPicker.tsx` | "Na tela: 2 de N", one card per candidacy, column labels and pressed state |
+| `CompareRow` | `src/components/cv/CompareRow.tsx` | labelled group, hints, named cells, neutral badges, link pills or a full-width note |
+| `IconButton` | `src/components/cv/IconButton.tsx` | round 44 px button or link with an accessible name |
+| `resolvePair`, `bringIn`, `swapNext` | `src/lib/pair.ts` | pair membership, oldest replacement, cycling and ballot order |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -189,7 +207,8 @@ from the bottom, and a hover border (fine pointers only) on unmarked cards.
 3. The asset evolution row, once the service serves it.
 4. Self-host Inter (`public/fonts/`) instead of Google Fonts.
 5. Candidate photos once the R2 mirror exists (`photo_url`).
-6. An ARIA pass on the grid roles; occupation casing at index build (`_CASED_COLUMNS`).
+6. Occupation casing at index build (`_CASED_COLUMNS`). Comparison rows already name each cell
+   and announce pair changes through a polite live region.
 7. Bundle: 821 KB minified / 239 KB gzip of JS today (react-dom, Astryx i18n and theme engine
    are the bulk); lazy chunks for the appendix pages and the pre-built theme bring it down.
 8. The profile's "Comparar com outras" link carries no UF for a state race (the profile answer

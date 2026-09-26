@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {toTitleCase} from './titleCase';
+import {shortName, toTitleCase} from './titleCase';
 
 describe('toTitleCase', () => {
   it('capitalises every word of an upper-case ballot name', () => {
@@ -15,5 +15,19 @@ describe('toTitleCase', () => {
   });
   it('collapses stray whitespace and accepts a name already in mixed case', () => {
     expect(toTitleCase('  fernando   haddad ')).toBe('Fernando Haddad');
+  });
+});
+
+describe('shortName', () => {
+  it('is the last word of the title-cased name', () => {
+    expect(shortName('FERNANDO HADDAD')).toBe('Haddad');
+    expect(shortName('VERA LÚCIA')).toBe('Lúcia');
+  });
+  it('is the whole name when it has one word', () => {
+    expect(shortName('TARCÍSIO')).toBe('Tarcísio');
+  });
+  it('tolerates stray whitespace and an empty name', () => {
+    expect(shortName('  CARLOS   MACHADO ')).toBe('Machado');
+    expect(shortName('')).toBe('');
   });
 });

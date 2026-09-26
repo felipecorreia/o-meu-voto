@@ -9,7 +9,7 @@ import {HStack} from '@astryxdesign/core/HStack';
 import {VStack} from '@astryxdesign/core/VStack';
 import {Spinner} from '@astryxdesign/core/Spinner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
-import {Link2, AtSign, SearchX, ShieldCheck, UserRound} from 'lucide-react';
+import {Link2, AtSign, SearchX, ShieldCheck} from 'lucide-react';
 import {Facebook, Instagram, Tiktok, XBrand, Youtube} from './brandIcons';
 import type {CandidateListItem, ElectionInfo, NotFound, Source} from '../api';
 import {fmtStamp, normalizeSocialUrl, socialNetwork} from '../format';
@@ -18,20 +18,6 @@ import {usePresentation, type StatusTone} from '../presentation';
 
 export function CandidateAvatar({c, size = 'lg'}: {c: Pick<CandidateListItem, 'ballot_name' | 'photo_url'>; size?: 'sm' | 'md' | 'lg' | 'xl'}) {
   return <Avatar src={c.photo_url ?? undefined} name={c.ballot_name} size={size} shape="rounded" tooltip={false} />;
-}
-
-/** Candidate photo slot of the comparison header (captain, 2026-09-25 evening): the TSE 3:4
- *  portrait from `photo_url` when the index has it, otherwise a neutral placeholder of the same
- *  size, so every column keeps the same geometry. `photo_url` is null for every candidacy until
- *  the R2 mirror lands; the `photos=demo` review switch shows a sample labelled as such. */
-export function CandidatePhoto({c}: {c: Pick<CandidateListItem, 'ballot_name' | 'photo_url'>}) {
-  const {photoDemo} = usePresentation();
-  // A photo_url that fails to load (mirror gap, network) falls back to the same placeholder.
-  const [failed, setFailed] = useState(false);
-  const demo = !c.photo_url && photoDemo;
-  const src = failed ? null : c.photo_url ?? (demo ? `${import.meta.env.BASE_URL}photo-sample.svg` : null);
-  if (!src) return <span className="pair-photo pair-photo-empty" aria-hidden="true"><UserRound size={22} aria-hidden /></span>;
-  return <span className="pair-photo"><img src={src} alt={demo ? 'Exemplo de foto, não é a candidatura' : `Foto de ${c.ballot_name}`} loading="lazy" width={60} height={80} onError={() => setFailed(true)} /></span>;
 }
 
 /** Registration status verbatim from the TSE. `tone="neutral"` (review switch, `?status=neutral`)

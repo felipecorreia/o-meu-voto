@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400" role="img" aria-label="Exemplo de foto: silhueta neutra">
-  <rect width="300" height="400" fill="#E6ECF0"/>
-  <circle cx="150" cy="150" r="62" fill="#8A94A8"/>
-  <path d="M40 400 C40 290 110 250 150 250 C190 250 260 290 260 400 Z" fill="#8A94A8"/>
-  <rect x="0" y="352" width="300" height="48" fill="#1B305A" opacity=".85"/>
-  <text x="150" y="384" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="30" font-weight="600" fill="#FFFFFF" letter-spacing="2">EXEMPLO</text>
-</svg>

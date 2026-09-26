@@ -32,8 +32,8 @@ export function App() {
   const theme = variants[variant].theme;
   const isCandidate = route.path.startsWith('/candidato/');
   // Review switch (Lavish board): `status=neutral` drops green/red from the registration badges of
-  // the picker and the profile; the comparison grid is neutral regardless (captain's Q20 answer).
-  // `photos=demo` fills the comparison's photo slot with a labelled sample (no photo_url in the index yet).
+  // the picker and the profile; comparison registration badges are always neutral.
+  // The old `photos=demo` query is still parsed but comparison no longer uses it.
   const presentation: Presentation = {statusTone: route.params.get('status') === 'neutral' ? 'neutral' : 'colored', photoDemo: route.params.get('photos') === 'demo'};
   const selectedPath = isCandidate ? '/' : route.path;
 

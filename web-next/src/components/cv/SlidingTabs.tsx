@@ -4,7 +4,9 @@
  * the choice. `left`/`width` of the highlight are measured from the checked button and
  * re-measured on resize, when the options change and when the font finishes loading. Below
  * 640 px the rail scrolls sideways when the labels do not fit and a tab picked while partly off
- * the rail scrolls into view; from 640 px the rail is as wide as its labels.
+ * the rail scrolls into view; from 640 px the rail is as wide as its labels. With `fill` (the
+ * comparison's Chapa / Patrimônio / Ocupação, Tela 2 spec 5.5 and 5.12) the rail is as wide as
+ * its container with equal options up to 1023 px, and as wide as its labels from 1024 px.
  */
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent} from 'react';
 
@@ -16,11 +18,13 @@ export interface SlidingTabsProps<T extends string> {
   onChange: (value: T) => void;
   /** Accessible name of the group ("Cargo"). */
   ariaLabel: string;
+  /** Full width with equal options below 1024 px. */
+  fill?: boolean;
 }
 
 const CHECKED = '[role="radio"][aria-checked="true"]';
 
-export function SlidingTabs<T extends string>({options, value, onChange, ariaLabel}: SlidingTabsProps<T>) {
+export function SlidingTabs<T extends string>({options, value, onChange, ariaLabel, fill = false}: SlidingTabsProps<T>) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState<{left: number; width: number} | null>(null);
   const userPicked = useRef(false);
@@ -70,7 +74,7 @@ export function SlidingTabs<T extends string>({options, value, onChange, ariaLab
   };
 
   return (
-    <div className="cv-tabs">
+    <div className={fill ? 'cv-tabs cv-tabs-fill' : 'cv-tabs'}>
       <div ref={trackRef} className="cv-tabs-track" role="radiogroup" aria-label={ariaLabel} onKeyDown={onKeyDown}>
         {highlight ? <span className="cv-tabs-hl" aria-hidden style={{left: highlight.left, width: highlight.width}} /> : null}
         {options.map((o, i) => (
