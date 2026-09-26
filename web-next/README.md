@@ -76,7 +76,7 @@ fails the PR, and checks that `_routes.json` and `404.html` reach `dist/`.
 
 | Route | Page | Notes |
 |---|---|---|
-| `#/` | Compare (home) | UF + office selectors, name and party filters, "incluir fora da urna", add by ballot number; the marked set lives in the URL (`sq=`), so a comparison is a link |
+| `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`), `src/components/Picker.tsx` |
 | `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `CompareGrid`, tabs layout (below) |
 | `#/candidato/:sq` | Profile | ADR 0004 fields only here, collapsed |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
@@ -124,6 +124,13 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
+The choice mode of the Comparar page (Tela 1) adds its own layer on top: the `--cv-*` tokens
+(`pickTokens` in `src/themes/cde.ts`, set as CSS variables on the page container and read by the
+`.pick` block of `src/styles.css`), Plus Jakarta Sans loaded in `index.html` and applied only in
+that scope (the Astryx font tokens are re-pointed there so Banner, EmptyState and the Selector
+follow), green for choice and action, yellow for the highlight, petrol blue as support. The tray
+avatars are coloured by the order of marking, never by candidacy or party.
+
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 
 - `Theme` and `defineTheme` come from `@astryxdesign/core/theme`; overriding `--color-accent`
@@ -133,6 +140,11 @@ the footer and the FAQ. Contrast pairs are listed in the design review report.
 - Content components emit hashed StyleX classes only; page CSS that must reach inside one
   (`src/styles.css`) targets a wrapper the page owns. Layout components do carry stable classes
   (`.astryx-app-shell-header`).
+- The Selector's trigger container does carry a stable class (`.astryx-selector`, with
+  `.astryx-icon` on its chevron and `.astryx-field` around it), and Astryx CSS sits in
+  `@layer astryx-base`/`astryx-theme`, so unlayered page CSS restyles it without `!important`:
+  the state pill of the choice mode is the Selector itself (`renderValue` draws the pill's
+  content, `aria-label` reaches the trigger button), not a rewrite of the bottom sheet.
 - `AppShell height="auto"` so the document scrolls (the default is an inner scroll container).
 - `TabList`/`Tab`: `label` is a string and doubles as the accessible name; three tabs with icons
   need the phone's shorter labels to fit 390 px.

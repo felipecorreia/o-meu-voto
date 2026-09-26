@@ -1,7 +1,8 @@
 /* Page-level layout on Astryx tokens. Components come from @astryxdesign/core; these classes
-   only place them (gutters, grids, the comparison table, the sticky tray) and draw the two
-   decorative CDE touches (ribbons and logo dots). Every colour is a theme token or one of the
-   CDE hexes of palette-cde-2026.md section 6. */
+   only place them (gutters, grids, the comparison table) and draw the logo dots. Every colour is
+   a theme token or one of the CDE hexes of palette-cde-2026.md section 6, except the choice
+   screen of the Comparar page (the `.pick` block at the end), which reads the `--cv-*`
+   variables `pickTokens` in themes/cde.ts sets on its container. */
 :root {
   --cde-blue: #348AAB; --cde-green: #558530; --cde-gold: #E6B10F; --cde-graphite: #414042;
   --navy-700: #1B305A; --gutter: 16px; --page-max: 1080px;
@@ -21,14 +22,7 @@ img, svg { max-width: 100%; }
 .h3 { font-family: var(--font-family-heading); font-weight: var(--font-weight-semibold); font-size: 1.05rem; line-height: 1.3; color: var(--navy-700); margin: 0; }
 .lead { margin: 0; font-size: 1.05rem; line-height: 1.5; color: var(--color-text-secondary); max-width: 60ch; }
 .page-head { display: flex; flex-direction: column; gap: var(--spacing-2); }
-.hero { position: relative; padding-top: var(--spacing-3); }
 
-/* CDE identity, without the mark: three ribbons in the mark's colours. */
-.ribbons { display: flex; gap: 6px; margin-bottom: var(--spacing-2); }
-.rb { display: block; height: 6px; border-radius: 999px; }
-.rb-blue { width: 64px; background: var(--cde-blue); }
-.rb-green { width: 40px; background: var(--cde-green); }
-.rb-gold { width: 24px; background: var(--cde-gold); }
 .logo-dots { display: inline-flex; gap: 3px; align-items: center; margin-right: 4px; }
 .logo-dots .d { display: block; width: 10px; height: 10px; border-radius: 3px; }
 .d-blue { background: var(--cde-blue); border-radius: 50% !important; }
@@ -59,25 +53,7 @@ img, svg { max-width: 100%; }
 .cmp-head-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .num-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 26px; padding: 0 8px; border-radius: var(--radius-inner); background: var(--navy-700); color: #fff; font-weight: var(--font-weight-bold); font-variant-numeric: tabular-nums; font-size: 0.95rem; letter-spacing: 0.02em; }
 
-/* Candidacy picker */
-.pick-grid { display: grid; grid-template-columns: 1fr; gap: var(--spacing-2); margin-top: var(--spacing-3); }
-@media (min-width: 640px) { .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.pick-card { display: flex; gap: 12px; align-items: flex-start; }
-.pick-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 
-/* Sticky tray with the marked candidacies */
-.tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--color-background-surface); border-top: 1px solid var(--color-border); box-shadow: 0 -4px 13px 1px rgba(0,0,0,.05); padding: 10px var(--gutter) max(10px, env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; justify-content: space-between; }
-.tray-chips { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; flex: 1; }
-.chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 4px; border-radius: 999px; background: var(--color-background-muted); color: var(--navy-700); font-size: 0.85rem; font-weight: var(--font-weight-medium); max-width: 100%; }
-.chip-n { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 999px; background: var(--navy-700); color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0 6px; }
-.chip-x { border: 0; background: transparent; color: inherit; width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.chip-x:hover { background: var(--color-overlay-hover); }
-@media (max-width: 639px) {
-  .tray { flex-direction: column; align-items: stretch; gap: 8px; }
-  .tray:not(.tray-on) .tray-chips { display: none; }
-  .tray > :last-child { align-self: stretch; }
-}
 
 /* Comparison table: columns per candidacy, horizontal scroll on phones, sticky row labels. */
 .cmp { overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; border: 1px solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-surface); }
@@ -122,7 +98,6 @@ img, svg { max-width: 100%; }
 .pending-tag { display: inline-flex; align-items: center; font-size: 0.68rem; font-weight: var(--font-weight-semibold); letter-spacing: 0.06em; text-transform: uppercase; color: var(--cde-graphite); background: var(--color-background-surface); border: 1px dashed var(--color-border-emphasized); border-radius: 4px; padding: 1px 6px; line-height: 1.4; }
 .cmp-pending { grid-column: 1 / -1; }
 .caveats { display: flex; flex-direction: column; gap: 6px; }
-.by-number { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--spacing-2); align-items: end; margin-top: var(--spacing-3); }
 
 /* FAQ accordion after the TSE portal's (palette section 5): grey container, white items, bold navy question. */
 .faq { background: #DCDCDC; border-radius: var(--radius-container); padding: 8px; display: flex; flex-direction: column; gap: 8px; margin-top: var(--spacing-2); }
@@ -188,3 +163,142 @@ img, svg { max-width: 100%; }
 .pair-name a { color: var(--navy-700); text-decoration: underline; text-decoration-color: var(--color-border-emphasized); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .pair-name a:hover { text-decoration-color: var(--navy-700); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ==== Comparar, choice mode (Tela 1) ==========================================================
+   Spec: the Tela 1 package ([private], sections 4 to 6). Scoped to
+   `.page.pick`; the comparison view keeps the rules above. Colours are the `--cv-*` variables
+   `pickTokens` (themes/cde.ts) puts on the container; shadows and motion are the spec's 4.3.
+   Plus Jakarta Sans only here: the Astryx font tokens are re-pointed in this scope so the
+   components inside (Banner, EmptyState, Selector, Badge) follow the page. */
+.page.pick {
+  --font-family-body: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-family-heading: "Plus Jakarta Sans", system-ui, sans-serif;
+  --radius-container: 20px; --radius-element: 16px;
+  --cv-shadow-pill: 0 6px 20px rgba(26,34,51,.08), 0 1px 3px rgba(26,34,51,.06);
+  --cv-shadow-tray: 0 12px 32px rgba(26,34,51,.16), 0 2px 6px rgba(26,34,51,.06);
+  --cv-shadow-tab: 0 2px 8px rgba(26,34,51,.10), 0 0 0 1px rgba(26,34,51,.04);
+  --cv-shadow-card: 0 1px 2px rgba(26,34,51,.04);
+  --cv-ease-tab: cubic-bezier(.34,1.3,.5,1);
+  --cv-ease-check: cubic-bezier(.34,1.6,.5,1);
+  --cv-ease-avatar: cubic-bezier(.34,1.5,.5,1);
+  --cv-tray-clearance: 150px;
+  font-family: var(--font-family-body); color: var(--cv-ink);
+  padding: 8px 20px 0; gap: 0;
+}
+.pick :is(button, input, [role="radio"]):focus-visible { outline: 2px solid var(--cv-blue); outline-offset: 2px; }
+/* The tray floats over the end of the document; the last block before it (the shell footer,
+   which follows the page) carries the clearance the spec puts on the page footer. */
+.page.pick + .site-footer { padding-bottom: calc(var(--spacing-6) + 150px); }
+
+/* 5.1 Hero */
+.pick-hero { display: flex; flex-direction: column; gap: 8px; }
+.pick-h1 { margin: 0; font-family: var(--font-family-heading); font-size: 28px; line-height: 1.15; font-weight: 800; letter-spacing: -0.025em; color: var(--cv-ink); text-wrap: balance; }
+.pick-mark { background: linear-gradient(transparent 58%, var(--cv-yellow) 58%); padding: 0 2px; }
+.pick-lead { margin: 0; font-size: 15px; line-height: 1.5; color: var(--cv-ink-2); }
+
+/* 5.2 State pill: the Astryx Selector trigger (`.astryx-selector`, a stable class; its CSS sits in
+   @layer astryx-base, so these unlayered rules win) restyled as the 64 px pill. */
+.state-pill { margin-top: 20px; }
+.state-pill .astryx-selector { height: 64px; min-height: 64px; padding: 0 8px 0 20px; gap: 0; border: 1px solid var(--cv-line-2); border-radius: 999px; background: #FFFFFF; box-shadow: var(--cv-shadow-pill); color: var(--cv-ink); }
+.state-pill .astryx-selector:hover, .state-pill .astryx-selector:focus-within { border-color: var(--cv-line-2); background: #FFFFFF; box-shadow: var(--cv-shadow-pill); }
+.state-pill .astryx-selector:focus-within { outline: 2px solid var(--cv-blue); outline-offset: 2px; }
+.state-pill .astryx-selector > .astryx-icon { display: none; }
+.state-pill .astryx-selector > button { height: 100%; outline: none; }
+.state-pill-value { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; }
+.state-pill-pin { flex: none; display: inline-flex; color: var(--cv-blue); }
+.state-pill-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.state-pill-label { font-size: 12px; line-height: 1.25; font-weight: 600; color: var(--cv-ink-2); }
+.state-pill-name { font-size: 16px; line-height: 1.25; font-weight: 700; color: var(--cv-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.state-pill-chevron { flex: none; width: 44px; height: 44px; border-radius: 999px; background: var(--cv-yellow); color: var(--cv-navy); display: inline-flex; align-items: center; justify-content: center; }
+
+/* 5.3 Office tabs: a radiogroup on a rail; the white highlight slides to the checked button. */
+.office-scroll { margin: 16px -20px 0; padding: 0 20px; scroll-padding-inline: 20px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.office-scroll::-webkit-scrollbar { display: none; }
+.office-track { position: relative; display: flex; gap: 4px; width: max-content; min-width: 100%; height: 48px; padding: 4px; border-radius: 999px; background: var(--cv-surface); }
+.office-hl { position: absolute; top: 4px; height: 40px; border-radius: 999px; background: #FFFFFF; box-shadow: var(--cv-shadow-tab); pointer-events: none; transition: left .38s var(--cv-ease-tab), width .38s var(--cv-ease-tab); }
+.office-tab { position: relative; z-index: 1; flex: 1 0 auto; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; font: inherit; font-size: 14px; font-weight: 700; line-height: 1; color: var(--cv-ink-3); white-space: nowrap; cursor: pointer; transition: color .2s ease; }
+.office-tab[aria-checked="true"] { color: var(--cv-ink); }
+
+/* 5.4 Unified search and the "fora da urna" chip */
+.pick-search { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 16px; background: var(--cv-surface); color: var(--cv-ink-2); cursor: text; }
+.search:focus-within { outline: 2px solid var(--cv-blue); outline-offset: 2px; }
+.search input { flex: 1; min-width: 0; height: 100%; margin: 0; padding: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 15px; color: var(--cv-ink); -webkit-appearance: none; appearance: none; }
+.search input::placeholder { color: var(--cv-ink-3); opacity: 1; }
+/* iOS Safari zooms the page on a focused control under 16 px. */
+@media (pointer: coarse) { @supports (-webkit-touch-callout: none) { .search input { font-size: 16px; } } }
+.pick-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-toggle { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--cv-chip-line); border-radius: 999px; background: #FFFFFF; color: var(--cv-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .2s ease, border-color .2s ease, color .2s ease; }
+.chip-toggle svg { opacity: .35; transition: opacity .2s ease; }
+.chip-toggle[aria-pressed="true"] { background: var(--cv-blue); border-color: var(--cv-blue); color: #FFFFFF; }
+.chip-toggle[aria-pressed="true"] svg { opacity: 1; }
+
+/* 5.5 List header */
+.pick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 24px 0 12px; }
+.pick-h2 { margin: 0; font-family: var(--font-family-heading); font-size: 18px; line-height: 1.3; font-weight: 700; letter-spacing: -0.01em; color: var(--cv-ink); }
+.pick-round { font-size: 13px; font-weight: 600; color: var(--cv-ink-2); white-space: nowrap; }
+.pick section > * + * { margin-top: 10px; }
+.pick section > .pick-head { margin-top: 0; }
+
+/* 5.6 Candidacy card: one whole-card button; state through aria-pressed and disabled. */
+.pick-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 640px) { .pick .pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .pick .pick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cand { display: flex; align-items: center; gap: 14px; width: 100%; margin: 0; padding: 14px; border: 1.5px solid var(--cv-line); border-radius: 20px; background: #FFFFFF; box-shadow: var(--cv-shadow-card); color: var(--cv-ink); font: inherit; text-align: left; cursor: pointer; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, opacity .2s ease, transform .12s ease; }
+.cand:not(:disabled):active { transform: scale(.985); }
+.cand[aria-pressed="true"] { border-color: var(--cv-green); background: var(--cv-green-tint); box-shadow: 0 0 0 3px var(--cv-green-halo); }
+.cand:disabled { opacity: .45; cursor: default; }
+.cand-avatar { flex: none; width: 52px; height: 52px; border-radius: 999px; background: var(--cv-avatar-bg); color: var(--cv-navy); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; overflow: hidden; }
+.cand-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cand-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.cand-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cand-name { flex: 0 1 auto; min-width: 0; font-size: 16px; line-height: 1.3; font-weight: 700; color: var(--cv-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cand-num { flex: none; font-size: 12px; line-height: 1.4; font-weight: 700; color: var(--cv-navy); background: var(--cv-yellow-tint); padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.cand-line2 { font-size: 13px; line-height: 1.35; color: var(--cv-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cand-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cand-chk { flex: none; width: 28px; height: 28px; border-radius: 999px; border: 1.5px solid var(--cv-check-off); background: #FFFFFF; color: #FFFFFF; display: inline-flex; align-items: center; justify-content: center; transition: background-color .2s ease, border-color .2s ease; }
+.cand-chk svg { transform: scale(.4); opacity: 0; transition: transform .28s var(--cv-ease-check), opacity .15s ease; }
+.cand[aria-pressed="true"] .cand-chk { background: var(--cv-green-strong); border-color: var(--cv-green-strong); }
+.cand[aria-pressed="true"] .cand-chk svg { transform: scale(1); opacity: 1; }
+
+/* By-number hit on top of the list (5.4.1) */
+.pick-hit { display: flex; flex-direction: column; gap: 6px; }
+.pick-hit-label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--cv-ink-2); }
+.pick-hit-none { margin: 0; font-size: 13px; line-height: 1.45; color: var(--cv-ink-2); }
+
+/* 5.7 Load more, 5.8 filtered empty state */
+.pick-more { width: 100%; height: 48px; margin-top: 12px; padding: 0 18px; border: 1px solid var(--cv-ink); border-radius: 999px; background: #FFFFFF; color: var(--cv-ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.pick-more:disabled { opacity: .6; cursor: default; }
+.pick-empty { padding: 32px 16px; border-radius: 20px; background: var(--cv-empty-bg); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.pick-empty-title { font-size: 16px; font-weight: 700; color: var(--cv-ink); }
+.pick-empty-text { font-size: 14px; line-height: 1.45; color: var(--cv-ink-2); }
+.pick-clear { height: 44px; padding: 0 18px; border: 1px solid var(--cv-ink); border-radius: 999px; background: #FFFFFF; color: var(--cv-ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+/* 5.9 Page footer: the SourceFooter at 12 px plus the independent-project line. */
+.pick-foot { display: flex; flex-direction: column; gap: 10px; padding: 28px 0 0; font-size: 12px; line-height: 1.55; color: var(--cv-ink-2); }
+.pick-foot .source p { font-size: 12px; line-height: 1.55; color: var(--cv-ink-2); }
+.pick-indep { display: flex; gap: 8px; align-items: flex-start; }
+.pick-indep svg { flex: none; margin-top: 1px; }
+
+/* 5.10 Floating tray: always on screen in choice mode. Slot colours by order of marking. */
+.pick-tray { position: fixed; left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 20; max-width: 560px; margin: 0 auto; min-height: 72px; padding: 10px 10px 10px 14px; border: 1px solid var(--cv-line-tray); border-radius: 28px; background: #FFFFFF; box-shadow: var(--cv-shadow-tray); display: flex; align-items: center; gap: 12px; }
+.pick-tray-avs { display: flex; flex: none; }
+.tray-av { width: 36px; height: 36px; margin: 0 0 0 -14px; padding: 0; border: 2.5px solid #FFFFFF; border-radius: 999px; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: transform .25s var(--cv-ease-avatar); }
+.tray-av:first-child { margin-left: 0; }
+.tray-av[data-slot="0"] { background: var(--cv-blue); }
+.tray-av[data-slot="1"] { background: var(--cv-green-strong); }
+.tray-av[data-slot="2"] { background: var(--cv-yellow); color: var(--cv-navy); }
+.tray-av[data-slot="3"] { background: var(--cv-navy); }
+.pick-tray-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.pick-tray-title { font-size: 15px; line-height: 1.3; font-weight: 700; color: var(--cv-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-tray-sub { font-size: 12px; line-height: 1.3; color: var(--cv-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cta { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--cv-green-strong); color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: background-color .25s ease, color .25s ease, transform .12s ease; }
+.cta:not(:disabled):active { transform: scale(.97); }
+.cta:disabled { background: var(--cv-cta-off); color: var(--cv-ink-3); cursor: default; }
+
+/* 4.3 / 6: reduced motion turns every transform off and the transitions down to nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .pick *, .pick *::before, .pick *::after { transition-duration: .01ms !important; transition-delay: 0s !important; animation-duration: .01ms !important; }
+  .pick .cand:not(:disabled):active, .pick .cta:not(:disabled):active { transform: none; }
+  .pick .cand-chk svg { transform: none; }
+}

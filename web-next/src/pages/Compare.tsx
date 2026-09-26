@@ -1,25 +1,25 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, type CSSProperties} from 'react';
 import {Button} from '@astryxdesign/core/Button';
-import {Card} from '@astryxdesign/core/Card';
-import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
-import {Selector} from '@astryxdesign/core/Selector';
-import {SelectableCard} from '@astryxdesign/core/SelectableCard';
-import {Text} from '@astryxdesign/core/Text';
-import {TextInput} from '@astryxdesign/core/TextInput';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Banner} from '@astryxdesign/core/Banner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
-import {ArrowLeft, Columns3, Share2, Users, X} from 'lucide-react';
-import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData, type MissingCandidacy} from '../api';
-import {BALLOT_OFFICES, OFFICE, UFS, officesFor, type Office} from '../labels';
+import {ArrowLeft, Share2} from 'lucide-react';
+import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData, type MissingCandidacy, type NotFound} from '../api';
+import {BALLOT_OFFICES, OFFICE, OFFICE_SHORT, officesFor, type Office} from '../labels';
 import {href, navigate} from '../router';
 import {plural} from '../format';
-import {CandidateAvatar, ErrorState, Loading, NotFoundState, NumberBadge, SourceFooter, StatusBadge, Warnings} from '../components/common';
+import {ErrorState, Loading, NotFoundState, SourceFooter, StatusBadge, Warnings} from '../components/common';
 import {CompareGrid, type DestinationStyle, type GridLayout, type Pair} from '../components/CompareGrid';
+import {CandidateCard, FilteredEmpty, LoadMore, MAX_MARKED, MIN_MARKED, OffBallotChip, OfficeTabs, PickFooter, PickHero, PickTray, SearchField, StatePill} from '../components/Picker';
+import {pickTokens} from '../themes/cde';
 
-const MAX = 4;
-const MIN = 2;
-const UF_OPTIONS = [{value: 'BR', label: 'Brasil (presidente)'}, ...UFS.map(([v, l]) => ({value: v, label: `${v} · ${l}`}))];
+const MAX = MAX_MARKED;
+const MIN = MIN_MARKED;
+const PAGE = 50;
+/** Search text in the unified field that goes to `by-number` instead of `name` (spec 5.4.1). */
+const NUMBER_QUERY = /^\d{2,5}$/;
+/** A name search with no result is retried as a party acronym when the text is this short. */
+const PARTY_FALLBACK_MAX = 12;
 
 const MISSING_REASON: Record<MissingCandidacy['reason'], string> = {
   nao_encontrado: 'não foi encontrada neste cargo e estado',
@@ -27,9 +27,16 @@ const MISSING_REASON: Record<MissingCandidacy['reason'], string> = {
   fora_do_turno: 'não disputa este turno',
 };
 
-function officeOptions(uf: string) {
-  return officesFor(uf).map(o => ({value: o, label: OFFICE[o] + (o === 'deputado_distrital' ? ' (DF)' : '')}));
-}
+/** The choice screen never shows a `not_found.reason` code: a PT-BR phrase per reason, and the
+ *  page's own guidance, since the service's names MCP tools. */
+const LIST_NOT_FOUND: Record<string, string> = {
+  candidato_nao_encontrado: 'Nenhuma candidatura encontrada',
+};
+function listNotFoundTitle(nf: NotFound): string { return LIST_NOT_FOUND[nf.reason] ?? 'Nada encontrado para essa busca'; }
+
+/** What the list is filtered by; remembered so "Carregar mais" repeats the same call. */
+type ListFilter = {name?: string; party?: string};
+type NumberHit = {kind: 'found'; number: string; c: CandidateListItem} | {kind: 'none'; number: string; message: string | null};
 
 export function ComparePage({params}: {params: URLSearchParams}) {
   // Route state: uf, office and the selected sq list live in the hash, so a comparison is a link.
@@ -46,12 +53,16 @@ export function ComparePage({params}: {params: URLSearchParams}) {
 
   const [uf, setUf] = useState(initialUf);
   const [office, setOffice] = useState<Office>(BALLOT_OFFICES.includes(initialOffice) ? initialOffice : officesFor(initialUf)[0]);
-  const [name, setName] = useState('');
-  const [party, setParty] = useState('');
+  // The unified search field (name, party acronym or ballot number) and its debounced value.
+  const [query, setQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
   const [all, setAll] = useState(false);
   const [list, setList] = useState<Envelope<CandidatesData> | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // The candidacy found by ballot number for a numeric query, shown on top of the unfiltered list.
+  const [numberHit, setNumberHit] = useState<NumberHit | null>(null);
+  // Insertion order is the order of marking, which the tray's slot colours follow.
   const [selected, setSelected] = useState<Map<number, CandidateListItem>>(new Map());
   const [view, setView] = useState<'pick' | 'compare'>(initialSq.length >= MIN ? 'compare' : 'pick');
   // The candidacies the comparison asks for, by sq_candidato; one call to compare_candidates answers them all.
@@ -60,31 +71,82 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const [compareError, setCompareError] = useState<string | null>(null);
   // Ballot name and number of the requested candidacies the service left out, to name them in the notice.
   const [missingNames, setMissingNames] = useState<Map<number, string>>(new Map());
-  const [byNumber, setByNumber] = useState('');
-  const [byNumberMsg, setByNumberMsg] = useState<string | null>(null);
   // The two candidacies on screen in the pair layout on phones; kept in the URL so the link reproduces the screen.
   const [pair, setPair] = useState<Pair | null>(initialPair.length === 2 ? [initialPair[0], initialPair[1]] : null);
   // The open tab in the tabbed variant, also kept in the URL.
   const [tab, setTab] = useState<string | null>(initialTab);
   const reqId = useRef(0);
+  const appliedFilter = useRef<ListFilter>({});
 
   // Keep office valid for the UF (the old page defaulted to "presidente" and errored for states).
   const onUf = (v: string) => { setUf(v); const ok = officesFor(v); if (!ok.includes(office)) setOffice(ok[0]); setSelected(new Map()); };
-  const onOffice = (v: string) => { setOffice(v as Office); setSelected(new Map()); };
+  const onOffice = (v: Office) => { setOffice(v); setSelected(new Map()); };
 
-  const fetchList = useCallback(async (offset = 0) => {
+  // 250 ms debounce on the text; clearing the field goes back to the unfiltered list at once.
+  useEffect(() => {
+    if (!query.trim()) { setDebounced(''); return; }
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+  const isNumberQuery = NUMBER_QUERY.test(debounced);
+  // A numeric query keeps the list unfiltered (the number goes to by-number); text goes as `name`.
+  const nameQuery = debounced && !isNumberQuery ? debounced : '';
+
+  const listParams = useCallback((filter: ListFilter, offset: number) =>
+    ({uf, office, ...filter, on_ballot_only: !all, limit: PAGE, offset}), [uf, office, all]);
+
+  // First page for the current filters. Rule 5.4.2: a text with no name match, up to 12
+  // characters, is retried as a party acronym (so "PSOL" finds the party's candidacies).
+  const fetchFirst = useCallback(async () => {
     const id = ++reqId.current;
     setLoading(true); setListError(null);
     try {
-      const env = await api.candidates({uf, office, name: name || undefined, party: party || undefined, on_ballot_only: !all, limit: 50, offset});
+      let filter: ListFilter = nameQuery ? {name: nameQuery} : {};
+      let env = await api.candidates(listParams(filter, 0));
       if (id !== reqId.current) return;
-      setList(prev => offset && prev?.data && env.data ? {...env, data: {...env.data, candidates: [...prev.data.candidates, ...env.data.candidates]}} : env);
+      if (nameQuery && env.data?.total === 0 && nameQuery.length <= PARTY_FALLBACK_MAX) {
+        filter = {party: nameQuery};
+        env = await api.candidates(listParams(filter, 0));
+        if (id !== reqId.current) return;
+      }
+      appliedFilter.current = filter;
+      setList(env);
     } catch (e) {
       if (id === reqId.current) { setList(null); setListError(String((e as Error).message ?? e)); }
     } finally { if (id === reqId.current) setLoading(false); }
-  }, [uf, office, name, party, all]);
+  }, [listParams, nameQuery]);
+  useEffect(() => { void fetchFirst(); }, [fetchFirst]);
 
-  useEffect(() => { const t = setTimeout(() => { void fetchList(0); }, name || party ? 250 : 0); return () => clearTimeout(t); }, [fetchList, name, party]);
+  // "Carregar mais": the same call with the next offset, results appended.
+  const fetchMore = async () => {
+    const offset = list?.data?.candidates.length ?? 0;
+    const id = ++reqId.current;
+    setLoading(true); setListError(null);
+    try {
+      const env = await api.candidates(listParams(appliedFilter.current, offset));
+      if (id !== reqId.current) return;
+      setList(prev => prev?.data && env.data ? {...env, data: {...env.data, candidates: [...prev.data.candidates, ...env.data.candidates]}} : env);
+    } catch (e) {
+      if (id === reqId.current) setListError(String((e as Error).message ?? e));
+    } finally { if (id === reqId.current) setLoading(false); }
+  };
+
+  // Rule 5.4.1: two to five digits look the candidacy up by ballot number (the voter usually
+  // knows it on a 1,000+ list); found, it heads the list; not found, one discreet line.
+  useEffect(() => {
+    if (!isNumberQuery) { setNumberHit(null); return; }
+    const number = debounced;
+    let alive = true;
+    api.candidateByNumber({uf, office, number}).then(env => {
+      if (!alive) return;
+      setNumberHit(env.data ? {kind: 'found', number, c: env.data.candidate} : {kind: 'none', number, message: null});
+    }).catch(e => {
+      if (!alive) return;
+      // A 4xx (a malformed number for the office) reads as "not found"; anything else shows its message.
+      setNumberHit({kind: 'none', number, message: e instanceof ApiError && e.status < 500 ? null : String((e as Error).message ?? e)});
+    });
+    return () => { alive = false; };
+  }, [uf, office, debounced, isNumberQuery]);
 
   // A link that opens the picker with candidacies already marked (the profile's "Comparar com
   // outras"): load them by profile. A comparison link marks them from the comparison instead.
@@ -101,25 +163,17 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedList = useMemo(() => Array.from(selected.values()).sort((a, b) => a.number - b.number), [selected]);
-  const toggle = (c: CandidateListItem, on: boolean) => setSelected(prev => {
+  // Marking order for the tray; ballot-number order for the comparison link (the service answers in that order anyway).
+  const marked = useMemo(() => Array.from(selected.values()), [selected]);
+  const selectedList = useMemo(() => [...marked].sort((a, b) => a.number - b.number), [marked]);
+  const toggle = (c: CandidateListItem) => setSelected(prev => {
     const m = new Map(prev);
-    if (on) { if (m.size >= MAX) return prev; m.set(c.sq_candidato, c); } else m.delete(c.sq_candidato);
+    if (m.has(c.sq_candidato)) m.delete(c.sq_candidato);
+    else { if (m.size >= MAX) return prev; m.set(c.sq_candidato, c); }
     return m;
   });
-
-  // Question 16 of the research: on a 1,000+ list the voter usually knows the number.
-  const addByNumber = async () => {
-    const num = byNumber.trim();
-    if (!num) return;
-    if (selected.size >= MAX) { setByNumberMsg(`Já há ${MAX} marcadas; tire uma para adicionar.`); return; }
-    setByNumberMsg(null);
-    try {
-      const env = await api.candidateByNumber({uf, office, number: num});
-      if (env.data) { toggle(env.data.candidate, true); setByNumber(''); setByNumberMsg(`${env.data.candidate.ballot_name} (${num}) marcada.`); }
-      else setByNumberMsg(env.not_found?.reason ?? 'Número não encontrado.');
-    } catch (e) { setByNumberMsg(e instanceof ApiError ? e.message : String(e)); }
-  };
+  const unmark = (sq: number) => setSelected(prev => { const m = new Map(prev); m.delete(sq); return m; });
+  const clearSearch = () => { setQuery(''); setAll(false); };
 
   const compare = () => {
     const sqs = selectedList.map(c => c.sq_candidato);
@@ -203,81 +257,55 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     );
   }
 
+  // ---- Choice mode (Tela 1) -------------------------------------------------------------------
   const data = list?.data;
-  return (
-    <div className="page">
-      <header className="page-head hero">
-        <div className="ribbons" aria-hidden><span className="rb rb-blue" /><span className="rb rb-green" /><span className="rb rb-gold" /></div>
-        <h1 className="h1">Compare as candidaturas antes de votar</h1>
-        <p className="lead">Escolha o estado e o cargo, marque de {MIN} a {MAX} candidaturas e veja lado a lado o que cada uma declarou ao TSE.</p>
-      </header>
+  const full = selected.size >= MAX;
+  const hit = numberHit?.kind === 'found' ? numberHit.c : null;
+  // The hit heads the list; the same candidacy is not repeated below it.
+  const candidates = data ? (hit ? data.candidates.filter(c => c.sq_candidato !== hit.sq_candidato) : data.candidates) : [];
+  const card = (c: CandidateListItem) => {
+    const flagged = c.adjudication_status.toUpperCase() !== 'DEFERIDO' || !c.on_ballot;
+    return (
+      <CandidateCard key={c.sq_candidato} c={c} on={selected.has(c.sq_candidato)} disabled={full && !selected.has(c.sq_candidato)} onToggle={() => toggle(c)}
+        badges={flagged ? <><StatusBadge status={c.adjudication_status} />{!c.on_ballot ? <Badge variant="error" label="Fora da urna" /> : null}</> : undefined} />
+    );
+  };
+  const where = uf === 'BR' ? 'no Brasil' : `em ${uf}`;
 
-      <Card padding={3} elevation="none">
-        <div className="form-row">
-          <Selector label="Estado" options={UF_OPTIONS} value={uf} onChange={onUf} hasSearch searchPlaceholder="Buscar UF" presentation="adaptive" width="100%" />
-          <Selector label="Cargo" options={officeOptions(uf)} value={office} onChange={onOffice} presentation="adaptive" width="100%" description={uf === 'BR' ? 'Presidente é a única disputa nacional.' : 'Para presidente, escolha Brasil no estado.'} />
-        </div>
-        <div className="form-row">
-          <TextInput label="Nome" value={name} onChange={setName} placeholder="nome de urna ou civil" hasClear isOptional width="100%" />
-          <TextInput label="Partido" value={party} onChange={setParty} placeholder="sigla ou número" hasClear isOptional width="100%" />
-        </div>
-        <CheckboxInput label="Incluir candidaturas fora da urna (registro indeferido, renúncia)" value={all} onChange={setAll} />
-        <div className="by-number">
-          <TextInput label="Adicionar pelo número da urna" value={byNumber} onChange={setByNumber} placeholder={uf === 'BR' ? 'ex.: 13' : office === 'deputado_federal' ? 'ex.: 1234' : 'ex.: 45'} onEnter={() => void addByNumber()} description="Para listas grandes: digite o número e marque direto, sem procurar na lista." width="100%" />
-          <Button variant="secondary" label="Marcar" onClick={() => void addByNumber()} isDisabled={!byNumber.trim()} />
-        </div>
-        {byNumberMsg ? <Text as="p" size="sm" color="secondary">{byNumberMsg}</Text> : null}
-      </Card>
+  return (
+    <div className="page pick" style={pickTokens as CSSProperties}>
+      <PickHero />
+      <StatePill uf={uf} onChange={onUf} />
+      <OfficeTabs options={officesFor(uf)} value={office} onChange={onOffice} />
+      <div className="pick-search">
+        <SearchField value={query} onChange={setQuery} />
+        <div className="pick-chips"><OffBallotChip on={all} onChange={setAll} /></div>
+      </div>
 
       <section aria-labelledby="pick-title">
-        <div className="bar">
-          <h2 id="pick-title" className="h2">
-            <Users size={18} aria-hidden /> {data ? `${plural(data.total, 'candidatura', 'candidaturas')} · ${OFFICE[office]} · ${data.round}º turno` : 'Candidaturas'}
-          </h2>
-          <Badge variant={selected.size >= MIN ? 'success' : 'neutral'} label={`${selected.size} de ${MAX} marcadas`} />
+        <div className="pick-head">
+          <h2 id="pick-title" className="pick-h2">{data ? plural(data.total, 'candidatura', 'candidaturas') : 'Candidaturas'}</h2>
+          <span className="pick-round">{OFFICE_SHORT[office]}{data ? ` · ${data.round}º turno` : ''}</span>
         </div>
         {listError ? <ErrorState message={listError} /> : null}
         {list ? <Warnings warnings={list.warnings} /> : null}
         {loading && !data ? <Loading /> : null}
-        {list && !data && list.not_found ? <EmptyState isCompact title={list.not_found.reason} description={list.not_found.guidance} /> : null}
-        {data && data.candidates.length === 0 ? <EmptyState isCompact title="Nenhuma candidatura com esse filtro" description="Tente outro nome ou partido, ou inclua as candidaturas fora da urna." /> : null}
-        {data ? (
-          <div className="pick-grid">
-            {data.candidates.map(c => {
-              const on = selected.has(c.sq_candidato);
-              return (
-                <SelectableCard key={c.sq_candidato} label={`${c.ballot_name}, número ${c.number}, ${c.party.acronym}`} isSelected={on} onChange={v => toggle(c, v)} isDisabled={!on && selected.size >= MAX} padding={2} elevation="none">
-                  <div className="pick-card">
-                    <CandidateAvatar c={c} size="md" />
-                    <div className="pick-body">
-                      <div className="cmp-head-name"><span className="ballot-name">{c.ballot_name}</span><NumberBadge n={c.number} /></div>
-                      <Text size="sm" color="secondary" as="p">{c.party.acronym}{c.occupation ? <> · <span className="sentence">{c.occupation}</span></> : null}</Text>
-                      {c.adjudication_status !== 'DEFERIDO' || !c.on_ballot ? <div className="chips chips-compact"><StatusBadge status={c.adjudication_status} />{!c.on_ballot ? <Badge variant="error" label="Fora da urna" /> : null}</div> : null}
-                    </div>
-                  </div>
-                </SelectableCard>
-              );
-            })}
-          </div>
+        {list && !data && list.not_found ? <EmptyState isCompact title={listNotFoundTitle(list.not_found)} description="Confira o estado e o cargo escolhidos." /> : null}
+        {hit ? <div className="pick-hit"><span className="pick-hit-label">Número {numberHit?.number}</span>{card(hit)}</div> : null}
+        {numberHit?.kind === 'none' ? (
+          <p className="pick-hit-none">{numberHit.message ?? `Nenhuma candidatura com o número ${numberHit.number} para ${OFFICE_SHORT[office]} ${where}.`}</p>
         ) : null}
-        {data && data.candidates.length < data.total ? (
-          <div className="center"><Button variant="secondary" label={`Carregar mais (${data.candidates.length} de ${data.total})`} isLoading={loading} onClick={() => void fetchList(data.candidates.length)} /></div>
+        {data && data.candidates.length === 0 && !hit ? (
+          nameQuery
+            ? <FilteredEmpty onClear={clearSearch} />
+            : <EmptyState isCompact title={`Nenhuma candidatura na urna para ${OFFICE_SHORT[office]} ${where}`} description="Inclua as candidaturas fora da urna ou troque o cargo." />
         ) : null}
-        {list ? <SourceFooter source={list.source} election={list.election} /> : null}
+        {candidates.length ? <div className="pick-grid">{candidates.map(card)}</div> : null}
+        {data && data.candidates.length < data.total ? <LoadMore shown={data.candidates.length} total={data.total} loading={loading} onClick={() => void fetchMore()} /> : null}
       </section>
 
-      <div className={`tray ${selected.size ? 'tray-on' : ''}`} role="region" aria-label="Candidaturas marcadas">
-        <div className="tray-chips">
-          {selectedList.map(c => (
-            <span key={c.sq_candidato} className="chip">
-              <span className="chip-n">{c.number}</span>{c.ballot_name}
-              <button type="button" className="chip-x" aria-label={`Tirar ${c.ballot_name}`} onClick={() => toggle(c, false)}><X size={14} aria-hidden /></button>
-            </span>
-          ))}
-          {!selectedList.length ? <Text size="sm" color="secondary">Marque de {MIN} a {MAX} candidaturas na lista.</Text> : null}
-        </div>
-        <Button variant="primary" label={selected.size < MIN ? `Comparar (marque ${MIN - selected.size} a mais)` : `Comparar ${selected.size}`} icon={<Columns3 size={16} aria-hidden />} isDisabled={selected.size < MIN} onClick={compare} />
-      </div>
+      <PickFooter>{list ? <SourceFooter source={list.source} election={list.election} /> : null}</PickFooter>
+      <PickTray marked={marked} onRemove={unmark} onCompare={compare} />
     </div>
   );
 }

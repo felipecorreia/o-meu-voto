@@ -17,6 +17,19 @@ export const OFFICE: Record<Office, string> = {
   deputado_estadual: 'Deputado estadual', deputado_distrital: 'Deputado distrital',
 };
 
+/** Short office labels of the choice screen (tabs and list header of the Comparar page). */
+export const OFFICE_SHORT: Record<Office, string> = {
+  presidente: 'Presidente', vice_presidente: 'Vice-presidente', governador: 'Governador', vice_governador: 'Vice-governador',
+  senador: 'Senador', primeiro_suplente: '1º suplente', segundo_suplente: '2º suplente', deputado_federal: 'Dep. federal',
+  deputado_estadual: 'Dep. estadual', deputado_distrital: 'Dep. distrital',
+};
+
+/** The UF spelled out for the state pill; "BR" is the national race. */
+export function ufName(uf: string): string {
+  if (uf === 'BR') return 'Brasil (presidente)';
+  return UFS.find(([code]) => code === uf)?.[1] ?? uf;
+}
+
 export const BALLOT_OFFICES: Office[] = ['presidente', 'governador', 'senador', 'deputado_federal', 'deputado_estadual', 'deputado_distrital'];
 
 /**

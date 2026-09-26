@@ -286,3 +286,33 @@ export const variants: Record<VariantName, {theme: typeof cdeMatchaTheme; label:
   matcha: {theme: cdeMatchaTheme, label: 'Matcha + CDE', blurb: 'formas orgânicas, verde CDE como destaque'},
   butter: {theme: cdeButterTheme, label: 'Butter + CDE', blurb: 'formas retas, dourado CDE como destaque'},
 };
+
+// ---- Tela 1 (Comparar, choice mode) tokens ---------------------------------------------------
+// The redesigned choice screen (spec: Tela 1, section 4.1) on the Butter + CDE theme. Applied as
+// CSS custom properties on the page container by `ComparePage` and read by `styles.css` as
+// `var(--cv-*)`, so no component carries a loose hex. Green is choice and action, yellow the
+// highlight, petrol blue the support colour, navy the text. The tray avatars take their colour
+// from the ORDER OF MARKING (slot 1 blue, 2 strong green, 3 yellow with navy text, 4 navy),
+// never from the candidacy or the party (ADR 0008); see `.tray-av[data-slot]` in styles.css.
+export const pickTokens = {
+  '--cv-ink': '#1A2233',
+  '--cv-ink-2': '#4A5263',
+  '--cv-ink-3': '#5B6374',
+  '--cv-navy': cde.navy700,
+  '--cv-green': cde.green,
+  '--cv-green-strong': '#467025',
+  '--cv-green-tint': '#F4F8EF',
+  '--cv-green-halo': 'rgba(85,133,48,.14)',
+  '--cv-yellow': cde.yellow500,
+  '--cv-yellow-tint': '#FFF1C2',
+  '--cv-blue': '#2A6F8A',
+  '--cv-surface': '#F2F3F6',
+  '--cv-line': '#E6E8ED',
+  '--cv-line-2': '#E4E6EB',
+  '--cv-line-tray': '#ECEEF2',
+  '--cv-check-off': '#B9BFCA',
+  '--cv-avatar-bg': '#EDF0F5',
+  '--cv-cta-off': '#EEF0F3',
+  '--cv-chip-line': '#DADDE3',
+  '--cv-empty-bg': '#F7F8FA',
+} as const;
