@@ -40,7 +40,7 @@ src/br_elections_mcp/
   telemetry.py         telemetria PostHog anônima (ticket #17): um evento por chamada, `Telemetry.call` envolve cada tool/rota
   rate_limit.py        limite por IP (ticket #10): token bucket por instância, só usado por app.py
   edge.py              checagem do segredo de borda e confiança em CF-Connecting-IP (ADR 0010), só usado por app.py
-  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, segredo de borda, limite por IP, telemetria
+  app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, /health, segredo de borda, limite por IP, telemetria
   pipeline/            SEPARADO DO SERVIÇO: fetch, build, validate, publish, mirror_photos
 data/elections.yaml    calendário curado à mão
 web/                   página estática (Cloudflare Pages), o proxy de borda para /api e /mcp e a Pages Function que fala com o Jev
@@ -290,7 +290,7 @@ mensagem do `core`; `IndexUnavailable` vira 503.
 | `compare_candidates` | `GET /api/v1/candidates/compare?uf=&office=&sq=&sq=&round=` ou `...&number=&number=` |
 | `election_info` | `GET /api/v1/election?on=` |
 | `resolve_municipality` | `GET /api/v1/municipalities?name=&uf=&limit=` |
-| (não é tool) | `GET /healthz` |
+| (não é tool) | `GET /healthz`, `GET /health` (mesmo handler; `/health` existe porque o Cloud Run reserva caminhos terminados em "z" em `run.app` para requisições externas) |
 
 Ordem de declaração das rotas de candidato, que faz parte do contrato de `api.py`:
 `GET /api/v1/candidates/by-number` e `GET /api/v1/candidates/compare` são declaradas antes de
@@ -310,15 +310,18 @@ inicial e tarefa de verificação começam e terminam com o processo, nunca no c
 monta as duas aplicações ASGI, responde `405` ao `GET /mcp` (o servidor não tem sessão nem
 mensagens iniciadas por ele, então recusa o fluxo de eventos opcional, como a especificação
 do Streamable HTTP permite, em vez de segurar uma requisição ociosa que mantém uma instância
-do Cloud Run cobrada), expõe `/healthz` (repassa
+do Cloud Run cobrada), expõe `/healthz` e `/health` (mesmo handler; `/health` existe porque o
+Cloud Run reserva caminhos terminados em "z" em `run.app` para requisições externas, então
+`/healthz` só responde às sondas internas — repassa
 `health()` do `core`: `generated_at` de cada dataset, `index_built_at`, `stale`,
 `index_version`, `last_index_check_at`, o instante da última verificação bem-sucedida do
 `IndexSource`, e `last_index_check_error`, instante e mensagem da última falha, ou nulo) e
 aplica dois middlewares ASGI, nesta ordem. Primeiro o segredo de borda (`edge.py`, ADR 0010):
-com `BR_ELECTIONS_EDGE_SECRET` definido, toda requisição exceto `/healthz` (as sondas do Cloud
-Run) precisa trazer o mesmo valor em `x-edge-secret`, que a Pages Function de `web/` envia, ou
-recebe `403`; numa requisição que o trouxe, `CF-Connecting-IP` passa a ser o endereço do
-cliente. Sem segredo definido nada é checado e o cabeçalho é ignorado. Depois o limite por IP:
+com `BR_ELECTIONS_EDGE_SECRET` definido, toda requisição exceto `/healthz` e `/health` (as
+sondas do Cloud Run e as checagens externas equivalentes) precisa trazer o mesmo valor em
+`x-edge-secret`, que a Pages Function de `web/` envia, ou recebe `403`; numa requisição que o
+trouxe, `CF-Connecting-IP` passa a ser o endereço do cliente. Sem segredo definido nada é
+checado e o cabeçalho é ignorado. Depois o limite por IP:
 token bucket em memória por instância, `429` com `Retry-After`, contando pelo endereço do
 cliente que o middleware anterior deixou. Logs registram o IP truncado, nunca completo.
 

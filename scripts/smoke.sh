@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Smoke test of the four voter questions over REST and MCP (docs/deploy-runbook.md, step F1).
 # Usage: scripts/smoke.sh https://BASE [https://HEALTH_BASE]
-#   /healthz is read from HEALTH_BASE (default BASE): the Pages domain does not route /healthz,
-#   so behind Cloudflare pass the run.app URL as HEALTH_BASE. Needs curl and jq.
+#   /health is read from HEALTH_BASE (default BASE): the Pages domain does not route /health,
+#   so behind Cloudflare pass the run.app URL as HEALTH_BASE. Use /health, not /healthz: Cloud
+#   Run reserves paths ending in "z" on the default run.app domain and answers them with its
+#   own 404 for external requests (a documented known issue); the internal startup and
+#   liveness probes are unaffected and stay on /healthz. Needs curl and jq.
 # Acre zone 9, section 422 is the fixture row that reproduces verified TSE values, so it exists
 # in the fixture index and in the real one alike.
 set -euo pipefail
@@ -22,7 +25,7 @@ check() {
   echo "ok  $1${4:+: $(jq -c "$4" <<<"$2")}"
 }
 
-check healthz "$(get "$HEALTH/healthz")" '.index_version != null' \
+check health "$(get "$HEALTH/health")" '.index_version != null' \
   '{index_version, index_built_at, stale, last_index_check_at}'
 # Q1 onde voto
 check "REST Q1 polling-place AC 9/422" "$(rest 'polling-place?uf=ac&zone=9&section=422')" \

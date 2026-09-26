@@ -70,9 +70,9 @@ BR_ELECTIONS_INDEX_DIR=data/index uv run uvicorn --factory br_elections_mcp.app:
 limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
 default) and `BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS` (default `60`), both must be positive.
 `BR_ELECTIONS_EDGE_SECRET` (unset by default, and unset locally) makes the service refuse with
-`403` every request but `/healthz` that lacks the same value in `x-edge-secret`, the header the
-Cloudflare Pages Function sends; only such requests have their `CF-Connecting-IP` trusted as
-the client address (ADR 0010).
+`403` every request but `/healthz` and `/health` that lacks the same value in `x-edge-secret`,
+the header the Cloudflare Pages Function sends; only such requests have their
+`CF-Connecting-IP` trusted as the client address (ADR 0010).
 
 ### Index source: a directory or a bucket (ticket #16)
 

@@ -37,6 +37,12 @@ Pointers only; the content lives in the files below.
 
 ## Sharp edges
 
+- Cloud Run reserves some paths ending in `z` on the default `run.app` domain and answers them
+  with its own 404 for external requests (a documented known issue), so `/healthz` is
+  unreachable from outside even though the internal startup and liveness probes on it work.
+  `GET /health` (`app.py`, exempt from the edge secret and the rate limit like `/healthz`)
+  serves the same payload for external checks; `scripts/smoke.sh` and
+  `docs/deploy-runbook.md` use it, while the Cloud Run probe flags in step C2 keep `/healthz`.
 - The MCP SDK is `mcp` 2.x: `MCPServer` (not `FastMCP`), `mcp.Client(...)` for clients, and a
   tool returns `Annotated[CallToolResult, AnswerModel]` to keep a generated `outputSchema` while
   building its own text content. Pinned `<3` in `pyproject.toml`.

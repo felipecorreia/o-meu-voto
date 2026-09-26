@@ -82,6 +82,12 @@ def test_healthz_needs_no_edge_secret_so_the_platform_probes_keep_working(
     assert guarded_client.get("/healthz").status_code == 200
 
 
+def test_health_needs_no_edge_secret_so_external_checks_keep_working(
+    guarded_client: TestClient,
+):
+    assert guarded_client.get("/health").status_code == 200
+
+
 def test_settings_read_the_edge_secret_from_the_environment(
     monkeypatch: pytest.MonkeyPatch, acre_index_dir: Path
 ):

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 Clock = Callable[[], float]
 """Returns a monotonically increasing instant, in seconds."""
 
-EXEMPT_PATHS = frozenset({"/healthz"})
+EXEMPT_PATHS = frozenset({"/healthz", "/health"})
 
 
 def truncate_ip(host: str) -> str:

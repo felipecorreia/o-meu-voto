@@ -452,11 +452,27 @@ def test_healthz_is_not_under_api_v1(client: TestClient):
     assert client.get("/api/v1/healthz").status_code == 404
 
 
+def test_health_serves_the_same_envelope_as_healthz(client: TestClient):
+    # Cloud Run reserves paths ending in "z" on run.app for external requests (a documented
+    # known issue), so /health exists for checks made from outside the service.
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == client.get("/healthz").json()
+
+
 def test_healthz_is_503_when_the_index_was_never_opened(acre_index_dir: Path):
     # No lifespan here (no ``with``), so core.start() never runs and the index stays closed.
     core = Core(LocalDirectoryIndexSource(acre_index_dir), ELECTIONS_FILE)
     unstarted_client = TestClient(build_app(core), base_url="http://localhost")
     response = unstarted_client.get("/healthz")
+    assert response.status_code == 503
+    assert "index is not open" in response.json()["detail"]
+
+
+def test_health_is_also_503_when_the_index_was_never_opened(acre_index_dir: Path):
+    core = Core(LocalDirectoryIndexSource(acre_index_dir), ELECTIONS_FILE)
+    unstarted_client = TestClient(build_app(core), base_url="http://localhost")
+    response = unstarted_client.get("/health")
     assert response.status_code == 503
     assert "index is not open" in response.json()["detail"]
 

@@ -1,4 +1,5 @@
-"""Composition root: chooses the IndexSource, builds the Core, mounts /mcp, /api/v1 and /healthz.
+"""Composition root: chooses the IndexSource, builds the Core, mounts /mcp, /api/v1, /healthz
+and /health.
 
 Composition only, never logic. The ASGI lifespan opens the index through
 ``Core.start()`` and closes it through ``Core.close()``; the MCP session
@@ -189,6 +190,11 @@ def build_app(
             return JSONResponse({"detail": str(exc)}, status_code=503)
         return JSONResponse(health.model_dump(mode="json"))
 
+    # Cloud Run reserves some paths ending in "z" on the default run.app domain and answers
+    # them with its own 404 for external requests (a documented known issue), so /healthz is
+    # unreachable from outside even though the internal startup and liveness probes on it work.
+    # /health serves the same payload for external checks (scripts/smoke.sh, deploy-runbook.md).
+
     async def mcp_stream_not_allowed(_: Request) -> Response:
         # The server is stateless and never sends server-initiated messages, so it declines
         # the optional GET event stream, as the Streamable HTTP spec allows, instead of
@@ -201,6 +207,7 @@ def build_app(
     ]
     routes = [
         Route("/healthz", healthz),
+        Route("/health", healthz),
         Mount("/api/v1", app=create_api(core, telemetry=telemetry)),
         # Before the MCP mount, which would otherwise take GET /mcp; POST and DELETE only
         # match partially here and fall through to it.
