@@ -26,7 +26,7 @@ jobs:
         run: uv run pytest
 
   web-next:
-    name: Comparison page type check and build
+    name: Comparison page type check, build and test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,6 +42,8 @@ jobs:
         run: npm ci
       - name: Type check and build
         run: npm run build
+      - name: Test the page's utilities
+        run: npm test
       # What `wrangler pages deploy dist` publishes next to functions/ (docs/deploy-runbook.md D3).
       - name: Check the Pages files are in the build
         run: test -f dist/index.html && test -f dist/_routes.json && test -f dist/404.html

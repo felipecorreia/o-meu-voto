@@ -287,14 +287,14 @@ export const variants: Record<VariantName, {theme: typeof cdeMatchaTheme; label:
   butter: {theme: cdeButterTheme, label: 'Butter + CDE', blurb: 'formas retas, dourado CDE como destaque'},
 };
 
-// ---- Tela 1 (Comparar, choice mode) tokens ---------------------------------------------------
-// The redesigned choice screen (spec: Tela 1, section 4.1) on the Butter + CDE theme. Applied as
-// CSS custom properties on the page container by `ComparePage` and read by `styles.css` as
-// `var(--cv-*)`, so no component carries a loose hex. Green is choice and action, yellow the
-// highlight, petrol blue the support colour, navy the text. The tray avatars take their colour
-// from the ORDER OF MARKING (slot 1 blue, 2 strong green, 3 yellow with navy text, 4 navy),
-// never from the candidacy or the party (ADR 0008); see `.tray-av[data-slot]` in styles.css.
-export const pickTokens = {
+// ---- The `--cv-*` tokens of the redesigned screens ------------------------------------------
+// Tela 1 spec (section 4.1) on the Butter + CDE theme. Applied as CSS custom properties on the
+// `.cv-page` container (`ComparePage` today) and read by `styles.css` as `var(--cv-*)` and by
+// `lib/slotColor.ts`, so no component carries a loose hex. Green is choice and action, yellow the
+// highlight, petrol blue the support colour, navy the text. The four slot colours (blue, strong
+// green, yellow with navy text, navy) and their tints follow the ORDER OF MARKING, never the
+// candidacy or the party (ADR 0008); see `slotColor` in lib/slotColor.ts.
+export const cvTokens = {
   '--cv-ink': '#1A2233',
   '--cv-ink-2': '#4A5263',
   '--cv-ink-3': '#5B6374',
@@ -307,6 +307,7 @@ export const pickTokens = {
   '--cv-yellow-tint': '#FFF1C2',
   '--cv-blue': '#2A6F8A',
   '--cv-surface': '#F2F3F6',
+  '--cv-surface-2': '#F7F8FA',
   '--cv-line': '#E6E8ED',
   '--cv-line-2': '#E4E6EB',
   '--cv-line-tray': '#ECEEF2',
@@ -314,5 +315,8 @@ export const pickTokens = {
   '--cv-avatar-bg': '#EDF0F5',
   '--cv-cta-off': '#EEF0F3',
   '--cv-chip-line': '#DADDE3',
-  '--cv-empty-bg': '#F7F8FA',
+  '--cv-slot-1-tint': '#EEF5F8',
+  '--cv-slot-2-tint': '#F1F6EC',
+  '--cv-slot-3-tint': '#FFF8E0',
+  '--cv-slot-4-tint': '#EEF1F6',
 } as const;

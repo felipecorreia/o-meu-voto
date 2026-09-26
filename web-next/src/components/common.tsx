@@ -114,8 +114,12 @@ export function NotFoundState({nf}: {nf: NotFound}) {
   return <EmptyState isCompact icon={<SearchX size={40} aria-hidden />} title={nf.reason} description={nf.guidance} />;
 }
 
-export function ErrorState({message}: {message: string}) {
-  return <Banner status="error" title="Não foi possível consultar" description={message} container="card" elevation="none" collapsible={false} />;
+/** `onRetry` adds a "Tentar de novo" button (the choice mode of the Comparar page, spec 5.11). */
+export function ErrorState({message, title = 'Não foi possível consultar', onRetry}: {message: string; title?: string; onRetry?: () => void}) {
+  return (
+    <Banner status="error" title={title} description={message} container="card" elevation="none" collapsible={false}
+      endContent={onRetry ? <Button size="sm" variant="secondary" label="Tentar de novo" onClick={onRetry} /> : undefined} />
+  );
 }
 
 export function Loading({label = 'Consultando os dados abertos do TSE…'}: {label?: string}) {

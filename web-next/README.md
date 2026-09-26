@@ -20,6 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
+npm test             # vitest: src/lib/*.test.ts (title case, slot colours, exit-link order)
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -69,14 +70,15 @@ scripts/smoke.sh http://localhost:8788 http://localhost:8791                # re
 
 `tests/test_web.py` checks the route list, the 404 page and that `web/` holds no second copy,
 and runs the function under Node with a stub `fetch`. CI (`.github/workflows/ci.yml`, job
-`web-next`) runs `npm ci` and `npm run build` on Node 22, so a type error or a broken build
-fails the PR, and checks that `_routes.json` and `404.html` reach `dist/`.
+`web-next`) runs `npm ci`, `npm run build` and `npm test` on Node 22, so a type error, a broken
+build or a failing utility test fails the PR, and checks that `_routes.json` and `404.html`
+reach `dist/`.
 
 ## Routes (hash router, `src/router.ts`)
 
 | Route | Page | Notes |
 |---|---|---|
-| `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`), `src/components/Picker.tsx` |
+| `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`, in the order of marking), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`): the reusable pieces in `src/components/cv/` and `src/lib/` (below), the page-only ones in `src/components/Picker.tsx` |
 | `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `CompareGrid`, tabs layout (below) |
 | `#/candidato/:sq` | Profile | ADR 0004 fields only here, collapsed |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
@@ -124,12 +126,37 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The choice mode of the Comparar page (Tela 1) adds its own layer on top: the `--cv-*` tokens
-(`pickTokens` in `src/themes/cde.ts`, set as CSS variables on the page container and read by the
-`.pick` block of `src/styles.css`), Plus Jakarta Sans loaded in `index.html` and applied only in
-that scope (the Astryx font tokens are re-pointed there so Banner, EmptyState and the Selector
-follow), green for choice and action, yellow for the highlight, petrol blue as support. The tray
-avatars are coloured by the order of marking, never by candidacy or party.
+The redesigned screens (Tela 1, the choice mode of the Comparar page, today) add their own
+layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
+`src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
+`cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
+Sans loaded in `index.html` and applied only in that scope (the Astryx font tokens are re-pointed
+there so Banner, EmptyState and the Selector follow), green for choice and action, yellow for the
+highlight, petrol blue as support, `--cv-surface-2` for empty states and neutral notes.
+
+The pieces the next screens reuse are separate components and utilities, not page code:
+
+| Piece | Where | What |
+|---|---|---|
+| `StatePill` | `src/components/cv/StatePill.tsx` | the Astryx Selector restyled as the 64 px pill; sheet title "Escolha o estado" |
+| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup on a rail with the sliding highlight; `options`, `value`, `onChange`, `ariaLabel` |
+| `CandidateCard` | `src/components/cv/CandidateCard.tsx` | the whole-card `<button aria-pressed>` |
+| `CvAvatar` | `src/components/cv/CvAvatar.tsx` | initials or photo; `size`, `slot` (1 to 4) paints it with the slot colour, `ring` for the tray |
+| `NumberPill` | `src/components/cv/NumberPill.tsx` | the yellow ballot-number pill |
+| `CompareTray` | `src/components/cv/CompareTray.tsx` | the floating tray |
+| `toTitleCase` | `src/lib/titleCase.ts` | ballot name in title case, particles lower-cased |
+| `slotColor(i)` | `src/lib/slotColor.ts` | `{bg, fg, tint}` of marking slot `i`, as `var(--cv-*)` references |
+| `compareParams`, `MIN_MARKED`, `MAX_MARKED` | `src/lib/marking.ts` | the exit link (`sq` in the order of marking) and the 2..4 rule |
+
+The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
+the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
+that order so the next screen can repeat the colours. The choice screen words every error, empty
+and not-found state with the phrases of the spec's section 5.11 and never shows
+`not_found.reason`, the service's `guidance` or an HTTP detail; `warnings[]` keep the service
+text. Layout: one column under 640 px (the prints), two columns and a 32 px gutter from 640 px,
+and from 1024 px a 1120 px content width, the pill and the tabs on one line, the search with the
+chip beside it, three columns of cards that keep their own height, the tray 560 px wide and 24 px
+from the bottom, and a hover border (fine pointers only) on unmarked cards.
 
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 

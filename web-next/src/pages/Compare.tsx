@@ -4,14 +4,19 @@ import {Badge} from '@astryxdesign/core/Badge';
 import {Banner} from '@astryxdesign/core/Banner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {ArrowLeft, Share2} from 'lucide-react';
-import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData, type MissingCandidacy, type NotFound} from '../api';
-import {BALLOT_OFFICES, OFFICE, OFFICE_SHORT, officesFor, type Office} from '../labels';
+import {api, ApiError, type CandidateListItem, type ComparisonData, type Envelope, type CandidatesData, type MissingCandidacy} from '../api';
+import {BALLOT_OFFICES, OFFICE, OFFICE_SHORT, officesFor, ufName, type Office} from '../labels';
 import {href, navigate} from '../router';
 import {plural} from '../format';
 import {ErrorState, Loading, NotFoundState, SourceFooter, StatusBadge, Warnings} from '../components/common';
 import {CompareGrid, type DestinationStyle, type GridLayout, type Pair} from '../components/CompareGrid';
-import {CandidateCard, FilteredEmpty, LoadMore, MAX_MARKED, MIN_MARKED, OffBallotChip, OfficeTabs, PickFooter, PickHero, PickTray, SearchField, StatePill} from '../components/Picker';
-import {pickTokens} from '../themes/cde';
+import {FilteredEmpty, LoadMore, OffBallotChip, PickFooter, PickHero, SearchField} from '../components/Picker';
+import {CandidateCard} from '../components/cv/CandidateCard';
+import {CompareTray} from '../components/cv/CompareTray';
+import {SlidingTabs} from '../components/cv/SlidingTabs';
+import {StatePill} from '../components/cv/StatePill';
+import {compareParams, MAX_MARKED, MIN_MARKED} from '../lib/marking';
+import {cvTokens} from '../themes/cde';
 
 const MAX = MAX_MARKED;
 const MIN = MIN_MARKED;
@@ -27,16 +32,13 @@ const MISSING_REASON: Record<MissingCandidacy['reason'], string> = {
   fora_do_turno: 'não disputa este turno',
 };
 
-/** The choice screen never shows a `not_found.reason` code: a PT-BR phrase per reason, and the
- *  page's own guidance, since the service's names MCP tools. */
-const LIST_NOT_FOUND: Record<string, string> = {
-  candidato_nao_encontrado: 'Nenhuma candidatura encontrada',
-};
-function listNotFoundTitle(nf: NotFound): string { return LIST_NOT_FOUND[nf.reason] ?? 'Nada encontrado para essa busca'; }
-
 /** What the list is filtered by; remembered so "Carregar mais" repeats the same call. */
 type ListFilter = {name?: string; party?: string};
-type NumberHit = {kind: 'found'; number: string; c: CandidateListItem} | {kind: 'none'; number: string; message: string | null};
+type NumberHit = {kind: 'found'; number: string; c: CandidateListItem} | {kind: 'none'; number: string};
+/** The call that failed, so "Tentar de novo" repeats it. The choice screen words every failure
+ *  with the phrases of spec 5.11 and never shows the service's message, `not_found.reason` or
+ *  `guidance` (some name MCP tools). */
+type FailedCall = 'first' | 'more' | 'number';
 
 export function ComparePage({params}: {params: URLSearchParams}) {
   // Route state: uf, office and the selected sq list live in the hash, so a comparison is a link.
@@ -58,10 +60,12 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const [debounced, setDebounced] = useState('');
   const [all, setAll] = useState(false);
   const [list, setList] = useState<Envelope<CandidatesData> | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<FailedCall | null>(null);
   const [loading, setLoading] = useState(false);
   // The candidacy found by ballot number for a numeric query, shown on top of the unfiltered list.
   const [numberHit, setNumberHit] = useState<NumberHit | null>(null);
+  // Bumped by "Tentar de novo" after a failed by-number call, to run it again.
+  const [numberAttempt, setNumberAttempt] = useState(0);
   // Insertion order is the order of marking, which the tray's slot colours follow.
   const [selected, setSelected] = useState<Map<number, CandidateListItem>>(new Map());
   const [view, setView] = useState<'pick' | 'compare'>(initialSq.length >= MIN ? 'compare' : 'pick');
@@ -78,6 +82,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const reqId = useRef(0);
   const appliedFilter = useRef<ListFilter>({});
 
+  const officeOptions = useMemo(() => officesFor(uf).map(o => ({value: o, label: OFFICE_SHORT[o]})), [uf]);
   // Keep office valid for the UF (the old page defaulted to "presidente" and errored for states).
   const onUf = (v: string) => { setUf(v); const ok = officesFor(v); if (!ok.includes(office)) setOffice(ok[0]); setSelected(new Map()); };
   const onOffice = (v: Office) => { setOffice(v); setSelected(new Map()); };
@@ -99,7 +104,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   // characters, is retried as a party acronym (so "PSOL" finds the party's candidacies).
   const fetchFirst = useCallback(async () => {
     const id = ++reqId.current;
-    setLoading(true); setListError(null);
+    setLoading(true); setFailed(null);
     try {
       let filter: ListFilter = nameQuery ? {name: nameQuery} : {};
       let env = await api.candidates(listParams(filter, 0));
@@ -111,8 +116,8 @@ export function ComparePage({params}: {params: URLSearchParams}) {
       }
       appliedFilter.current = filter;
       setList(env);
-    } catch (e) {
-      if (id === reqId.current) { setList(null); setListError(String((e as Error).message ?? e)); }
+    } catch {
+      if (id === reqId.current) { setList(null); setFailed('first'); }
     } finally { if (id === reqId.current) setLoading(false); }
   }, [listParams, nameQuery]);
   useEffect(() => { void fetchFirst(); }, [fetchFirst]);
@@ -121,32 +126,41 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const fetchMore = async () => {
     const offset = list?.data?.candidates.length ?? 0;
     const id = ++reqId.current;
-    setLoading(true); setListError(null);
+    setLoading(true); setFailed(null);
     try {
       const env = await api.candidates(listParams(appliedFilter.current, offset));
       if (id !== reqId.current) return;
       setList(prev => prev?.data && env.data ? {...env, data: {...env.data, candidates: [...prev.data.candidates, ...env.data.candidates]}} : env);
-    } catch (e) {
-      if (id === reqId.current) setListError(String((e as Error).message ?? e));
+    } catch {
+      if (id === reqId.current) setFailed('more');
     } finally { if (id === reqId.current) setLoading(false); }
   };
 
   // Rule 5.4.1: two to five digits look the candidacy up by ballot number (the voter usually
   // knows it on a 1,000+ list); found, it heads the list; not found, one discreet line.
   useEffect(() => {
+    // A new lookup (or a cleared field) drops a banner left by a failed by-number call.
+    setFailed(f => f === 'number' ? null : f);
     if (!isNumberQuery) { setNumberHit(null); return; }
     const number = debounced;
     let alive = true;
     api.candidateByNumber({uf, office, number}).then(env => {
       if (!alive) return;
-      setNumberHit(env.data ? {kind: 'found', number, c: env.data.candidate} : {kind: 'none', number, message: null});
+      setNumberHit(env.data ? {kind: 'found', number, c: env.data.candidate} : {kind: 'none', number});
     }).catch(e => {
       if (!alive) return;
-      // A 4xx (a malformed number for the office) reads as "not found"; anything else shows its message.
-      setNumberHit({kind: 'none', number, message: e instanceof ApiError && e.status < 500 ? null : String((e as Error).message ?? e)});
+      // A 4xx (a malformed number for the office) reads as "not found"; anything else is the
+      // service failing, worded like a list error (spec 5.11), never with its message.
+      if (e instanceof ApiError && e.status < 500) setNumberHit({kind: 'none', number});
+      else { setNumberHit(null); setFailed('number'); }
     });
     return () => { alive = false; };
-  }, [uf, office, debounced, isNumberQuery]);
+  }, [uf, office, debounced, isNumberQuery, numberAttempt]);
+  const retry = () => {
+    if (failed === 'more') void fetchMore();
+    else if (failed === 'number') { setFailed(null); setNumberAttempt(n => n + 1); }
+    else void fetchFirst();
+  };
 
   // A link that opens the picker with candidacies already marked (the profile's "Comparar com
   // outras"): load them by profile. A comparison link marks them from the comparison instead.
@@ -163,9 +177,9 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Marking order for the tray; ballot-number order for the comparison link (the service answers in that order anyway).
+  // The order of marking: the tray's slot colours and the exit link follow it (spec 4.1), so
+  // the comparison screen can paint each candidacy with the same colour.
   const marked = useMemo(() => Array.from(selected.values()), [selected]);
-  const selectedList = useMemo(() => [...marked].sort((a, b) => a.number - b.number), [marked]);
   const toggle = (c: CandidateListItem) => setSelected(prev => {
     const m = new Map(prev);
     if (m.has(c.sq_candidato)) m.delete(c.sq_candidato);
@@ -176,9 +190,8 @@ export function ComparePage({params}: {params: URLSearchParams}) {
   const clearSearch = () => { setQuery(''); setAll(false); };
 
   const compare = () => {
-    const sqs = selectedList.map(c => c.sq_candidato);
-    navigate('/', {uf, office, sq: sqs.join(',')});
-    setCompareSq(sqs);
+    navigate('/', compareParams(uf, office, marked));
+    setCompareSq(marked.map(c => c.sq_candidato));
     setView('compare');
   };
 
@@ -270,13 +283,17 @@ export function ComparePage({params}: {params: URLSearchParams}) {
         badges={flagged ? <><StatusBadge status={c.adjudication_status} />{!c.on_ballot ? <Badge variant="error" label="Fora da urna" /> : null}</> : undefined} />
     );
   };
-  const where = uf === 'BR' ? 'no Brasil' : `em ${uf}`;
+  // "{Cargo} em {UF por extenso}" of the spec 5.11 phrases ("Governador em São Paulo"; the
+  // national race reads "Presidente no Brasil").
+  const race = `${OFFICE[office]} ${uf === 'BR' ? 'no Brasil' : `em ${ufName(uf)}`}`;
 
   return (
-    <div className="page pick" style={pickTokens as CSSProperties}>
+    <div className="page cv-page pick" style={cvTokens as CSSProperties}>
       <PickHero />
-      <StatePill uf={uf} onChange={onUf} />
-      <OfficeTabs options={officesFor(uf)} value={office} onChange={onOffice} />
+      <div className="pick-filters">
+        <StatePill uf={uf} onChange={onUf} />
+        <SlidingTabs options={officeOptions} value={office} onChange={onOffice} ariaLabel="Cargo" />
+      </div>
       <div className="pick-search">
         <SearchField value={query} onChange={setQuery} />
         <div className="pick-chips"><OffBallotChip on={all} onChange={setAll} /></div>
@@ -287,25 +304,27 @@ export function ComparePage({params}: {params: URLSearchParams}) {
           <h2 id="pick-title" className="pick-h2">{data ? plural(data.total, 'candidatura', 'candidaturas') : 'Candidaturas'}</h2>
           <span className="pick-round">{OFFICE_SHORT[office]}{data ? ` · ${data.round}º turno` : ''}</span>
         </div>
-        {listError ? <ErrorState message={listError} /> : null}
+        {failed ? <ErrorState title="Não foi possível consultar os dados agora." message="Tente de novo em instantes." onRetry={retry} /> : null}
         {list ? <Warnings warnings={list.warnings} /> : null}
         {loading && !data ? <Loading /> : null}
-        {list && !data && list.not_found ? <EmptyState isCompact title={listNotFoundTitle(list.not_found)} description="Confira o estado e o cargo escolhidos." /> : null}
-        {hit ? <div className="pick-hit"><span className="pick-hit-label">Número {numberHit?.number}</span>{card(hit)}</div> : null}
-        {numberHit?.kind === 'none' ? (
-          <p className="pick-hit-none">{numberHit.message ?? `Nenhuma candidatura com o número ${numberHit.number} para ${OFFICE_SHORT[office]} ${where}.`}</p>
+        {/* The service answers an empty list, never not_found, for a race with no candidacy; both read the same (spec 5.11). */}
+        {(list && !data && list.not_found) || (data && data.candidates.length === 0 && !hit && !nameQuery)
+          ? <EmptyState isCompact title={`Não encontramos candidaturas para ${race}.`} description="Confira o estado e o cargo." /> : null}
+        {hit ? (
+          <div className="pick-hit">
+            <span className="pick-hit-label">Número {numberHit?.number}</span>
+            {card(hit)}
+            {full && !selected.has(hit.sq_candidato) ? <p className="pick-hit-none">Já há {MAX} marcadas. Tire uma para adicionar.</p> : null}
+          </div>
         ) : null}
-        {data && data.candidates.length === 0 && !hit ? (
-          nameQuery
-            ? <FilteredEmpty onClear={clearSearch} />
-            : <EmptyState isCompact title={`Nenhuma candidatura na urna para ${OFFICE_SHORT[office]} ${where}`} description="Inclua as candidaturas fora da urna ou troque o cargo." />
-        ) : null}
+        {numberHit?.kind === 'none' ? <p className="pick-hit-none">Nenhuma candidatura com o número {numberHit.number} para {race}.</p> : null}
+        {data && data.candidates.length === 0 && !hit && nameQuery ? <FilteredEmpty onClear={clearSearch} /> : null}
         {candidates.length ? <div className="pick-grid">{candidates.map(card)}</div> : null}
         {data && data.candidates.length < data.total ? <LoadMore shown={data.candidates.length} total={data.total} loading={loading} onClick={() => void fetchMore()} /> : null}
       </section>
 
       <PickFooter>{list ? <SourceFooter source={list.source} election={list.election} /> : null}</PickFooter>
-      <PickTray marked={marked} onRemove={unmark} onCompare={compare} />
+      <CompareTray marked={marked} onRemove={unmark} onCompare={compare} />
     </div>
   );
 }
