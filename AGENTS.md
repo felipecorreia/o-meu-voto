@@ -33,8 +33,9 @@ Pointers only; the content lives in the files below.
   Local run, the Claude Desktop connection and the service image over real TSE data
   (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
   refresh workflow: README, "Publishing the index". Cloud Run + Cloudflare deploy checklist,
-  costs and open decisions: `docs/deploy-runbook.md` (nothing provisioned yet); after a deploy,
-  `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four voter questions over REST and MCP.
+  costs and open decisions: `docs/deploy-runbook.md` (Cloud Run and Cloudflare Pages live since
+  2026-09-26, `wiki/sessao-2026-09-27.md`); `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four
+  voter questions over REST and MCP.
 
 ## Sharp edges
 
