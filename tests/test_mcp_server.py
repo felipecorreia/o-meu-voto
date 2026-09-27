@@ -292,7 +292,8 @@ async def test_get_candidate_by_sq_candidato_returns_the_envelope_and_a_pt_br_te
     assert "45 MARIA DA SILVA (Maria Aparecida da Silva), governador, turno 1" in text
     assert "coligação ACRE PARA TODOS" in text
     assert "Chapa: vice governador JOÃO DO ACRE (MDB)." in text
-    assert "https://www.instagram.com/mariadasilva45" in text
+    assert "Redes sociais: 2 link(s) declarado(s), em social_links." in text
+    assert "https://www.instagram.com/mariadasilva45" not in text
     assert "Página oficial: https://divulgacandcontas.tse.jus.br/" in text
     assert "Fonte:" in text
 

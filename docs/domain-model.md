@@ -226,7 +226,7 @@ arquivo principal vem `#NE` em 100% das linhas; a situação útil está só no 
 | `marital_status` | str, PT-BR | `DS_ESTADO_CIVIL`, como o TSE publica; só na ficha individual |
 | `education` | str, PT-BR | `DS_GRAU_INSTRUCAO`, como o TSE publica; só na ficha individual |
 | `photo_url` | URL ou nulo, **derivado** | `F{SG_UF}{SQ_CANDIDATO}_div.jpg` do ZIP de fotos, espelhado no R2 |
-| `social_links[]` | URL | `DS_URL` do dataset de redes sociais |
+| `social_links[]` | URL, **derivado** | `DS_URL` do dataset de redes sociais, normalizado em `pipeline/social_links.py`: só sobrevive o que vira `http(s)://host/...` sem espaço em branco, credenciais nem caracteres de controle; o resto é descartado sem interpretar o que dizia. Deduplicado e limitado a 10 por candidatura, na ordem declarada. |
 | `running_mates[]` | ref. Candidate, **derivado** | candidatos de cargo de chapa com o mesmo (`election`, `round`, `uf`, `number`) cujo `Office.ticket_head` é o cargo do titular |
 | `divulgacandcontas_url` | URL, **derivado** | página oficial da candidatura, para o humano abrir |
 

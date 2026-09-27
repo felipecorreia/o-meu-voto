@@ -40,6 +40,7 @@ from br_elections_mcp.index_schema import (
 )
 from br_elections_mcp.pipeline.casing import title_case_pt
 from br_elections_mcp.pipeline.datasets import SourceFile
+from br_elections_mcp.pipeline.social_links import MAX_SOCIAL_LINKS, normalize_social_url
 
 _CSV_OPTIONS = CSV_READ_OPTIONS
 
@@ -139,7 +140,7 @@ def build_index(
         conn.execute(_INSERT_POLLING_PLACES)
         conn.execute(_insert_candidates_sql(office_sql, with_round=complementary_has_round))
         _check_tickets(conn)
-        conn.execute(_INSERT_SOCIAL_LINKS)
+        _insert_social_links(conn)
         conn.execute(_INSERT_CANDIDATE_ASSETS)
         _apply_display_casing(conn)
         counts = {
@@ -783,16 +784,32 @@ def _insert_candidates_sql(office_sql: str, *, with_round: bool) -> str:
     """
 
 
-_INSERT_SOCIAL_LINKS = f"""
-    INSERT INTO candidate_social_links (sq_candidato, position, url)
-    SELECT DISTINCT
-        CAST(SQ_CANDIDATO AS BIGINT),
-        CAST(NR_ORDEM_REDE_SOCIAL AS INTEGER),
-        trim(DS_URL)
-    FROM raw_candidate_social_links
-    WHERE {_nullif_markers("DS_URL")} IS NOT NULL
-      AND CAST(SQ_CANDIDATO AS BIGINT) IN (SELECT sq_candidato FROM candidates)
-"""
+def _insert_social_links(conn: duckdb.DuckDBPyConnection) -> None:
+    """Normalize, deduplicate and bound each candidacy's links in declared order."""
+    rows = conn.execute(f"""
+        SELECT CAST(SQ_CANDIDATO AS BIGINT),
+               CAST(NR_ORDEM_REDE_SOCIAL AS INTEGER), DS_URL
+        FROM raw_candidate_social_links
+        WHERE {_nullif_markers("DS_URL")} IS NOT NULL
+          AND CAST(SQ_CANDIDATO AS BIGINT) IN (SELECT sq_candidato FROM candidates)
+        ORDER BY 1, 2, 3
+    """).fetchall()
+    current_candidate = None
+    seen: set[str] = set()
+    links = []
+    for sq_candidato, position, raw in rows:
+        if sq_candidato != current_candidate:
+            current_candidate = sq_candidato
+            seen.clear()
+        if len(seen) >= MAX_SOCIAL_LINKS:
+            continue
+        url = normalize_social_url(raw)
+        if url is not None and url not in seen:
+            seen.add(url)
+            links.append((sq_candidato, position, url))
+    if links:
+        conn.executemany("INSERT INTO candidate_social_links VALUES (?, ?, ?)", links)
+
 
 # One total per candidacy, summed at build time (ADR 0008): the index never holds an item, its
 # kind or its description. Assets of a candidacy the candidates file does not carry are dropped,
