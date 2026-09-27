@@ -1,8 +1,8 @@
 # web-next: the comparison page (React + Astryx, CDE 2026 identity)
 
 The next shell of the public page, comparison first: choose UF and office, mark 2 to 4
-candidacies, read them side by side; then the candidate profile, the FAQ and, as an appendix,
-the where-to-vote searches (my polling place, places by city, election dates). Built with Vite,
+candidacies, read them side by side; then the candidate profile, the FAQ, where to vote (my
+polling place) and, as an appendix, places by city and election dates. Built with Vite,
 React 19 and `@astryxdesign/core` (Astryx, beta) on the TSE "CDE 2026" colour pattern, and
 reviewed by the captain on 2026-09-25 (design review report:
 `[private]`). It is the page Cloudflare Pages publishes (ADR
@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking, slots, pairs, comparison rows and profile contracts
+npm test             # vitest: marking, slots, pairs, comparison, profile and polling-place contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -83,7 +83,8 @@ reach `dist/`.
 | `#/?uf=&office=&marcar=a,b,c` | Choice with preselection | loads available profiles in the written order, keeps successful results if another load fails, and preserves marks changed while loading; "Escolher outras" uses this route |
 | `#/candidato/:sq` | Profile | Tela 3: direct links are neutral; `cmp` plus `uf`, `office`, `pair` and `tab` preserves comparison context and slot colour. Personal fields appear only in the collapsed panel |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
-| `#/onde-voto`, `#/locais`, `#/quando` | Appendix | polling place by zone and section, places by city, election dates |
+| `#/onde-voto?uf=&zone=&section=[&round=1\|2]` | Where to vote | Tela 4: shared search/detail pieces, automatic search from valid links, form editing, client validation and safe problem states |
+| `#/locais`, `#/quando` | Appendix | places by city, election dates |
 
 The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
 `src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
@@ -147,7 +148,7 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The redesigned screens (Telas 1 to 3: both modes of the Comparar page and the profile) add their own
+The redesigned screens (Telas 1 to 4: both modes of the Comparar page, the profile and where to vote) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
@@ -159,8 +160,8 @@ The pieces the next screens reuse are separate components and utilities, not pag
 
 | Piece | Where | What |
 |---|---|---|
-| `StatePill` | `src/components/cv/StatePill.tsx` | the Astryx Selector restyled as the 64 px pill; sheet title "Escolha o estado" |
-| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup with a sliding highlight; `fill` uses equal-width options below 1024 px |
+| `StatePill` | `src/components/cv/StatePill.tsx` | the Astryx Selector restyled as the 64 px pill; optional icon, trailing glyph, label and options preserve defaults for choice mode |
+| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup with a sliding highlight; `fill` uses equal-width options below 1024 px; opt-in tab semantics and an associated label for the round selector |
 | `CandidateCard` | `src/components/cv/CandidateCard.tsx` | the whole-card `<button aria-pressed>` |
 | `CvAvatar` | `src/components/cv/CvAvatar.tsx` | initials or photo; `size`, `slot` (1 to 4) paints it with the slot colour, `ring` for the tray |
 | `NumberPill` | `src/components/cv/NumberPill.tsx` | the yellow ballot-number pill |
@@ -177,6 +178,10 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `DetailRow`, `LinkCard`, `FloatingBar` | `src/components/cv/` | labelled details, external link cards and the original tray container including safe area |
 | `PrivateDataPanel` | `src/components/cv/PrivateDataPanel.tsx` | closed on every new profile; personal values mounted only when expanded in an associated region |
 | `profileUf`, `profileNavigation`, `profileShare` | `src/lib/profile.ts` | race recovery, comparison return, `marcar` action and a direct share link without `cmp` |
+| `InsetField`, `SearchSummaryPill` | `src/components/cv/` | labelled numeric field with associated error; search summary button that reopens the form |
+| `PlaceHero`, `CvEmptyState`, `NoticeBanner`, `LoadingState` | `src/components/cv/` | polling-place hero, safe empty/error cards, service notices and announced loading skeleton |
+| `pollingSearchFromUrl`, `pollingMapsUrl`, `pollingVotingDate` | `src/lib/pollingPlace.ts` | validated route defaults, coordinate/address directions and the existing envelope's date in Brasília |
+| `TSE_ONDE_VOTAR_URL` | `src/lib/links.ts` | fixed official service link, copied once from the service contract |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -209,6 +214,34 @@ remain exclusively in comparison. Reduced motion disables hero and panel animati
 The six `--cv-status-{ok,bad,wait}-{fg,bg}` tokens live only in `cvTokens`. Choice and profile
 use them with an icon and the registration term; comparison stays neutral. The extraction of
 `FloatingBar` retains all of the choice tray's geometry, shadows and responsive placement.
+
+## Where to vote (Tela 4)
+
+`src/pages/WhereToVote.tsx` owns the five states: form, loading, result, not found and error.
+It keeps the existing `GET /polling-place` mapping, using the shared cv tokens and pieces.
+Searches replace the hash query, preserve leading zeros, omit `round` for the next round,
+and run automatically when a direct link has valid zone and section values. Invalid numeric
+input stays visible with "Use só números."; an invalid or absent UF defaults to SP. The state
+selector offers the 27 UFs and ZZ, without the candidate-only BR option. Editing a summary
+keeps the URL until the next search and focuses the zone field. Superseded calls cannot
+overwrite a later search or reopen a result after editing.
+
+Below 1024 px the submitted form becomes a summary pill; the floating bar provides search
+or directions. At 640 px the content is at most 560 px wide and not-found alternatives sit
+side by side. From 1024 px a sticky 380 px form stays beside the response in a 1080 px grid,
+with its search button inside and directions in the hero, without a floating bar. Empty
+detail rows disappear; previous-place notices and warnings retain the service text. The date
+card uses the response's election and voting hours without another call and disappears when
+the date is absent. Maps uses coordinates or the original full address as fallback.
+
+The default shared component styles remain unchanged. `StatusBadge` accepts an explicit
+`tone`, preserving supplied text for these non-candidate badges; its existing candidate
+mapping and sentence casing remain the defaults. `LinkCard` adds the accent tone and follows
+hash links in the current tab; external links retain the original new-tab behavior.
+Loading is announced, completion focuses its heading, keyboard arrows change the round,
+and reduced motion removes entry/pulse/sliding while slowing the spinner to 2.4 s. Error
+and not-found cards use the approved copy, with no reason, guidance or HTTP detail in the DOM.
+No storage, extra tokens, shell changes or Pages deployment.
 
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 

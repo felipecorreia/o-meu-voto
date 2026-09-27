@@ -20,11 +20,14 @@ export interface SlidingTabsProps<T extends string> {
   ariaLabel: string;
   /** Full width with equal options below 1024 px. */
   fill?: boolean;
+  /** Turn selectors use tabs; existing choice groups retain radio semantics. */
+  role?: 'radiogroup' | 'tablist';
+  ariaLabelledby?: string;
 }
 
-const CHECKED = '[role="radio"][aria-checked="true"]';
+const CHECKED = '[aria-checked="true"], [role="tab"][aria-selected="true"]';
 
-export function SlidingTabs<T extends string>({options, value, onChange, ariaLabel, fill = false}: SlidingTabsProps<T>) {
+export function SlidingTabs<T extends string>({options, value, onChange, ariaLabel, fill = false, role = 'radiogroup', ariaLabelledby}: SlidingTabsProps<T>) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [highlight, setHighlight] = useState<{left: number; width: number} | null>(null);
   const userPicked = useRef(false);
@@ -59,7 +62,7 @@ export function SlidingTabs<T extends string>({options, value, onChange, ariaLab
     userPicked.current = true;
     const next = options[i].value;
     if (next !== value) onChange(next);
-    if (focus) trackRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[i]?.focus();
+    if (focus) trackRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"], [role="tab"]')[i]?.focus();
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = options.findIndex(o => o.value === value);
@@ -75,10 +78,10 @@ export function SlidingTabs<T extends string>({options, value, onChange, ariaLab
 
   return (
     <div className={fill ? 'cv-tabs cv-tabs-fill' : 'cv-tabs'}>
-      <div ref={trackRef} className="cv-tabs-track" role="radiogroup" aria-label={ariaLabel} onKeyDown={onKeyDown}>
+      <div ref={trackRef} className="cv-tabs-track" role={role} aria-label={ariaLabelledby ? undefined : ariaLabel} aria-labelledby={ariaLabelledby} onKeyDown={onKeyDown}>
         {highlight ? <span className="cv-tabs-hl" aria-hidden style={{left: highlight.left, width: highlight.width}} /> : null}
         {options.map((o, i) => (
-          <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} data-value={o.value} className="cv-tab" onClick={() => pick(i)}>
+          <button key={o.value} type="button" role={role === 'tablist' ? 'tab' : 'radio'} aria-checked={role === 'radiogroup' ? o.value === value : undefined} aria-selected={role === 'tablist' ? o.value === value : undefined} tabIndex={o.value === value ? 0 : -1} data-value={o.value} className="cv-tab" onClick={() => pick(i)}>
             {o.label}
           </button>
         ))}

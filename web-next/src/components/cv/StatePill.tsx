@@ -7,27 +7,32 @@
  * trigger button; `label` is the sheet's heading ("Escolha o estado", spec 5.11).
  */
 import {Selector} from '@astryxdesign/core/Selector';
-import {ChevronDown, MapPin} from 'lucide-react';
+import type {ReactNode} from 'react';
+import {ChevronDown, MapPin, Pencil} from 'lucide-react';
 import {UFS, ufName} from '../../labels';
 
 export const UF_OPTIONS = [{value: 'BR', label: 'Brasil (presidente)'}, ...UFS.map(([v, l]) => ({value: v, label: `${v} · ${l}`}))];
 
-export function StatePill({uf, onChange}: {uf: string; onChange: (uf: string) => void}) {
-  const name = ufName(uf);
+export function StatePill({uf, onChange, icon = <MapPin size={20} />, trailing = 'chevron', label = 'Estado', options = UF_OPTIONS}: {
+  uf: string; onChange: (uf: string) => void; icon?: ReactNode; trailing?: 'chevron' | 'edit';
+  label?: string; options?: typeof UF_OPTIONS;
+}) {
+  const name = uf === 'ZZ' ? 'Exterior' : ufName(uf);
+  const Trailing = trailing === 'edit' ? Pencil : ChevronDown;
   return (
     <div className="cv-pill">
       <Selector
-        label="Escolha o estado" isLabelHidden options={UF_OPTIONS} value={uf} onChange={onChange}
+        label="Escolha o estado" isLabelHidden options={options} value={uf} onChange={onChange}
         hasSearch searchPlaceholder="Buscar estado" presentation="adaptive" width="100%"
         aria-label={`Estado: ${name}. Trocar estado`}
         renderValue={() => (
           <span className="cv-pill-value">
-            <span className="cv-pill-pin" aria-hidden><MapPin size={20} /></span>
+            <span className="cv-pill-pin" aria-hidden>{icon}</span>
             <span className="cv-pill-text">
-              <span className="cv-pill-label">Estado</span>
+              <span className="cv-pill-label">{label}</span>
               <span className="cv-pill-name">{name}</span>
             </span>
-            <span className="cv-pill-chevron" aria-hidden><ChevronDown size={18} strokeWidth={2.2} /></span>
+            <span className="cv-pill-chevron" aria-hidden><Trailing size={18} strokeWidth={2.2} /></span>
           </span>
         )}
       />

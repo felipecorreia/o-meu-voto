@@ -12,9 +12,10 @@ export function statusKind(status: string): StatusKind {
 }
 
 /** Only choice and profile use these status colours; comparison badges stay neutral. */
-export function StatusBadge({status, kind = statusKind(status)}: {status: string; kind?: StatusKind}) {
+export function StatusBadge({status, kind = statusKind(status), tone}: {status: string; kind?: StatusKind; tone?: StatusKind}) {
+  kind = tone ?? kind;
   const Icon = kind === 'ok' ? Check : kind === 'bad' ? X : kind === 'wait' ? Clock : null;
   return <span className={`cv-status cv-status-${kind}`}>
-    {Icon ? <Icon size={12} strokeWidth={3} aria-hidden /> : null}{sentenceCase(status)}
+    {Icon ? <Icon size={12} strokeWidth={3} aria-hidden /> : null}{tone ? status : sentenceCase(status)}
   </span>;
 }
