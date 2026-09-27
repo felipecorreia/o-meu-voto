@@ -24,3 +24,4 @@ data/index/
 .claude/settings.local.json
 .env
 .DS_Store
+web-next/.test-chrome-profile/

@@ -4,6 +4,16 @@ MCP server and REST API over the open data of the Tribunal Superior Eleitoral (T
 Brazilian electoral court. It answers the questions a voter asks before election day, for any
 LLM connected through MCP and for a static web page, without touching any personal data.
 
+## Connect your AI assistant
+
+Copy this message into your assistant:
+
+> Busque e siga as instruções em https://omeuvoto.pages.dev/prompt-llm.md para configurar o O meu voto neste assistente.
+
+The [setup instructions](https://omeuvoto.pages.dev/prompt-llm.md) cover MCP agents,
+chat apps with custom connectors, and a public REST fallback. Their source is
+[`web-next/public/prompt-llm.md`](web-next/public/prompt-llm.md), served as a static Pages asset.
+
 ## What it answers
 
 - **Where do I vote?** The state, zone and section printed on the voter's title become the
