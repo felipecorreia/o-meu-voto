@@ -350,7 +350,12 @@ para que qualquer estágio rode sozinho:
    e escreve `index.duckdb`. A mesma função constrói os índices de teste do `core`.
 3. **validate**: portões que bloqueiam a publicação: cabeçalho de cada CSV igual ao esperado;
    chave (`uf`, `zone`, `section`, `round`) única nas seções e (`sq_candidato`, `round`) única
-   nos candidatos; colunas proibidas ausentes; contagens dentro de 5% da versão anterior;
+   nos candidatos; colunas proibidas ausentes; contagens dentro de 5% da versão anterior, exceto
+   `candidate_social_links` (`COUNT_STABILITY_EXCLUDED_TABLES` em `validate.py`), cuja contagem
+   se move com nosso próprio filtro de normalização/dedupe e por isso não é checada por
+   estabilidade; um arquivo bruto de redes sociais truncado sozinho não seria pego por esse
+   portão, risco aceito porque a tabela de candidatos continua checada e links são o dado menos
+   crítico;
    `DT_ELEICAO` de cada turno presente igual à data do turno de mesmo número na eleição do
    YAML de mesmo ano que `AA_ELEICAO`/`ANO_ELEICAO`, portão que vale só para os arquivos de
    eleição (o arquivo mensal `ATUAL` o pula, porque não pertence a uma eleição do YAML); e as

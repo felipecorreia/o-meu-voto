@@ -48,6 +48,17 @@ VALIDATION_REPORT_VERSION = 1
 COUNT_TOLERANCE = 0.05
 """A count more than this fraction away from the previous manifest fails ``count_stability``."""
 
+COUNT_STABILITY_EXCLUDED_TABLES: dict[str, str] = {
+    "candidate_social_links": (
+        "count moves with our own normalize/cap/dedupe filtering (build.py), so it is not "
+        "stability-checked; a truncated raw social-links source file alone would therefore not "
+        "be caught here, an accepted risk because the candidates table still is and missing "
+        "links are the least critical data"
+    ),
+}
+"""Tables ``count_stability`` skips, each with a one-line reason; every other table still
+enforces ``COUNT_TOLERANCE``."""
+
 ROUND_2_OFFICES: frozenset[Office] = frozenset(
     {Office.PRESIDENTE, Office.VICE_PRESIDENTE, Office.GOVERNADOR, Office.VICE_GOVERNADOR}
 )
@@ -301,6 +312,8 @@ def _gate_count_stability(manifest: Manifest, previous: Manifest | None) -> Gate
         return GateResult("count_stability", "pass", "no previous manifest; first run")
     problems = []
     for table, count in manifest.counts.items():
+        if table in COUNT_STABILITY_EXCLUDED_TABLES:
+            continue
         old = previous.counts.get(table)
         if old is None:
             continue
@@ -309,14 +322,20 @@ def _gate_count_stability(manifest: Manifest, previous: Manifest | None) -> Gate
         )
         if change > COUNT_TOLERANCE:
             problems.append(f"{table}: {old} -> {count} ({change:.1%})")
+    skipped_note = (
+        f"; skipped {sorted(COUNT_STABILITY_EXCLUDED_TABLES)}"
+        if COUNT_STABILITY_EXCLUDED_TABLES
+        else ""
+    )
     if problems:
         return GateResult(
             "count_stability",
             "fail",
             f"counts moved more than {COUNT_TOLERANCE:.0%} from the previous manifest: "
-            + "; ".join(problems),
+            + "; ".join(problems)
+            + skipped_note,
         )
-    return GateResult("count_stability", "pass", "every count is within tolerance")
+    return GateResult("count_stability", "pass", "every count is within tolerance" + skipped_note)
 
 
 # Gate 5: DT_ELEICAO of the index matches the curated calendar (election files only).

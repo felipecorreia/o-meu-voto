@@ -24,7 +24,12 @@ from br_elections_mcp.pipeline.datasets import (
     Dataset,
     SourceFile,
 )
-from br_elections_mcp.pipeline.validate import ValidationError, ValidationReport, validate
+from br_elections_mcp.pipeline.validate import (
+    ValidationError,
+    ValidationReport,
+    _gate_count_stability,
+    validate,
+)
 from tests.conftest import (
     ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
@@ -240,6 +245,29 @@ def test_count_stability_gate_fails_when_a_count_moves_more_than_five_percent(
     with pytest.raises(ValidationError) as excinfo:
         run_validate(acre_index_dir, output_dir=tmp_path, previous_manifest=previous)
     assert "count_stability" in str(excinfo.value)
+
+
+def test_count_stability_gate_skips_candidate_social_links():
+    counts = {"candidates": 1_000, "candidate_social_links": 53218}
+    previous = Manifest(
+        index_built_at=BUILT_AT,
+        datasets={},
+        election_year=None,
+        election_dates=None,
+        counts={**counts, "candidate_social_links": 62901},
+        index_sha256="0" * 64,
+    )
+    current = Manifest(
+        index_built_at=BUILT_AT,
+        datasets={},
+        election_year=None,
+        election_dates=None,
+        counts=counts,
+        index_sha256="0" * 64,
+    )
+    gate = _gate_count_stability(current, previous)
+    assert gate.status == "pass"
+    assert "candidate_social_links" in gate.message
 
 
 def test_election_date_matches_calendar_gate_fails_on_a_date_mismatch(tmp_path: Path):
