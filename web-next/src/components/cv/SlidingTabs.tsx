@@ -8,9 +8,9 @@
  * comparison's Chapa / Patrimônio / Ocupação, Tela 2 spec 5.5 and 5.12) the rail is as wide as
  * its container with equal options up to 1023 px, and as wide as its labels from 1024 px.
  */
-import {useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode} from 'react';
 
-export interface SlidingTabOption<T extends string> { value: T; label: string }
+export interface SlidingTabOption<T extends string> { value: T; label: string; icon?: ReactNode }
 
 export interface SlidingTabsProps<T extends string> {
   options: ReadonlyArray<SlidingTabOption<T>>;
@@ -82,7 +82,7 @@ export function SlidingTabs<T extends string>({options, value, onChange, ariaLab
         {highlight ? <span className="cv-tabs-hl" aria-hidden style={{left: highlight.left, width: highlight.width}} /> : null}
         {options.map((o, i) => (
           <button key={o.value} type="button" role={role === 'tablist' ? 'tab' : 'radio'} aria-checked={role === 'radiogroup' ? o.value === value : undefined} aria-selected={role === 'tablist' ? o.value === value : undefined} tabIndex={o.value === value ? 0 : -1} data-value={o.value} className="cv-tab" onClick={() => pick(i)}>
-            {o.label}
+            {o.icon ? <span className="cv-tab-icon" aria-hidden>{o.icon}</span> : null}{o.label}
           </button>
         ))}
       </div>

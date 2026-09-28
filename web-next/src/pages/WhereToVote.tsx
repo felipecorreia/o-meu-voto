@@ -37,6 +37,7 @@ export function WhereToVotePage() {
   const [serverInvalid, setServerInvalid] = useState(false);
   const desktop = useMedia('(min-width: 1024px)');
   const zoneRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const requestId = useRef(0);
   const zoneError = numericError(search.zone) ?? (serverInvalid ? 'Use só números.' : undefined);
@@ -68,7 +69,10 @@ export function WhereToVotePage() {
       ++requestId.current;
       setSearch(next); setSubmitted(next); setServerInvalid(false); setEnv(null);
       if (validPollingSearch(next)) void runSearch(next);
-      else setView('form');
+      else {
+        setView('form');
+        if (/^\d+$/.test(next.zone) && !next.section) requestAnimationFrame(() => sectionRef.current?.focus());
+      }
     };
     openUrl();
     window.addEventListener('hashchange', openUrl);
@@ -102,7 +106,7 @@ export function WhereToVotePage() {
         <StatePill uf={search.uf} onChange={value => update('uf', value)} label="Estado do título" options={POLLING_UF_OPTIONS} />
         <div className="voting-fields">
           <InsetField label="Zona eleitoral" value={search.zone} onChange={value => update('zone', value)} placeholder="ex.: 009" error={zoneError} inputRef={zoneRef} />
-          <InsetField label="Seção" value={search.section} onChange={value => update('section', value)} placeholder="ex.: 0422" error={sectionError} />
+          <InsetField label="Seção" value={search.section} onChange={value => update('section', value)} placeholder="ex.: 0422" error={sectionError} inputRef={sectionRef} />
         </div>
         <div className="voting-round"><span id="polling-round-label">Turno</span><SlidingTabs options={POLLING_ROUNDS} value={search.round} onChange={value => update('round', value)} ariaLabel="Turno" ariaLabelledby="polling-round-label" role="tablist" fill /></div>
         <div className="voting-help">{zoneLink()}<a className="voting-faq" href={href('/duvidas', {abrir: 'zona'})}>Onde acho a zona e a seção?<ChevronRight size={16} aria-hidden /></a></div>

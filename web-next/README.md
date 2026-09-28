@@ -2,7 +2,7 @@
 
 The next shell of the public page, comparison first: choose UF and office, mark 2 to 4
 candidacies, read them side by side; then the candidate profile, the FAQ, where to vote (my
-polling place) and, as an appendix, places by city and election dates. Built with Vite,
+polling place), places by city and election dates. Built with Vite,
 React 19 and `@astryxdesign/core` (Astryx, beta) on the TSE "CDE 2026" colour pattern, and
 reviewed by the captain on 2026-09-25 (design review report:
 `[private]`). It is the page Cloudflare Pages publishes (ADR
@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place and election-date contracts
+npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place, places and election-date contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -85,7 +85,7 @@ reach `dist/`.
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
 | `#/onde-voto?uf=&zone=&section=[&round=1\|2]` | Where to vote | Tela 4: shared search/detail pieces, automatic search from valid links, form editing, client validation and safe problem states |
 | `#/quando` | When | Tela 6: the election calendar with a hero driven by the Brasília civil day (countdown, voting day, closed, over), round tiles, hours strip, office chips, link sections and safe no-data/error states |
-| `#/locais` | Appendix | places by city |
+| `#/locais?uf=&mun=<tse_code>[&bairro=][&q=]` | Places by city | Tela 5: municipality suggestions, optional filters, alphabetic or nearby order, place cards and links to Onde voto and Maps |
 
 The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
 `src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
@@ -148,7 +148,7 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The redesigned screens (Telas 1 to 4 and 6: both modes of the Comparar page, the profile, where to vote and the election dates) add their own
+The redesigned screens (Telas 1 to 6: both modes of the Comparar page, the profile, where to vote, places by city and the election dates) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
@@ -161,7 +161,7 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | Piece | Where | What |
 |---|---|---|
 | `StatePill` | `src/components/cv/StatePill.tsx` | the Astryx Selector restyled as the 64 px pill; optional icon, trailing glyph, label and options preserve defaults for choice mode |
-| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup with a sliding highlight; `fill` uses equal-width options below 1024 px; opt-in tab semantics and an associated label for the round selector |
+| `SlidingTabs` | `src/components/cv/SlidingTabs.tsx` | a radiogroup with a sliding highlight; `fill` uses equal-width options below 1024 px; opt-in tab semantics, an associated label for the round selector and an optional per-option icon |
 | `CandidateCard` | `src/components/cv/CandidateCard.tsx` | the whole-card `<button aria-pressed>` |
 | `CvAvatar` | `src/components/cv/CvAvatar.tsx` | initials or photo; `size`, `slot` (1 to 4) paints it with the slot colour, `ring` for the tray |
 | `NumberPill` | `src/components/cv/NumberPill.tsx` | the yellow ballot-number pill |
@@ -178,8 +178,8 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `DetailRow`, `LinkCard`, `FloatingBar` | `src/components/cv/` | labelled details, external link cards and the original tray container including safe area |
 | `PrivateDataPanel` | `src/components/cv/PrivateDataPanel.tsx` | closed on every new profile; personal values mounted only when expanded in an associated region |
 | `profileUf`, `profileNavigation`, `profileShare` | `src/lib/profile.ts` | race recovery, comparison return, `marcar` action and a direct share link without `cmp` |
-| `InsetField`, `SearchSummaryPill` | `src/components/cv/` | labelled numeric field with associated error; search summary button that reopens the form |
-| `PlaceHero`, `CvEmptyState`, `NoticeBanner`, `LoadingState` | `src/components/cv/` | polling-place hero, safe empty/error cards, service notices and announced loading skeleton |
+| `InsetField`, `SearchSummaryPill` | `src/components/cv/` | labelled field with associated error, an optional "(opcional)" suffix and a numeric or text `inputMode`; search summary button (numeric or free-text summary) that reopens the form |
+| `PlaceHero`, `CvEmptyState`, `NoticeBanner`, `LoadingState` | `src/components/cv/` | polling-place hero, safe empty/error cards, service notices (`role`, optional icon overriding the tone glyph) and announced loading skeleton |
 | `pollingSearchFromUrl`, `pollingMapsUrl`, `pollingVotingDate` | `src/lib/pollingPlace.ts` | validated route defaults, coordinate/address directions and the existing envelope's date, formatted by the election-date helpers below |
 | `TSE_ONDE_VOTAR_URL`, `TSE_SITE_URL` | `src/lib/links.ts` | fixed official links (the where-to-vote service, copied once from the service contract; the TSE site for the calendar and the results) |
 | `CountdownHero` | `src/components/cv/CountdownHero.tsx` | the Quando hero: `count` (number, round, date and hours, read as one sentence), `today` (green check and the "Ver onde eu voto" CTA), `closed` (the day's voting is over) and `after` (the election is over, with the TSE results link) |
@@ -188,6 +188,11 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `CvChip` | `src/components/cv/CvChip.tsx` | a grey non-interactive 36 px `<li>` chip inside a `ul.cv-chips` (the offices) |
 | `electionPhase`, `daysUntil`, `roundTags`, `formatRoundDate`, `formatWeekday`, `formatVotingHours`, `formatHour`, `formatShortDate`, `calendarDay` | `src/lib/electionDates.ts` | the phase and the countdown on the Brasília civil day (`Intl.DateTimeFormat` with `timeZone`, never the device zone), the tags per phase and the pt-BR formatting the pages share |
 | `officeChips` | `src/labels.ts` | the office chips in the service's order, state and district deputies merged into one |
+| `ComboField` | `src/components/cv/ComboField.tsx` | debounced municipality combobox with keyboard selection and loading/empty/error status |
+| `PlaceCard` | `src/components/cv/PlaceCard.tsx` | one polling place: chips, accessibility and blocked-status badges, Onde voto and Maps links |
+| `LoadMore` | `src/components/cv/LoadMore.tsx` | "Mostrando X de Y" with an offset-page button, announcing how many places were added |
+| `appendPlacesPage`, `PLACES_PAGE_SIZE` | `src/lib/placePages.ts` | fetches the next 20-place offset page and de-duplicates by zone/number before appending |
+| `mapsUrl` | `src/lib/links.ts` | Google Maps search link from a place's coordinates, falling back to its address and municipality |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -226,7 +231,8 @@ use them with an icon and the registration term; comparison stays neutral. The e
 `src/pages/WhereToVote.tsx` owns the five states: form, loading, result, not found and error.
 It keeps the existing `GET /polling-place` mapping, using the shared cv tokens and pieces.
 Searches replace the hash query, preserve leading zeros, omit `round` for the next round,
-and run automatically when a direct link has valid zone and section values. Invalid numeric
+and run automatically when a direct link has valid zone and section values. A link from Places
+with a zone but no section opens the form with that zone and focuses Section without searching. Invalid numeric
 input stays visible with "Use só números."; an invalid or absent UF defaults to SP. The state
 selector offers the 27 UFs and ZZ, without the candidate-only BR option. Editing a summary
 keeps the URL until the next search and focuses the zone field. Superseded calls cannot
@@ -248,6 +254,22 @@ Loading is announced, completion focuses its heading, keyboard arrows change the
 and reduced motion removes entry/pulse/sliding while slowing the spinner to 2.4 s. Error
 and not-found cards use the approved copy, with no reason, guidance or HTTP detail in the DOM.
 No storage, extra tokens, shell changes or Pages deployment.
+
+## Places by city (Tela 5)
+
+`src/pages/Places.tsx` uses the existing `/municipalities` and `/polling-places` calls. A
+municipality must be picked from the debounced suggestion list. The URL records the UF, TSE
+municipality code and optional filters; a direct link searches automatically. After a search,
+the phone view shows a summary pill, while desktop keeps a sticky form beside the results.
+Cards expose zone links to Onde voto and Google Maps links from `lib/links.ts`. Geolocation is
+requested only on choosing the nearby tab, used for that search and its pages, and never
+written to the URL or browser storage. Errors and not-found states use page copy without
+service reason, guidance or HTTP detail. The page footer shows only the source and its stale
+badge; the independent-project disclaimer lives in the shell footer.
+
+The client requests the next page with `limit=20&offset=<loaded>` and appends new places.
+Backend support for `offset` is tracked in issue #91; the public service needs a deployment
+with that change before production can load beyond the first 20 places.
 
 ## Election dates (Tela 6)
 
@@ -312,6 +334,7 @@ Contrast of the spec's pairs (navy on the yellow tint 12.2:1, `--cv-ink-2` on `-
 6. Occupation casing at index build (`_CASED_COLUMNS`). Comparison rows already name each cell
    and announce pair changes through a polite live region.
 7. Bundle: 802 KB minified / 235 KB gzip of JS today (react-dom, Astryx i18n and theme engine
-   are the bulk); lazy chunks for the appendix pages and the pre-built theme bring it down.
+   are the bulk); lazy chunks for the places-by-city and election-dates routes and the
+   pre-built theme bring it down.
 8. Add UF and vote-destination explanation to the profile response so the page no longer
    needs to recover the electoral unit from its official URL or mirror the service copy.

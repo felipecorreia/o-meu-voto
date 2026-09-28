@@ -1,6 +1,7 @@
 import type {ElectionInfo, PollingPlaceData} from '../api';
 import {UFS} from '../labels';
 import {calendarDay, formatRoundDate, formatVotingHours, formatWeekday} from './electionDates';
+import {mapsUrl} from './links';
 
 export interface PollingPlaceSearch {uf: string; zone: string; section: string; round: string}
 export const POLLING_UF_OPTIONS = [...UFS.map(([value, name]) => ({value, label: `${value} · ${name}`})), {value: 'ZZ', label: 'ZZ · Exterior'}];
@@ -15,10 +16,7 @@ export function pollingSearchFromUrl(params: URLSearchParams): PollingPlaceSearc
 }
 
 export function pollingMapsUrl(d: PollingPlaceData): string {
-  const p = d.place;
-  const query = p.latitude != null && p.longitude != null ? `${p.latitude},${p.longitude}`
-    : [p.address, p.neighborhood, `${d.municipality.name} - ${d.municipality.uf}`].filter(Boolean).join(', ');
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return mapsUrl({...d.place, municipality: d.municipality});
 }
 
 /** The "Quando votar" card from the existing envelope, formatted by the shared election-date

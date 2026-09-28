@@ -2,3 +2,11 @@
 export const TSE_ONDE_VOTAR_URL = 'https://www.tse.jus.br/servicos-eleitorais/autoatendimento-eleitoral#/atendimento-eleitor/onde-votar';
 // The TSE site, for the calendar and the results (Tela 6 spec, exception 2).
 export const TSE_SITE_URL = 'https://www.tse.jus.br/';
+
+/** Coordinates take precedence. With no coordinates, use the address and municipality. */
+export function mapsUrl(place: {latitude: number | null; longitude: number | null; address: string; neighborhood: string; municipality?: {name: string; uf: string}}): string {
+  const query = place.latitude != null && place.longitude != null
+    ? `${place.latitude},${place.longitude}`
+    : [place.address, place.neighborhood, place.municipality ? `${place.municipality.name} - ${place.municipality.uf}` : ''].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
