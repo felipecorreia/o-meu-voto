@@ -1,8 +1,9 @@
 /* Page-level layout on Astryx tokens. Components come from @astryxdesign/core; these classes
-   only place them (gutters, grids, the comparison table) and draw the logo dots. Every colour is
-   a theme token or one of the CDE hexes of palette-cde-2026.md section 6, except the redesigned
-   screens (the `.cv-page` scope, its `cv-*` components and the `.pick` page block at the end),
-   which read the `--cv-*` variables `cvTokens` in themes/cde.ts sets on their container. */
+   only place them (gutters, grids, the comparison table). Every colour is a theme token or one
+   of the CDE hexes of palette-cde-2026.md section 6, except the shell (the `.cv-shell` block
+   below) and the redesigned screens (the `.cv-page` scope, its `cv-*` components and the `.pick`
+   page block at the end), which read the `--cv-*` variables `cvTokens` in themes/cde.ts sets on
+   their container. */
 :root {
   --cde-blue: #348AAB; --cde-green: #558530; --cde-gold: #E6B10F; --cde-graphite: #414042;
   --navy-700: #1B305A; --gutter: 16px; --page-max: 1080px;
@@ -12,7 +13,90 @@ body { margin: 0; background: var(--color-background-body); color: var(--color-t
 img, svg { max-width: 100%; }
 * { box-sizing: border-box; min-width: 0; }
 
-.shell { min-height: 100dvh; display: flex; flex-direction: column; }
+/* ==== The shell (casca spec, package 8): SkipLink, SiteHeader, NavLinks, NavMenu, SiteFooter ==
+   `App.tsx` sets `cvTokens` on `.cv-shell` (and NavMenu on its portal), so every colour below is
+   a `--cv-*` token or a CDE dot; Plus Jakarta Sans as in `.cv-page`. Sizes, radii and motion are
+   the spec's sections 4.3 and 5. */
+.cv-shell { min-height: 100dvh; display: flex; flex-direction: column; background: #FFFFFF; color: var(--cv-ink); font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
+.cv-shell > main { flex: 1; display: flex; flex-direction: column; }
+.cv-shell > main:focus { outline: none; }
+.cv-dots { display: inline-flex; gap: 3px; }
+.cv-dots i { display: block; width: var(--cv-dot, 8px); height: var(--cv-dot, 8px); border-radius: 50%; }
+.cv-dots i:nth-child(1) { background: var(--cde-blue); }
+.cv-dots i:nth-child(2) { background: var(--cde-green); }
+.cv-dots i:nth-child(3) { background: var(--cde-gold); }
+.cv-unofficial { display: inline-block; padding: 3px 8px; border-radius: 999px; background: var(--cv-surface); color: var(--cv-ink-2); font-size: 11px; font-weight: 600; line-height: 1.3; white-space: nowrap; }
+:is(.cv-siteheader, .cv-sitefooter, .cv-navmenu) :is(a, button):focus-visible, .cv-skiplink:focus-visible { outline: 2px solid var(--cv-blue); outline-offset: 2px; }
+
+/* 6: the skip link is the first focusable element, off screen until focused. */
+.cv-skiplink { position: fixed; top: 8px; left: -9999px; z-index: 60; display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; background: var(--cv-navy); color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none; }
+.cv-skiplink:focus { left: 12px; }
+
+/* 5.1: the sticky top, 60 px, white with blur, no band. */
+.cv-siteheader { position: sticky; top: 0; z-index: 30; flex: none; height: 60px; background: rgba(255,255,255,.94); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.cv-siteheader-in { max-width: 1080px; height: 100%; margin: 0 auto; padding: 0 12px 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-brand { min-height: 44px; display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--cv-navy); text-decoration: none; }
+.cv-brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--cv-navy); white-space: nowrap; }
+.cv-menubtn { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--cv-ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.cv-menubtn[aria-expanded="true"] { background: var(--cv-surface); }
+
+/* 5.3 NavLinks: the drawer cards and the desktop pills. The current item has `aria-current`. */
+.cv-navlinks-drawer { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.cv-navlinks-drawer .cv-navitem { min-height: 64px; padding: 10px 12px; border: 1.5px solid transparent; border-radius: 20px; background: #FFFFFF; color: var(--cv-ink); text-decoration: none; display: flex; align-items: center; gap: 12px; transition: background-color .2s ease, border-color .2s ease; }
+.cv-navlinks-drawer .cv-navitem:active { transform: scale(.985); }
+.cv-navlinks-drawer .cv-navitem[aria-current="page"] { background: var(--cv-green-tint); border-color: var(--cv-green); }
+.cv-navitem-icon { flex: none; width: 40px; height: 40px; border-radius: 999px; background: var(--cv-slot-1-tint); color: var(--cv-blue); display: inline-flex; align-items: center; justify-content: center; }
+.cv-navitem[aria-current="page"] .cv-navitem-icon { background: var(--cv-green-strong); color: #FFFFFF; }
+.cv-navitem-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.cv-navlinks-drawer .cv-navitem-label { font-size: 16px; font-weight: 700; line-height: 1.25; }
+.cv-navitem-sub { font-size: 13px; line-height: 1.3; color: var(--cv-ink-2); }
+.cv-navlinks-inline { display: flex; align-items: center; gap: 4px; }
+.cv-navlinks-inline .cv-navitem { position: relative; height: 40px; padding: 0 14px; border: 1.5px solid transparent; border-radius: 999px; color: var(--cv-ink); text-decoration: none; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; white-space: nowrap; transition: background-color .2s ease; }
+.cv-navlinks-inline .cv-navitem::after { content: ""; position: absolute; inset: -2px 0; border-radius: inherit; } /* 44 px touch area (6) */
+.cv-navlinks-inline .cv-navitem:hover { background: var(--cv-surface); }
+.cv-navlinks-inline .cv-navitem[aria-current="page"] { background: var(--cv-green-tint); border-color: var(--cv-green); }
+
+/* 5.2 NavMenu: scrim and panel over everything (the header is z 30, the floating bars z 20). */
+.cv-navmenu { position: fixed; inset: 0; z-index: 40; color: var(--cv-ink); font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
+.cv-navmenu-scrim { position: absolute; inset: 0; padding: 0; border: 0; background: rgba(26,34,51,.40); cursor: default; animation: cv-navmenu-fade .25s ease; }
+.cv-navmenu-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(320px, 86vw); padding: 12px 16px 20px; border-radius: 28px 0 0 28px; background: #FFFFFF; box-shadow: -12px 0 32px rgba(26,34,51,.16); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; animation: cv-navmenu-slide .35s cubic-bezier(.2,.8,.3,1); }
+.cv-navmenu-closing .cv-navmenu-scrim { animation: cv-navmenu-fade .2s ease reverse forwards; }
+.cv-navmenu-closing .cv-navmenu-panel { animation: cv-navmenu-slide .2s cubic-bezier(.2,.8,.3,1) reverse forwards; }
+@keyframes cv-navmenu-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cv-navmenu-slide { from { transform: translateX(100%); } to { transform: none; } }
+.cv-navmenu-head { flex: none; height: 48px; padding-left: 4px; display: flex; align-items: center; justify-content: space-between; }
+.cv-navmenu-head h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+.cv-navmenu-close { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 999px; background: var(--cv-surface); color: var(--cv-ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.cv-navmenu-foot { margin-top: auto; padding: 14px 4px 0; border-top: 1px solid var(--cv-line-tray); display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
+.cv-navmenu-foot .cv-unofficial { align-self: flex-start; }
+
+/* 5.5 SiteFooter: the card, the licences and the signature; clearance under a floating bar. */
+.cv-sitefooter { flex: none; padding: 24px 20px 32px; }
+.cv-sitefooter-in { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.cv-sitefooter-card { padding: 20px; border-radius: 28px; background: var(--cv-surface-2); display: flex; flex-direction: column; gap: 14px; }
+.cv-sitefooter-card-head { display: flex; align-items: flex-start; gap: 12px; }
+.cv-sitefooter-card-head > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cv-sitefooter-shield { flex: none; width: 40px; height: 40px; border-radius: 999px; background: #FFFFFF; color: var(--cv-blue); display: inline-flex; align-items: center; justify-content: center; }
+.cv-sitefooter-title { font-size: 15px; font-weight: 800; line-height: 1.3; }
+.cv-sitefooter-card p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--cv-ink-2); }
+.cv-sitefooter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cv-sitefooter-btn { height: 44px; padding: 0 16px; border: 1px solid var(--cv-chip-line); border-radius: 999px; background: #FFFFFF; color: var(--cv-ink); text-decoration: none; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.cv-sitefooter-side { display: flex; flex-direction: column; gap: 16px; }
+.cv-sitefooter-licenses { margin: 0; font-size: 12px; line-height: 1.6; color: var(--cv-ink-2); }
+.cv-sitefooter-sign { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--cv-navy); }
+html.cv-has-floating-bar .cv-sitefooter { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) {
+  .cv-navmenu-panel { width: 360px; }
+}
+@media (min-width: 1024px) {
+  .cv-sitefooter-in { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; align-items: end; }
+  .cv-sitefooter-card { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-navmenu-scrim, .cv-navmenu-panel { animation: none !important; }
+  .cv-navitem { transition: none !important; }
+  .cv-navlinks-drawer .cv-navitem:active { transform: none; }
+}
 .page { width: 100%; max-width: var(--page-max); margin: 0 auto; padding: var(--spacing-4) var(--gutter) calc(var(--spacing-8) + 88px); display: flex; flex-direction: column; gap: var(--spacing-4); flex: 1; }
 @media (min-width: 768px) { .page { padding-top: var(--spacing-6); gap: var(--spacing-5); } }
 
@@ -21,12 +105,6 @@ img, svg { max-width: 100%; }
 .h3 { font-family: var(--font-family-heading); font-weight: var(--font-weight-semibold); font-size: 1.05rem; line-height: 1.3; color: var(--navy-700); margin: 0; }
 .lead { margin: 0; font-size: 1.05rem; line-height: 1.5; color: var(--color-text-secondary); max-width: 60ch; }
 .page-head { display: flex; flex-direction: column; gap: var(--spacing-2); }
-
-.logo-dots { display: inline-flex; gap: 3px; align-items: center; margin-right: 4px; }
-.logo-dots .d { display: block; width: 10px; height: 10px; border-radius: 3px; }
-.d-blue { background: var(--cde-blue); border-radius: 50% !important; }
-.d-green { background: var(--cde-green); }
-.d-gold { background: var(--cde-gold); clip-path: polygon(0 0, 100% 50%, 0 100%); }
 
 .form { display: flex; flex-direction: column; gap: var(--spacing-3); }
 .form-row { display: grid; grid-template-columns: 1fr; gap: var(--spacing-3); margin-bottom: var(--spacing-3); }
@@ -40,7 +118,6 @@ img, svg { max-width: 100%; }
 .plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .loading { display: flex; justify-content: center; padding: var(--spacing-6) 0; }
 .source { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.site-footer { max-width: var(--page-max); margin: auto auto 0; width: 100%; padding: var(--spacing-4) var(--gutter) var(--spacing-6); border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 
 .ballot-name { font-weight: var(--font-weight-semibold); font-size: 1.02rem; line-height: 1.25; color: var(--navy-700); overflow-wrap: anywhere; }
 
@@ -53,8 +130,6 @@ img, svg { max-width: 100%; }
 .place-list { display: flex; flex-direction: column; gap: var(--spacing-2); margin-top: var(--spacing-3); }
 
 
-/* The existing shell header scrolls away on phones; wider screens keep it sticky. */
-@media (max-width: 639px) { .astryx-app-shell-header { position: static !important; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ==== The cv scope: Plus Jakarta Sans and the --cv-* tokens ===================================
@@ -268,9 +343,8 @@ img, svg { max-width: 100%; }
    The page-only pieces (Picker.tsx) and the placing of the cv components: 20 px gutter on
    phones, the 5.12 layouts from 640 and 1024 px. */
 .page.pick { --cv-gutter: 20px; padding: 8px var(--cv-gutter) 0; gap: 0; }
-/* The tray floats over the end of the document; the last block before it (the shell footer,
-   which follows the page) carries the clearance the spec puts on the page footer. */
-.page.pick + .site-footer { padding-bottom: calc(var(--spacing-6) + 150px); }
+/* The tray floats over the end of the document; the clearance is the shell footer's
+   (`html.cv-has-floating-bar`, set by FloatingBar). */
 
 /* 5.1 Hero */
 .pick-hero { display: flex; flex-direction: column; gap: 8px; }
@@ -396,7 +470,7 @@ img, svg { max-width: 100%; }
 .cv-private-field { padding: 14px 0; border-top: 1px solid var(--cv-line); display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .cv-private-field > span { font-size: 12px; font-weight: 600; color: var(--cv-ink-2); }
 .cv-private-field > strong { font-size: 15px; font-weight: 600; }
-.profile-foot { display: flex; flex-direction: column; gap: 8px; padding-bottom: 130px; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
+.profile-foot { display: flex; flex-direction: column; gap: 8px; padding-bottom: 40px; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
 .profile-foot .source p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
 .profile-cta { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 8px; height: 52px; padding: 0 18px; border: 0; border-radius: 999px; color: #FFFFFF; background: var(--cv-green-strong); text-decoration: none; font-size: 15px; font-weight: 700; transition: transform .12s ease; }
 .profile-cta:active { transform: scale(.97); }
@@ -432,7 +506,6 @@ img, svg { max-width: 100%; }
   .cv-profilehero-action .profile-cta { width: 100%; }
   .profile-body { padding-top: 0; }
   .profile-floating { display: none; }
-  .profile-foot { padding-bottom: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .cv-profilehero, .cv-private-grid { animation: none !important; }
@@ -510,7 +583,6 @@ img, svg { max-width: 100%; }
 .voting-phone { display: inline-flex; align-items: center; min-height: 44px; color: var(--cv-ink); }
 .voting-foot { padding: 28px 0 40px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
 .voting-foot .source p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
-.voting-with-bar .voting-foot { padding-bottom: 130px; }
 .voting-floating .cv-tray-cta { text-decoration: none; padding-inline: 16px; }
 .voting-floating .cv-tray-title { font-size: 14px; }
 .voting-search { justify-content: center; width: 100%; }
@@ -659,7 +731,6 @@ img, svg { max-width: 100%; }
 .cv-loadmore-spin, .cv-location-spin { animation: cv-loading-spin .9s linear infinite; }
 .places-foot { padding: 28px 0 40px; color: var(--cv-ink-2); font-size: 12px; line-height: 1.5; }
 .places-foot .source p { margin: 0; color: var(--cv-ink-2); font-size: 12px; line-height: 1.5; }
-.places-with-bar .places-foot { padding-bottom: 130px; }
 .places-search-button { justify-content: center; width: 100%; }
 .places-floating .cv-tray-cta { padding-inline: 16px; }
 .places :is(a, [role="tab"]):focus-visible { outline: 2px solid var(--cv-blue); outline-offset: 2px; }

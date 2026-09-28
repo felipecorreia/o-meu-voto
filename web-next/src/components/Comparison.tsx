@@ -330,12 +330,12 @@ export function CompareProblem({title, text, action}: {title: string; text?: str
   );
 }
 
-/** The height of the app's top nav while it is sticky (from 640 px; on phones styles.css
- *  makes it static), so the page's own sticky bar and block sit under it. */
+/** The height of the shell header (`SiteHeader`, sticky at every width), so the page's own
+ *  sticky bar and block sit under it. */
 export function useTopNavOffset(): number {
   const [height, setHeight] = useState(0);
   useLayoutEffect(() => {
-    const nav = document.querySelector<HTMLElement>('.astryx-app-shell-header');
+    const nav = document.querySelector<HTMLElement>('.cv-siteheader');
     if (!nav) return;
     const set = () => setHeight(getComputedStyle(nav).position === 'sticky' ? Math.round(nav.getBoundingClientRect().height) : 0);
     set();

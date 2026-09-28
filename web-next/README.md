@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place, places, election-date and FAQ contracts
+npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place, places, election-date, FAQ and shell contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -97,8 +97,8 @@ columns. From 640 px every candidacy appears, with removal buttons when there ar
 two. Removing a candidacy from the pair recalculates `pair` for the two now shown. From
 1024 px a 220 px label column precedes the values, within a 1120 px page.
 
-The action bar and the column headers with `SlidingTabs` stay sticky; the existing shell
-header's height is measured on wider screens so they sit below it. The three tabs are Chapa,
+The action bar and the column headers with `SlidingTabs` stay sticky; the shell header's
+height (`useTopNavOffset`, 60 px at every width) puts them below it. The three tabs are Chapa,
 Patrimônio and Ocupação (`tab=chapa|patrimonio|ocupacao`). `sq` retains marking order for slot
 colours, while displayed columns always follow ballot numbers; `sq`, `pair` and `tab` update
 with `replaceState`. Names link to the profile with the marking order in `cmp`, the race, pair
@@ -145,11 +145,11 @@ text, the portal's neutral backgrounds, success #1F7F47 (the CTA green darkened 
 text), warning #FFDA59 / #061937, error #CD201F, the four CDE hues as categorical tints with
 darkened text, Inter with headings at weight 500. Rules of the palette's accessibility section:
 gold and CDE blue never as text on white; colours never mapped to parties; no TSE logo, name or
-seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header
-and the footer (the FAQ page has none of its own). Contrast pairs are listed in the design review report.
+seal; "não oficial" in the header of every screen and the "Projeto independente e não oficial"
+card once, in the shell footer (no screen repeats it). Contrast pairs are listed in the design review report.
 
-The redesigned screens (Telas 1 to 6: both modes of the Comparar page, the profile, where to vote, places by city and the election dates) add their own
-layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
+The redesigned screens (Telas 1 to 7 and the shell) add their own layer on top, the `cv` scope
+(`.cv-page` on each screen, `.cv-shell` on the frame): the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
 Sans loaded in `index.html` and applied only in that scope (the Astryx font tokens are re-pointed
@@ -199,6 +199,11 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `CopyLinkButton` | `src/components/cv/CopyLinkButton.tsx` | copies the page's origin, path and the given hash; "Link copiado" for 1.8 s with a polite announcement; without a clipboard it `replaceState`s the hash and says so below the button |
 | `scrollToId`, `HIGHLIGHT_CLASS` | `src/lib/scroll.ts` | smooth scroll to an element (instant under reduced motion) honouring its `scroll-margin-top`; the optional 2.4 s flash, ended earlier by a pointer or key on the element and kept until then under reduced motion |
 | `FAQ`, `FAQ_DRAFT` | `src/content/faq.ts` | the Dúvidas copy (plain text, paragraphs, optional terms and action link) and the draft flag |
+| `SiteHeader`, `NavMenu`, `NavLinks`, `SiteFooter`, `SkipLink`, `BrandDots` | `src/components/cv/` | the shell of every screen (Tela 8, below): sticky header, the modal side menu, the five destinations as drawer cards or inline pills, the global footer, the skip link and the three CDE dots |
+| `NAV_ITEMS`, `currentNavId`, `routeTitle` | `src/lib/routes.ts` | the menu destinations, the current one per path and the tab title per route |
+| `useFocusTrap` | `src/lib/useFocusTrap.ts` | Tab and Shift+Tab kept inside an open dialog |
+| `markFloatingBar`, `FLOATING_BAR_CLASS` | `src/lib/floatingBar.ts` | the `html.cv-has-floating-bar` mark a mounted `FloatingBar` leaves for the footer's clearance |
+| `REPO_URL` | `src/lib/links.ts` | the "Código aberto" link; null hides the button |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -209,6 +214,30 @@ text. Layout: one column under 640 px (the prints), two columns and a 32 px gutt
 and from 1024 px a 1120 px content width, the pill and the tabs on one line, the search with the
 chip beside it, three columns of cards that keep their own height, the tray 560 px wide and 24 px
 from the bottom, and a hover border (fine pointers only) on unmarked cards.
+
+## The shell (Tela 8)
+
+`src/App.tsx` is the frame of every screen (package 8, `casca-spec.md`): `SkipLink`, the
+sticky `SiteHeader` (60 px at every width: the three dots, "Compare o voto", the "não oficial"
+pill, a 44 px menu button below 1024 px and the inline `NavLinks` pills from 1024 px), the
+screen inside `<main id="conteudo" tabIndex={-1}>`, the `SiteFooter` and the `NavMenu`. The
+menu is a modal dialog in a portal on `body`: it opens from the right with focus on the current
+item (`useFocusTrap` keeps Tab inside). The close button, scrim, Esc, a chosen item or a route
+change closes it with the reverse animation (disabled for reduced motion) and returns focus to
+the menu button unless the page moved focus. At 1024 px the drawer closes immediately and
+focus moves to the current inline link, falling back to `<main>`. Its state never reaches the
+URL. `lib/routes.ts` holds
+`NAV_ITEMS`, `currentNavId` (`candidato/*` and unknown paths count as Comparar) and
+`routeTitle`, which sets `document.title` as "{título} · Compare o voto"; a change of path focuses
+`<main>` without scrolling and announces the title in a polite live region, unless the screen
+moves focus afterwards (Telas 4, 5, 7).
+The footer says "Projeto independente e não oficial" once for the whole site, with "Dúvidas",
+the licences line and the signature; "Código aberto" renders only with a real `REPO_URL`
+(`lib/links.ts`, null while the repository is private). `FloatingBar` marks
+`html.cv-has-floating-bar` while mounted (`lib/floatingBar.ts`), and the footer gets 120 px of
+bottom padding plus the bottom safe area, so the end of the page stays above the bar. The skip link handles
+its own click because the router is hash-based: `#conteudo` would be read as a route. The
+router is unchanged; path routes are issue #99.
 
 ## Candidate profile (Tela 3)
 
@@ -344,14 +373,12 @@ background until the person touches the item. Contrast of the spec's pairs is ab
 - The theme is injected at runtime (Astryx warns about it in dev). For production, build it once
   with `npx astryx theme build src/themes/cde.ts -o <file>` and import the CSS (follow-up).
 - Content components emit hashed StyleX classes only; page CSS that must reach inside one
-  (`src/styles.css`) targets a wrapper the page owns. Layout components do carry stable classes
-  (`.astryx-app-shell-header`).
+  (`src/styles.css`) targets a wrapper the page owns.
 - The Selector's trigger container does carry a stable class (`.astryx-selector`, with
   `.astryx-icon` on its chevron and `.astryx-field` around it), and Astryx CSS sits in
   `@layer astryx-base`/`astryx-theme`, so unlayered page CSS restyles it without `!important`:
   the state pill of the choice mode is the Selector itself (`renderValue` draws the pill's
   content, `aria-label` reaches the trigger button), not a rewrite of the bottom sheet.
-- `AppShell height="auto"` so the document scrolls (the default is an inner scroll container).
 - `TabList`/`Tab`: `label` is a string and doubles as the accessible name; three tabs with icons
   need the phone's shorter labels to fit 390 px.
 - pt-BR component strings: `InternationalizationProvider` with `locales/pt-BR.json` (about

@@ -176,12 +176,6 @@ export const cdeButterTheme = defineTheme({
     '--color-background-muted': [cde.yellow200, '#1B2A45'],
   },
   components: {
-    'top-nav': {base: {backgroundColor: 'light-dark(#FFFFFF, #16233B)', borderBottom: `2px solid ${cde.yellow500}`}},
-    'top-nav-heading': {base: {color: cde.navy700, '--color-text-primary': cde.navy700}},
-    'top-nav-item': {
-      base: {color: cde.textSecondary},
-      selected: {color: cde.navy700, backgroundColor: cde.yellow200, ':hover': {backgroundColor: cde.yellow200}},
-    },
     button: {
       base: {paddingBlock: 'var(--spacing-2)', paddingInline: 'var(--spacing-4)', fontWeight: 'var(--font-weight-semibold)'},
       'variant:secondary': {

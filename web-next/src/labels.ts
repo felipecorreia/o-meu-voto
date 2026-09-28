@@ -60,5 +60,3 @@ export function officesFor(uf: string): Office[] {
 }
 
 export const NOMINATION: Record<string, string> = {coligacao: 'Coligação', federacao: 'Federação', partido_isolado: 'Partido isolado'};
-
-export const INDEPENDENT_NOTICE = 'Projeto independente, não oficial, com dados abertos do TSE.';

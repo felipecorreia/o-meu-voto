@@ -43,6 +43,14 @@ Pointers only; the content lives in the files below.
 
 ## Sharp edges
 
+- The web-next router is hash-based (`#/rota`; path routes are issue #99), so an in-page anchor
+  `<a href="#id">` would be read as a route: `SkipLink` and `ChipNav` handle the click in
+  script. The shell (`web-next/src/App.tsx`, `SiteHeader`/`NavMenu`/`SiteFooter` in
+  `components/cv/`) keeps the header sticky at 60 px on every width, read by the pages through
+  `useTopNavOffset` into `--cv-topnav`; a mounted `FloatingBar` marks `html.cv-has-floating-bar`
+  and the footer clears the bar (`lib/floatingBar.ts`). Web tests that need a DOM run under
+  happy-dom per file (`// @vitest-environment happy-dom`, `Shell.test.tsx`); the rest render
+  static markup.
 - Cloud Run reserves some paths ending in `z` on the default `run.app` domain and answers them
   with its own 404 for external requests (a documented known issue), so `/healthz` is
   unreachable from outside even though the internal startup and liveness probes on it work.

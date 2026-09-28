@@ -87,6 +87,9 @@ export function CandidatePage({sq, backHref}: {sq: number; backHref: string}) {
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const topNav = useTopNavOffset();
+  // From 1024 px the action lives in the hero (styles.css hides `.profile-floating`); the bar is
+  // not mounted there, so it does not ask the shell footer for clearance it does not need.
+  const wide = useMedia('(min-width: 1024px)');
   // The shell and router stay unchanged; the existing prop already carries the hash query.
   const params = new URLSearchParams(backHref.split('?')[1] ?? '');
   const cmp = parseSqList(params.get('cmp'));
@@ -130,10 +133,10 @@ export function CandidatePage({sq, backHref}: {sq: number; backHref: string}) {
             <footer className="profile-foot"><SourceFooter source={env.source} election={env.election} /></footer>
           </div>
         </div>
-        <FloatingBar className="profile-floating" role="region" aria-label="Comparar esta candidatura">
+        {!wide ? <FloatingBar className="profile-floating" role="region" aria-label="Comparar esta candidatura">
           <span className="cv-tray-text"><span className="cv-tray-title">{name} · {c.number}</span><span className="cv-tray-sub">{[office, nav.uf].filter(Boolean).join(' · ')}</span></span>
           {compareAction}
-        </FloatingBar>
+        </FloatingBar> : null}
       </>}
   </div>;
 }
