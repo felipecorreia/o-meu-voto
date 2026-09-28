@@ -303,8 +303,8 @@ service reason, guidance or HTTP detail. The page footer shows only the source a
 badge; the independent-project disclaimer lives in the shell footer.
 
 The client requests the next page with `limit=20&offset=<loaded>` and appends new places.
-Backend support for `offset` is tracked in issue #91; the public service needs a deployment
-with that change before production can load beyond the first 20 places.
+Backend support for `offset` is live; see [`wiki/sessao-2026-09-28.md`](../wiki/sessao-2026-09-28.md)
+for the production verification.
 
 ## Election dates (Tela 6)
 
