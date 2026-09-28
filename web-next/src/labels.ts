@@ -43,7 +43,5 @@ export function officesFor(uf: string): Office[] {
 }
 
 export const NOMINATION: Record<string, string> = {coligacao: 'Coligação', federacao: 'Federação', partido_isolado: 'Partido isolado'};
-export const ACCESS: Record<string, string> = {com_acessibilidade: 'Seção com acessibilidade', sem_acessibilidade: 'Seção sem acessibilidade'};
-export const PLACE_STATUS: Record<string, string> = {ativo: 'Local ativo', bloqueado: 'Local bloqueado pelo TSE'};
 
 export const INDEPENDENT_NOTICE = 'Projeto independente, não oficial, com dados abertos do TSE.';

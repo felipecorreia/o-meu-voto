@@ -65,7 +65,6 @@ const dateOf = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); 
 export const fmtDateLong = (iso: string) =>
   new Intl.DateTimeFormat('pt-BR', {day: 'numeric', month: 'long', year: 'numeric'}).format(dateOf(iso));
 export const fmtWeekday = (iso: string) => new Intl.DateTimeFormat('pt-BR', {weekday: 'long'}).format(dateOf(iso));
-export const fmtDateShort = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 export const fmtStamp = (iso: string) =>
   new Intl.DateTimeFormat('pt-BR', {dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo'}).format(new Date(iso)) + ' (Brasília)';
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

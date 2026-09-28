@@ -16,7 +16,6 @@ import {WhenPage} from './pages/When';
 import {FaqPage} from './pages/Faq';
 import {IndependentNotice} from './components/common';
 import {INDEPENDENT_NOTICE} from './labels';
-import {PresentationContext, type Presentation} from './presentation';
 
 const NAV = [
   {path: '/', label: 'Comparar', icon: Columns3},
@@ -31,10 +30,6 @@ export function App() {
   const variant = currentVariant();
   const theme = variants[variant].theme;
   const isCandidate = route.path.startsWith('/candidato/');
-  // `status=neutral` is parsed but no longer read anywhere: choice and profile badges now use
-  // the shared cv status tokens unconditionally (Tela 3); comparison registration badges are
-  // always neutral. The old `photos=demo` query is still parsed but comparison no longer uses it.
-  const presentation: Presentation = {statusTone: route.params.get('status') === 'neutral' ? 'neutral' : 'colored', photoDemo: route.params.get('photos') === 'demo'};
   const selectedPath = isCandidate ? '/' : route.path;
 
   let page: React.ReactNode;
@@ -47,7 +42,6 @@ export function App() {
 
   return (
     <InternationalizationProvider locale="pt-BR" messages={{'pt-BR': ptBR}}>
-    <PresentationContext.Provider value={presentation}>
     <Theme theme={theme} mode="light">
       <AppShell
         contentPadding={0}
@@ -76,7 +70,6 @@ export function App() {
         </div>
       </AppShell>
     </Theme>
-    </PresentationContext.Provider>
     </InternationalizationProvider>
   );
 }
