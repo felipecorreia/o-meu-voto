@@ -3,11 +3,10 @@ import {InternationalizationProvider} from '@astryxdesign/core/i18n';
 import ptBR from '@astryxdesign/core/locales/pt-BR.json';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {TopNav, TopNavHeading, TopNavItem} from '@astryxdesign/core/TopNav';
-import {SegmentedControl, SegmentedControlItem} from '@astryxdesign/core/SegmentedControl';
 import {Text} from '@astryxdesign/core/Text';
 import {Calendar, Columns3, MapPin, Map as MapIcon, CircleHelp} from 'lucide-react';
-import {variants} from './themes/cde';
-import {currentVariant, setVariant, useRoute} from './router';
+import {cdeButterTheme} from './themes/cde';
+import {useRoute} from './router';
 import {ComparePage} from './pages/Compare';
 import {CandidatePage} from './pages/Candidate';
 import {WhereToVotePage} from './pages/WhereToVote';
@@ -27,8 +26,7 @@ const NAV = [
 
 export function App() {
   const route = useRoute();
-  const variant = currentVariant();
-  const theme = variants[variant].theme;
+  const theme = cdeButterTheme;
   const isCandidate = route.path.startsWith('/candidato/');
   const selectedPath = isCandidate ? '/' : route.path;
 
@@ -51,14 +49,6 @@ export function App() {
             label="Navegação principal"
             heading={<TopNavHeading heading="Compare o voto" subheading="Eleições 2026 · não oficial" headingHref="#/" logo={<span className="logo-dots" aria-hidden><i className="d d-blue" /><i className="d d-green" /><i className="d d-gold" /></span>} logoLabel="Compare o voto" />}
             startContent={NAV.map(n => <TopNavItem key={n.path} label={n.label} href={`#${n.path}`} isSelected={selectedPath === n.path} icon={<n.icon size={16} aria-hidden />} />)}
-            endContent={
-              <div className="variant-switch" title="Só no protótipo: alterna a variante de tema">
-                <SegmentedControl label="Variante de tema (protótipo)" value={variant} onChange={v => setVariant(v as 'matcha' | 'butter')} size="sm">
-                  <SegmentedControlItem value="matcha" label="Matcha" />
-                  <SegmentedControlItem value="butter" label="Butter" />
-                </SegmentedControl>
-              </div>
-            }
           />
         }>
         <div className="shell">

@@ -1,12 +1,10 @@
 /**
- * CDE 2026 identity on top of two real Astryx themes.
+ * CDE 2026 identity on top of the Astryx butter theme.
  *
- * Both variants share the same identity tokens (navy accent, TSE portal neutrals, the four
- * CDE mark colours as categorical families, Inter at weight 500 for headings). What differs
- * is the base theme they extend: `matcha` brings organic shapes (pill buttons, 18px containers,
- * 6px spacing scale) and CDE green as the secondary highlight; `butter` brings squarer shapes
- * (8px/12px) and CDE gold as the secondary highlight. Nothing here forks component source:
- * everything is `defineTheme({extends})` token and component overrides.
+ * Identity tokens (navy accent, TSE portal neutrals, the four CDE mark colours as categorical
+ * families, Inter at weight 500 for headings) sit on butter's squarer shapes (8px/12px) and
+ * CDE gold as the secondary highlight. Nothing here forks component source: everything is
+ * `defineTheme({extends})` token and component overrides.
  *
  * Palette source: data/bre-design-astryx/palette-cde-2026.md (captain, 2026-09-25).
  * Accessibility rules of its section 8: gold and CDE blue are never text on white; small text
@@ -14,7 +12,6 @@
  * white and on their own tint (checked with a WCAG script, see report.md).
  */
 import {defineTheme} from '@astryxdesign/core/theme';
-import {matchaTheme} from './matcha/matchaTheme';
 import {butterTheme} from './butter/butterTheme';
 
 // ---- CDE / TSE portal palette (hex as supplied) --------------------------------------------
@@ -71,8 +68,8 @@ const markText = {
 type DefineThemeInput = Parameters<typeof defineTheme>[0];
 type Tokens = NonNullable<DefineThemeInput['tokens']>;
 
-/** Identity tokens shared by both variants. Dark values exist so `mode="system"` never
- *  breaks, but the product ships light-only (the captain rejects dark themes). */
+/** Dark values exist so `mode="system"` never breaks, but the product ships light-only
+ *  (the captain rejects dark themes). */
 const identityTokens: Tokens = {
   // Core semantic
   '--color-accent': [cde.navy700, '#9DB4E0'],
@@ -161,55 +158,7 @@ const typography: DefineThemeInput['typography'] = {
 
 const motion = {fast: 125, medium: 300, slow: 700, ratio: 0.75};
 
-// ---- Variant A: matcha base ----------------------------------------------------------------
-// Keeps matcha's organic geometry (pill buttons, spacing scale, 18px containers) and uses CDE
-// green as the secondary highlight, like the TSE's green CTA.
-export const cdeMatchaTheme = defineTheme({
-  name: 'cde-matcha',
-  extends: matchaTheme,
-  typography,
-  motion,
-  tokens: {
-    ...identityTokens,
-    '--radius-inner': '8px',
-    '--radius-element': '12px',
-    '--radius-container': '18px',
-    '--radius-page': '28px',
-    // The base theme's sage borders become the hero-wave tint, so cards sit on a cool halo.
-    '--color-border': [cde.borderLight, '#FFFFFF1A'],
-    '--color-background-muted': [cde.wave3, '#1B2A45'],
-  },
-  components: {
-    button: {
-      base: {borderRadius: 'var(--radius-full)', fontWeight: 'var(--font-weight-semibold)'},
-      'variant:secondary': {
-        backgroundColor: 'transparent',
-        borderWidth: '1.5px',
-        borderStyle: 'solid',
-        borderColor: `light-dark(${cde.navy700}, #9DB4E0)`,
-        color: `light-dark(${cde.navy700}, #9DB4E0)`,
-        ':hover': {backgroundColor: `light-dark(${cde.navy700}14, #9DB4E014)`},
-      },
-    },
-    card: {base: {borderRadius: 'var(--radius-container)', padding: 'var(--spacing-3)'}},
-    badge: {
-      'variant:success': {backgroundColor: cde.greenText, color: '#FFFFFF'},
-      'variant:warning': {backgroundColor: cde.yellow500, color: cde.inkDeep},
-      'variant:info': {backgroundColor: cde.wave1, color: cde.navy700},
-    },
-    'top-nav': {base: {backgroundColor: 'light-dark(#FFFFFF, #16233B)', borderBottom: `1px solid ${cde.borderLight}`}},
-    'top-nav-heading': {base: {color: cde.navy700, '--color-text-primary': cde.navy700}},
-    'top-nav-item': {
-      base: {color: cde.textSecondary},
-      selected: {color: cde.navy700, backgroundColor: `${cde.green}1F`},
-    },
-    'selectable-card': {
-      selected: {borderColor: cde.green, backgroundColor: `${cde.green}14`, boxShadow: `inset 0 0 0 2px ${cde.green}`},
-    },
-  },
-});
-
-// ---- Variant B: butter base ----------------------------------------------------------------
+// ---- Butter base -----------------------------------------------------------------------
 // Keeps butter's squarer geometry and vivid semantic fills, redirects its blue accent to CDE
 // navy and its buttery yellows to the TSE notice-band gold.
 export const cdeButterTheme = defineTheme({
@@ -280,12 +229,6 @@ export const cdeButterTheme = defineTheme({
     },
   },
 });
-
-export type VariantName = 'matcha' | 'butter';
-export const variants: Record<VariantName, {theme: typeof cdeMatchaTheme; label: string; blurb: string}> = {
-  matcha: {theme: cdeMatchaTheme, label: 'Matcha + CDE', blurb: 'formas orgânicas, verde CDE como destaque'},
-  butter: {theme: cdeButterTheme, label: 'Butter + CDE', blurb: 'formas retas, dourado CDE como destaque'},
-};
 
 // ---- The `--cv-*` tokens of the redesigned screens ------------------------------------------
 // Tela 1 spec (section 4.1) on the Butter + CDE theme. Applied as CSS custom properties on the

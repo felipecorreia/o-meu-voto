@@ -131,15 +131,14 @@ codes or service guidance. Warnings retain the service's text. When a missing ca
 profile name or number, its notice reads `Candidatura {sq}: não foi encontrada neste cargo e estado.`
 
 The comparison's `layout` and `dest` review variants are removed; `status` and `photos` have
-no effect on it. The shell's `?theme=matcha|butter` switch remains. Choice and profile use the
-shared cv status badges; the legacy `status=neutral` parameter no longer changes them. Butter
-+ CDE is the default. Removing those switches and the Matcha theme is
-a separate follow-up.
+no effect on it. The header's theme switch is gone; Butter + CDE is the only theme. Choice and
+profile use the shared cv status badges; the legacy `status=neutral` parameter no longer
+changes them.
 
 ## Theme
 
-`src/themes/cde.ts` defines two themes with `defineTheme({extends})` over the scaffolded
-`butter` and `matcha` example themes (`npx astryx theme add <slug>`), overriding tokens and
+`src/themes/cde.ts` defines one theme with `defineTheme({extends})` over the scaffolded
+`butter` example theme (`npx astryx theme add <slug>`), overriding tokens and
 component targets, never component source. Identity tokens: navy #1B305A as accent and body
 text, the portal's neutral backgrounds, success #1F7F47 (the CTA green darkened for small
 text), warning #FFDA59 / #061937, error #CD201F, the four CDE hues as categorical tints with
@@ -270,13 +269,13 @@ No storage, extra tokens, shell changes or Pages deployment.
 ## Follow-ups after landing
 
 1. Remove `web/` (the old page, no longer deployed) and its `--web-dir` tests.
-2. Drop the review switches and the Matcha theme; ship one pre-built theme.
+2. Drop the `layout`/`dest` review variants; ship one pre-built theme.
 3. The asset evolution row, once the service serves it.
 4. Self-host Inter (`public/fonts/`) instead of Google Fonts.
 5. Candidate photos once the R2 mirror exists (`photo_url`).
 6. Occupation casing at index build (`_CASED_COLUMNS`). Comparison rows already name each cell
    and announce pair changes through a polite live region.
-7. Bundle: 821 KB minified / 239 KB gzip of JS today (react-dom, Astryx i18n and theme engine
+7. Bundle: 802 KB minified / 235 KB gzip of JS today (react-dom, Astryx i18n and theme engine
    are the bulk); lazy chunks for the appendix pages and the pre-built theme bring it down.
 8. Add UF and vote-destination explanation to the profile response so the page no longer
    needs to recover the electoral unit from its official URL or mirror the service copy.

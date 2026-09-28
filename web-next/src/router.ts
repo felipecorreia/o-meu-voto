@@ -28,15 +28,3 @@ export function href(path: string, params?: Record<string, string | number | und
 export function navigate(path: string, params?: Record<string, string | number | undefined | null>) {
   location.hash = href(path, params).slice(1);
 }
-
-/** The prototype's variant switch lives in the query string, outside the hash, so a reload keeps it.
- *  Butter + CDE is the default since the captain's Q1 answer (2026-09-25); Matcha stays for comparison. */
-export function currentVariant(): 'matcha' | 'butter' {
-  const v = new URLSearchParams(location.search).get('theme');
-  return v === 'matcha' ? 'matcha' : 'butter';
-}
-export function setVariant(v: 'matcha' | 'butter') {
-  const u = new URL(location.href);
-  u.searchParams.set('theme', v);
-  location.href = u.toString();
-}
