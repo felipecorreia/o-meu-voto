@@ -1,0 +1,29 @@
+{
+  "displayName": "br-elections-mcp /health",
+  "monitoredResource": {
+    "type": "uptime_url",
+    "labels": {
+      "project_id": "__PROJECT_ID__",
+      "host": "__HOST__"
+    }
+  },
+  "httpCheck": {
+    "requestMethod": "GET",
+    "path": "/health",
+    "port": 443,
+    "useSsl": true,
+    "validateSsl": true,
+    "acceptedResponseStatusCodes": [
+      {
+        "statusClass": "STATUS_CLASS_2XX"
+      }
+    ]
+  },
+  "period": "60s",
+  "timeout": "20s",
+  "selectedRegions": [
+    "SOUTH_AMERICA",
+    "USA_VIRGINIA",
+    "EUROPE"
+  ]
+}

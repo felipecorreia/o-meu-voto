@@ -1,7 +1,8 @@
 # 0005. Cloud Run em southamerica-east1 atrás da Cloudflare, página no Pages, fotos no R2
 
 Status: aceito, 2026-09-17. Emendado pelo ADR 0010 (2026-09-25): origem restrita por segredo
-de borda, não por faixas de IP, e custo da instância mínima corrigido.
+de borda, não por faixas de IP, e custo da instância mínima corrigido. Emendado pelo ADR 0011
+(2026-09-28): no máximo uma instância, orçamento de R$ 150 e monitoramento como código.
 
 ## Contexto
 

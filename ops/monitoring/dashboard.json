@@ -1,0 +1,372 @@
+{
+  "displayName": "br-elections-mcp - Cloud Run",
+  "labels": {
+    "br-elections-mcp": ""
+  },
+  "mosaicLayout": {
+    "columns": 48,
+    "tiles": [
+      {
+        "xPos": 0,
+        "yPos": 0,
+        "width": 48,
+        "height": 6,
+        "widget": {
+          "title": "About this dashboard",
+          "text": {
+            "format": "MARKDOWN",
+            "content": "Cloud Run service `br-elections-mcp`, one instance at most (`--max-instances=1`, `--max=1`), concurrency 80. Kept as code in `ops/monitoring/dashboard.json` and applied with `ops/monitoring/apply.sh`; edits made here are overwritten by the next apply. How to read each chart, and why the only alert is `/health` failing: `ops/README.md`."
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 6,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "Requests per second by response class",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "STACKED_AREA",
+                "legendTemplate": "${metric.labels.response_code_class}",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum by (response_code_class) (rate(run_googleapis_com:request_count{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m]))",
+                  "unitOverride": "1/s"
+                }
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 24,
+        "yPos": 6,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "5xx ratio (reference line at 5%)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "5xx / all requests",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "(sum(rate(run_googleapis_com:request_count{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\",response_code_class=\"5xx\"}[5m])) or vector(0)) / sum(rate(run_googleapis_com:request_count{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m]))",
+                  "unitOverride": "10^2.%"
+                }
+              }
+            ],
+            "thresholds": [
+              {
+                "label": "reference",
+                "value": 0.05,
+                "targetAxis": "Y1"
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 22,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "Request latency p50 / p95 / p99",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.50, sum by (le) (rate(run_googleapis_com:request_latencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "ms"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p95",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.95, sum by (le) (rate(run_googleapis_com:request_latencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "ms"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum by (le) (rate(run_googleapis_com:request_latencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "ms"
+                }
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 24,
+        "yPos": 22,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "Instances by state (max 1)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "STACKED_BAR",
+                "legendTemplate": "${metric.labels.state}",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum by (state) (run_googleapis_com:container_instance_count{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"})",
+                  "unitOverride": "1"
+                }
+              }
+            ],
+            "thresholds": [
+              {
+                "label": "max instances",
+                "value": 1,
+                "targetAxis": "Y1"
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 38,
+        "width": 16,
+        "height": 16,
+        "widget": {
+          "title": "Max concurrent requests per instance, p99 (limit 80, reference line at 60)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum by (le) (rate(run_googleapis_com:container_max_request_concurrencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "1"
+                }
+              }
+            ],
+            "thresholds": [
+              {
+                "label": "reference",
+                "value": 60,
+                "targetAxis": "Y1"
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 16,
+        "yPos": 38,
+        "width": 16,
+        "height": 16,
+        "widget": {
+          "title": "CPU utilization p50 / p99 (reference line at 80%)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.50, sum by (le) (rate(run_googleapis_com:container_cpu_utilizations_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "10^2.%"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum by (le) (rate(run_googleapis_com:container_cpu_utilizations_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "10^2.%"
+                }
+              }
+            ],
+            "thresholds": [
+              {
+                "label": "reference",
+                "value": 0.8,
+                "targetAxis": "Y1"
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 32,
+        "yPos": 38,
+        "width": 16,
+        "height": 16,
+        "widget": {
+          "title": "Memory utilization p50 / p99 (1 GiB)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.50, sum by (le) (rate(run_googleapis_com:container_memory_utilizations_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "10^2.%"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum by (le) (rate(run_googleapis_com:container_memory_utilizations_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[5m])))",
+                  "unitOverride": "10^2.%"
+                }
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 54,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "Container startup latency p50 / p99 (cold starts, 1 h window)",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p50",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.50, sum by (le) (rate(run_googleapis_com:container_startup_latencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[1h])))",
+                  "unitOverride": "ms"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "legendTemplate": "p99",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum by (le) (rate(run_googleapis_com:container_startup_latencies_bucket{monitored_resource=\"cloud_run_revision\",service_name=\"br-elections-mcp\"}[1h])))",
+                  "unitOverride": "ms"
+                }
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 24,
+        "yPos": 54,
+        "width": 24,
+        "height": 16,
+        "widget": {
+          "title": "Uptime check on /health, fraction passed by checker region",
+          "xyChart": {
+            "chartOptions": {
+              "mode": "COLOR"
+            },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_FRACTION_TRUE",
+                      "crossSeriesReducer": "REDUCE_MEAN",
+                      "groupByFields": [
+                        "metric.label.\"checker_location\""
+                      ]
+                    }
+                  },
+                  "unitOverride": "10^2.%"
+                }
+              }
+            ],
+            "yAxis": {
+              "scale": "LINEAR"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

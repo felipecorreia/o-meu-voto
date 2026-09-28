@@ -1,6 +1,9 @@
 # 0004. Tratamento LGPD dos dados de candidato: minimização na ingestão
 
-Status: aceito, 2026-09-17.
+Status: aceito, 2026-09-17. Emendado pelo ADR 0009 (2026-09-25). O ADR 0011 (2026-09-28)
+registra que a exclusão de logs tentada para manter localização e seção do eleitor fora dos logs
+do Cloud Run não funcionou e foi removida: essas entradas ainda ficam 30 dias no `_Default`
+(`wiki/pendencias.md` item 9, aberto).
 
 ## Contexto
 

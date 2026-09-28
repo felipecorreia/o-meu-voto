@@ -1,0 +1,37 @@
+{
+  "displayName": "br-elections-mcp: /health failing",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "The uptime check on `/health` (run.app URL, no edge secret needed) failed from at least 2 of its 3 regions for 2 minutes. `/health` answers 503 only when no index is open. Check the dashboard `br-elections-mcp - Cloud Run`, then `gcloud run services describe br-elections-mcp --region=southamerica-east1` and the service logs. Runbook: `ops/README.md`."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "/health failing from 2 or more regions",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"__CHECK_ID__\" AND resource.type=\"uptime_url\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": [
+              "resource.label.*"
+            ]
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 1,
+        "duration": "120s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "1800s"
+  },
+  "severity": "CRITICAL",
+  "enabled": true
+}
