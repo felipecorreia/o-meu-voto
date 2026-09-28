@@ -1,9 +1,10 @@
-# Operating the Cloud Run service: capacity, budget, monitoring
+# Operations: service and scheduled index refresh
 
-What ADR 0011 decided, as commands and files: one instance at most, a R$ 150/month budget, a
-Cloud Monitoring dashboard with one alert policy kept as code. The log exclusion ADR 0011 also
-decided was tried and removed (section 4). Every command below changes the live
-project; run each one on its own and check it before the next.
+Sections 1-4 cover what ADR 0011 decided, as commands and files: one instance at most, a
+R$ 150/month budget, and a Cloud Monitoring dashboard with one alert policy kept as code.
+The log exclusion ADR 0011 also decided was tried and removed (section 4). Sections 5-6
+cover releases and the scheduled data refresh. Run each command that changes the live project
+on its own and check it before the next.
 
 ```sh
 export PROJECT_ID=PROJECT_ID               # the live project; kept out of the repository
@@ -179,3 +180,64 @@ item 9 stays open. For the same reason the dashboard has no logs panel (a test k
 it would display those URLs. A retry should check the exclusion with the landmark request
 before trusting it; a regex-free filter using the `:` substring operator is the untried
 alternative.
+
+## 5. CI and manual deploys
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`. Its `test` job runs
+Ruff checks and pytest; its `web-next` job type-checks, builds and tests the page, then
+checks that the Pages build contains `index.html`, `_routes.json` and `404.html`.
+
+Cloud Run and Cloudflare Pages deploys are manual. Use the Cloud Run checklist in
+[`docs/deploy-runbook.md`](../docs/deploy-runbook.md) steps C1-C3 and the page instructions in
+[`web-next/README.md`](../web-next/README.md). Merging to `main` does not deploy either one.
+The next scheduled refresh does use `refresh.yml` from `main`; section 6 covers that separate
+operations path. An automated service deploy remains a post-launch task (runbook step E).
+
+## 6. Scheduled index refresh
+
+Cloud Scheduler owns the refresh times in `America/Sao_Paulo`. It starts the deployed
+Workflows `refresh-dispatch`, which reads a repository-scoped GitHub token from Secret
+Manager and calls `workflow_dispatch` for
+[`.github/workflows/refresh.yml`](../.github/workflows/refresh.yml) on `main`:
+
+```mermaid
+flowchart LR
+  S["Cloud Scheduler<br/>polling places: 07:05<br/>candidates: 09:10, 13:10, 17:10, 20:10"]
+  W["Workflows refresh-dispatch"]
+  SM[("Secret Manager<br/>GitHub token")]
+  GH["GitHub Actions<br/>refresh.yml on main"]
+  GCS[("GCS index bucket<br/>index.duckdb + manifest.json")]
+  CR["Cloud Run service"]
+  S --> W
+  W -->|reads| SM
+  W -->|workflow_dispatch| GH
+  GH -->|publishes via WIF| GCS
+  GCS -->|manifest check| CR
+```
+
+The two Scheduler jobs are `refresh-dispatch-polling-places` (07:05) and
+`refresh-dispatch-candidates` (09:10, 13:10, 17:10 and 20:10). The workflow definition is
+[`ops/refresh-dispatch/workflow.yaml`](refresh-dispatch/workflow.yaml); a change to that file
+requires a manual Workflows deploy (runbook step G2). The GitHub token is held in Secret
+Manager, not in a Scheduler job, and the workflow is deployed without call-argument logs or
+detailed execution history. See runbook step G for the token permissions and setup.
+
+The GitHub Actions run fetches and extracts TSE data, builds and validates the index, then
+publishes `index.duckdb` and `manifest.json` to GCS through Workload Identity Federation. It
+stops before publication if an earlier stage fails. The photo-mirroring step currently skips
+because photo ZIP downloads are not wired into this workflow. The current manifest is written
+last, and the Cloud Run index source checks it on requests and downloads the new index when it
+changes; this does not require a service deploy. See [README.md](../README.md), "Publishing
+the index", for the pipeline stages and bucket layout.
+
+`refresh.yml` has no GitHub `schedule:` block. GitHub cron missed or delayed runs in September
+2026; retaining it as a fallback could trigger a late duplicate, which would publish another
+index version and make Cloud Run download it again. The workflow's concurrency group only
+serializes those runs. Use `workflow_dispatch` for a manual refresh.
+
+For day-to-day checks, manual runs, pausing and resuming both jobs, token rotation before its
+2026-12-31 expiry, costs and rollback, use
+[`docs/deploy-runbook.md`](../docs/deploy-runbook.md) step G. Check both the Workflows
+execution and the GitHub Actions run: a successful dispatch does not by itself prove the
+index was published; the Actions job summary reports the validation gates and published
+version.

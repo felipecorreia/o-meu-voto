@@ -36,11 +36,10 @@ Pointers only; the content lives in the files below.
   costs and open decisions: `docs/deploy-runbook.md` (Cloud Run and Cloudflare Pages live since
   2026-09-26, `wiki/sessao-2026-09-27.md`); `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four
   voter questions over REST and MCP. Live capacity (one instance), budget, the Monitoring
-  dashboard and the one alert (JSON + idempotent `ops/monitoring/apply.sh`), and why no log
-  exclusion is in place: `ops/README.md` (ADR 0011); edit the JSON and re-apply, not the console.
-  `refresh.yml` has no GitHub cron: Cloud Scheduler starts it through Workflows
-  `refresh-dispatch` and `workflow_dispatch` (runbook step G); an edit to
-  `ops/refresh-dispatch/workflow.yaml` is live only after a manual `gcloud workflows deploy`.
+  dashboard and the one alert (JSON + idempotent `ops/monitoring/apply.sh`), why no log
+  exclusion is in place, the CI/manual-deploy boundary and the scheduled index refresh (Cloud
+  Scheduler -> Workflows `refresh-dispatch` -> `workflow_dispatch` of `refresh.yml`, no GitHub
+  cron): `ops/README.md` (ADR 0011, sections 5-6); edit the JSON and re-apply, not the console.
 
 ## Sharp edges
 
