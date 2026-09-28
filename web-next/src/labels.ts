@@ -1,4 +1,6 @@
 // Labels the page owns (PT-BR for the voter); everything else comes from the API envelope.
+import {sentenceCase} from './format';
+
 export const UFS: Array<[string, string]> = [
   ['AC', 'Acre'], ['AL', 'Alagoas'], ['AP', 'Amapá'], ['AM', 'Amazonas'], ['BA', 'Bahia'], ['CE', 'Ceará'],
   ['DF', 'Distrito Federal'], ['ES', 'Espírito Santo'], ['GO', 'Goiás'], ['MA', 'Maranhão'], ['MT', 'Mato Grosso'],
@@ -28,6 +30,21 @@ export const OFFICE_SHORT: Record<Office, string> = {
 export function ufName(uf: string): string {
   if (uf === 'BR') return 'Brasil (presidente)';
   return UFS.find(([code]) => code === uf)?.[1] ?? uf;
+}
+
+/** The office chips of the Quando screen (Tela 6 spec, 5.5), in the service's order: "Deputado
+ *  estadual" and "Deputado distrital" become one chip at the position of the first, and an office
+ *  the labels do not know is spelled out from its code, never shown as the code itself. */
+export function officeChips(offices: string[]): string[] {
+  const merged = offices.includes('deputado_estadual') && offices.includes('deputado_distrital');
+  const chips: string[] = [];
+  for (const office of offices) {
+    const label = merged && (office === 'deputado_estadual' || office === 'deputado_distrital')
+      ? 'Deputado estadual ou distrital'
+      : OFFICE[office as Office] ?? sentenceCase(office.replace(/_/g, ' '));
+    if (!chips.includes(label)) chips.push(label);
+  }
+  return chips;
 }
 
 export const BALLOT_OFFICES: Office[] = ['presidente', 'governador', 'senador', 'deputado_federal', 'deputado_estadual', 'deputado_distrital'];

@@ -26,7 +26,7 @@ describe('polling place links and search input', () => {
 });
 
 describe('polling date from the existing envelope', () => {
-  const election = {round: {number: 1, date: '2026-10-04'}, voting_hours: {label: '8h às 17h (horário de Brasília)'}} as ElectionInfo;
+  const election = {round: {number: 1, date: '2026-10-04'}, voting_hours: {start: '08:00', end: '17:00', label: '8h às 17h (horário de Brasília)'}} as ElectionInfo;
   it('formats the calendar day in Brasília with the existing voting hours', () => {
     expect(pollingVotingDate(election)).toEqual({title: 'Domingo, 4 de outubro', caption: '1º turno · 8h às 17h (horário de Brasília)'});
   });

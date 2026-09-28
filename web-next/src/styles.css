@@ -38,7 +38,6 @@ img, svg { max-width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .chips-compact { gap: 6px; }
 .plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.notes { margin: var(--spacing-2) 0 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
 .loading { display: flex; justify-content: center; padding: var(--spacing-6) 0; }
 .source { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .site-footer { max-width: var(--page-max); margin: auto auto 0; width: 100%; padding: var(--spacing-4) var(--gutter) var(--spacing-6); border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
@@ -52,13 +51,6 @@ img, svg { max-width: 100%; }
 .place-head > svg { flex: none; color: var(--cde-blue); margin-top: 2px; }
 .place-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .place-list { display: flex; flex-direction: column; gap: var(--spacing-2); margin-top: var(--spacing-3); }
-.tiles { display: grid; grid-template-columns: 1fr; gap: var(--spacing-3); }
-@media (min-width: 640px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.tile { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.tile > svg { color: var(--cde-blue); }
-.tile-big { font-size: 3rem; font-weight: var(--font-weight-medium); line-height: 1; color: var(--navy-700); font-variant-numeric: tabular-nums; }
-.tile-mid { font-size: 1.15rem; font-weight: var(--font-weight-medium); line-height: 1.3; color: var(--navy-700); }
 
 /* FAQ accordion after the TSE portal's (palette section 5): grey container, white items, bold navy question. */
 .faq { background: #DCDCDC; border-radius: var(--radius-container); padding: 8px; display: flex; flex-direction: column; gap: 8px; margin-top: var(--spacing-2); }
@@ -546,3 +538,75 @@ img, svg { max-width: 100%; }
 .cv-placehero h1, .cv-empty h1, .voting-head h1, .voting-section h2 { color: var(--cv-ink); }
 /* These headings receive completion focus for announcements, rather than interaction. */
 .cv-placehero h1:focus, .cv-empty h1:focus { outline: none; }
+
+/* Tela 6: election dates. Colours inherit cvTokens; the shared pieces keep their styles.
+   CountdownHero (5.2): one card per phase, the number pops in and the whole hero enters. */
+.cv-countdown { padding: 28px 20px 24px; border-radius: 28px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.cv-countdown-count { background: var(--cv-slot-3-tint); }
+.cv-countdown-num { font-size: 88px; line-height: 1; font-weight: 800; letter-spacing: -.04em; color: var(--cv-navy); font-variant-numeric: tabular-nums; animation: cv-countdown-pop .5s cubic-bezier(.34,1.5,.5,1); }
+.cv-countdown-title { font-size: 18px; font-weight: 800; }
+.cv-countdown-sub { font-size: 15px; line-height: 1.5; color: var(--cv-ink-2); }
+.cv-countdown-today { gap: 10px; background: var(--cv-green-tint); border: 1.5px solid var(--cv-green); }
+.cv-countdown-closed { gap: 10px; background: var(--cv-surface-2); }
+.cv-countdown-icon { width: 72px; height: 72px; flex: none; border-radius: 999px; background: #FFFFFF; color: var(--cv-navy); box-shadow: 0 6px 16px rgba(26,34,51,.08); display: flex; align-items: center; justify-content: center; }
+.cv-countdown-today .cv-countdown-icon { background: var(--cv-green-strong); color: #FFFFFF; box-shadow: 0 0 0 5px #FFFFFF, 0 10px 24px rgba(26,34,51,.12); }
+.cv-countdown h2 { margin: 6px 0 0; font-size: 26px; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; color: var(--cv-ink); text-wrap: balance; }
+.cv-countdown p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--cv-ink-2); text-wrap: pretty; }
+.cv-countdown-cta { margin-top: 6px; height: 52px; padding: 0 22px; border-radius: 999px; background: var(--cv-green-strong); color: #FFFFFF; font-size: 15px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: transform .12s ease; }
+.cv-countdown-cta:active { transform: scale(.97); }
+.cv-countdown .cv-linkcard { width: 100%; margin-top: 8px; text-align: left; background: #FFFFFF; }
+@keyframes cv-countdown-pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+/* RoundTile (5.4): two tiles side by side, the next or current round on the green tint. */
+.cv-roundtiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.cv-roundtiles-single { grid-template-columns: minmax(0,1fr); }
+.cv-roundtile { padding: 16px; border: 1.5px solid var(--cv-line); border-radius: 20px; background: #FFFFFF; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.cv-roundtile-next { border-color: var(--cv-green); background: var(--cv-green-tint); }
+.cv-roundtile .cv-numpill { padding: 3px 10px; font-weight: 800; }
+.cv-roundtile-date { font-size: 22px; line-height: 1.15; font-weight: 800; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.cv-roundtile-tbc { color: var(--cv-ink-2); }
+.cv-roundtile-weekday { font-size: 13px; line-height: 1.4; color: var(--cv-ink-2); }
+.cv-roundtile-tag { font-size: 12px; line-height: 1.4; font-weight: 700; color: var(--cv-ink-2); }
+.cv-roundtile-next .cv-roundtile-tag { color: var(--cv-green-strong); }
+/* InfoStrip (5.5) and CvChip (5.5). */
+.cv-infostrip { padding: 16px; border-radius: 20px; background: var(--cv-surface-2); display: flex; align-items: center; gap: 14px; }
+.cv-infostrip-icon { width: 44px; height: 44px; flex: none; border-radius: 999px; background: #FFFFFF; color: var(--cv-blue); display: flex; align-items: center; justify-content: center; }
+.cv-infostrip-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cv-infostrip-title { font-size: 18px; font-weight: 800; }
+.cv-infostrip-sub { font-size: 13px; line-height: 1.45; color: var(--cv-ink-2); }
+.cv-chips { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+.cv-chip { height: 36px; padding: 0 14px; border-radius: 999px; background: var(--cv-surface); color: var(--cv-ink); font-size: 14px; font-weight: 700; display: flex; align-items: center; }
+
+/* The Quando page: the head, one column of blocks (two from 1024 px), the footer. */
+.page.when { max-width: 600px; padding: 8px 20px 0; gap: 0; }
+.when-head { display: flex; flex-direction: column; gap: 8px; }
+.when-head h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.025em; line-height: 1.15; color: var(--cv-ink); }
+.when-head h1 span { background: linear-gradient(transparent 58%, var(--cv-yellow) 58%); padding: 0 2px; }
+.when-head p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--cv-ink-2); }
+.when-body { padding-top: 20px; display: flex; flex-direction: column; }
+.when-columns, .when-column { display: flex; flex-direction: column; }
+.when-column > .cv-notice { margin-top: 12px; }
+.when-column > .cv-countdown + .cv-notice, .when-column > .cv-empty + .cv-notice { margin-top: 20px; }
+.when-column > .cv-infostrip { margin-top: 12px; }
+.when-section { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
+.when-section h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--cv-ink); }
+.when-links { gap: 10px; }
+.when-notes { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.when-notes li { padding: 12px 0; border-top: 1px solid var(--cv-line-tray); font-size: 14px; line-height: 1.5; color: var(--cv-ink-2); }
+.when-source { margin: 0; font-size: 13px; line-height: 1.5; color: var(--cv-ink-2); overflow-wrap: anywhere; }
+.when-source a { font-weight: 700; color: var(--cv-ink); }
+.when-foot { padding: 28px 0 40px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
+.when-foot .source p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--cv-ink-2); }
+.when a:focus-visible { outline: 2px solid var(--cv-blue); outline-offset: 2px; }
+@media (min-width: 640px) {
+  .page.when { padding-top: 24px; }
+}
+@media (min-width: 1024px) {
+  /* Spec's 1080px are the content width; .page keeps its 20px side padding (global border-box rule). */
+  .page.when-wide { max-width: calc(1080px + 2 * 20px); }
+  .when-wide .when-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 40px; align-items: start; }
+  .when-wide .when-column > :first-child { margin-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-countdown-num { animation: none; }
+  .cv-countdown-cta { transition: none; }
+}

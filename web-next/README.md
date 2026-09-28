@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking, slots, pairs, comparison, profile and polling-place contracts
+npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place and election-date contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -84,7 +84,8 @@ reach `dist/`.
 | `#/candidato/:sq` | Profile | Tela 3: direct links are neutral; `cmp` plus `uf`, `office`, `pair` and `tab` preserves comparison context and slot colour. Personal fields appear only in the collapsed panel |
 | `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
 | `#/onde-voto?uf=&zone=&section=[&round=1\|2]` | Where to vote | Tela 4: shared search/detail pieces, automatic search from valid links, form editing, client validation and safe problem states |
-| `#/locais`, `#/quando` | Appendix | places by city, election dates |
+| `#/quando` | When | Tela 6: the election calendar with a hero driven by the Brasília civil day (countdown, voting day, closed, over), round tiles, hours strip, office chips, link sections and safe no-data/error states |
+| `#/locais` | Appendix | places by city |
 
 The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
 `src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
@@ -147,7 +148,7 @@ gold and CDE blue never as text on white; colours never mapped to parties; no TS
 seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
 the footer and the FAQ. Contrast pairs are listed in the design review report.
 
-The redesigned screens (Telas 1 to 4: both modes of the Comparar page, the profile and where to vote) add their own
+The redesigned screens (Telas 1 to 4 and 6: both modes of the Comparar page, the profile, where to vote and the election dates) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
 `src/themes/cde.ts`, set as CSS variables on the `.cv-page` container and read by the `.cv-page`,
 `cv-*` and `.pick` blocks of `src/styles.css`, never as a loose hex in a component), Plus Jakarta
@@ -179,8 +180,14 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `profileUf`, `profileNavigation`, `profileShare` | `src/lib/profile.ts` | race recovery, comparison return, `marcar` action and a direct share link without `cmp` |
 | `InsetField`, `SearchSummaryPill` | `src/components/cv/` | labelled numeric field with associated error; search summary button that reopens the form |
 | `PlaceHero`, `CvEmptyState`, `NoticeBanner`, `LoadingState` | `src/components/cv/` | polling-place hero, safe empty/error cards, service notices and announced loading skeleton |
-| `pollingSearchFromUrl`, `pollingMapsUrl`, `pollingVotingDate` | `src/lib/pollingPlace.ts` | validated route defaults, coordinate/address directions and the existing envelope's date in Brasília |
-| `TSE_ONDE_VOTAR_URL` | `src/lib/links.ts` | fixed official service link, copied once from the service contract |
+| `pollingSearchFromUrl`, `pollingMapsUrl`, `pollingVotingDate` | `src/lib/pollingPlace.ts` | validated route defaults, coordinate/address directions and the existing envelope's date, formatted by the election-date helpers below |
+| `TSE_ONDE_VOTAR_URL`, `TSE_SITE_URL` | `src/lib/links.ts` | fixed official links (the where-to-vote service, copied once from the service contract; the TSE site for the calendar and the results) |
+| `CountdownHero` | `src/components/cv/CountdownHero.tsx` | the Quando hero: `count` (number, round, date and hours, read as one sentence), `today` (green check and the "Ver onde eu voto" CTA), `closed` (the day's voting is over) and `after` (the election is over, with the TSE results link) |
+| `RoundTile` | `src/components/cv/RoundTile.tsx` | one round as an `<li>` named with its tag: pill, date, weekday and tag, green when it is the next or current round, "Data a confirmar" without a date |
+| `InfoStrip` | `src/components/cv/InfoStrip.tsx` | icon in a white circle, title and subtitle, no link (the voting hours) |
+| `CvChip` | `src/components/cv/CvChip.tsx` | a grey non-interactive 36 px `<li>` chip inside a `ul.cv-chips` (the offices) |
+| `electionPhase`, `daysUntil`, `roundTags`, `formatRoundDate`, `formatWeekday`, `formatVotingHours`, `formatHour`, `formatShortDate`, `calendarDay` | `src/lib/electionDates.ts` | the phase and the countdown on the Brasília civil day (`Intl.DateTimeFormat` with `timeZone`, never the device zone), the tags per phase and the pt-BR formatting the pages share |
+| `officeChips` | `src/labels.ts` | the office chips in the service's order, state and district deputies merged into one |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -241,6 +248,35 @@ Loading is announced, completion focuses its heading, keyboard arrows change the
 and reduced motion removes entry/pulse/sliding while slowing the spinner to 2.4 s. Error
 and not-found cards use the approved copy, with no reason, guidance or HTTP detail in the DOM.
 No storage, extra tokens, shell changes or Pages deployment.
+
+## Election dates (Tela 6)
+
+`src/pages/When.tsx` owns the four states (loading, ok, no data, error) and the composition;
+`WhenScreen` renders a given envelope and instant, which is how the tests cover every phase
+without a network. One `GET /election` on open; "Tentar de novo" repeats it through the loading
+state. The field mapping is the service's: rounds (number and date), voting hours, offices, notes
+and the calendar source. Everything the hero says comes from `src/lib/electionDates.ts`, which
+compares civil days in `America/Sao_Paulo` only: before the first round the hero counts the days
+(never below 1, recounted on `visibilitychange`, never on a timer); on a round day it is the
+voting day until the service's closing time, then "A votação de hoje terminou"; between the
+rounds it counts to the second one under the "Só onde houver 2º turno" notice; after the last
+dated round it is over, with the TSE results link; without the first round's date there is no
+hero. A round without a date reads "Data a confirmar" and is ignored by the phase; without
+voting hours the strip and the hero's "· horário" disappear; empty offices, notes or source hide
+their block; the second round's long service note never shows (the tile tag replaces it).
+
+`data: null` or `not_found` is the no-data state ("O calendário não carregou", retry, and the
+"Enquanto isso" links to the TSE calendar and Onde voto); network or 5xx errors use the common
+copy. `warnings[]` keep the service text. No `reason`, `guidance` or technical code reaches the
+DOM: an unknown office code is spelled out, never printed as is. The Onde voto "Quando votar" card
+formats its date and hours with the same helpers, with unchanged text.
+
+Layout: one column under 640 px, 560 px centred from 640 px, and from 1024 px two 520 px columns
+in a 1080 px grid (hero, notice, warnings, rounds and hours on the left; offices and "Antes de
+sair de casa" on the right; head and footer full width); the no-data state stays one column. The
+countdown number pops in and the hero enters like Tela 4's result; reduced motion turns both off.
+Contrast of the spec's pairs (navy on the yellow tint 12.2:1, `--cv-ink-2` on `--cv-surface-2`
+7.4:1, white on `--cv-green-strong` 5.8:1) is above 4.5:1.
 
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 

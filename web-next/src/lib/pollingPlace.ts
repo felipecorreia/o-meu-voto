@@ -1,5 +1,6 @@
 import type {ElectionInfo, PollingPlaceData} from '../api';
 import {UFS} from '../labels';
+import {calendarDay, formatRoundDate, formatVotingHours, formatWeekday} from './electionDates';
 
 export interface PollingPlaceSearch {uf: string; zone: string; section: string; round: string}
 export const POLLING_UF_OPTIONS = [...UFS.map(([value, name]) => ({value, label: `${value} · ${name}`})), {value: 'ZZ', label: 'ZZ · Exterior'}];
@@ -20,13 +21,11 @@ export function pollingMapsUrl(d: PollingPlaceData): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-/** A date-only calendar value is anchored at Brasília noon, independent of browser timezone. */
+/** The "Quando votar" card from the existing envelope, formatted by the shared election-date
+ *  helpers in Brasília (Tela 6 spec, exception 1): the visible text is unchanged. */
 export function pollingVotingDate(election: ElectionInfo | null): {title: string; caption: string} | null {
-  if (!election?.round.date) return null;
-  const date = new Date(`${election.round.date}T12:00:00-03:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  const options = {timeZone: 'America/Sao_Paulo'};
-  const weekday = new Intl.DateTimeFormat('pt-BR', {...options, weekday: 'long'}).format(date);
-  const day = new Intl.DateTimeFormat('pt-BR', {...options, day: 'numeric', month: 'long'}).format(date);
-  return {title: `${weekday.charAt(0).toLocaleUpperCase('pt-BR')}${weekday.slice(1)}, ${day}`, caption: `${election.round.number}º turno · ${election.voting_hours.label}`};
+  const date = calendarDay(election?.round.date);
+  if (!election || !date) return null;
+  const hours = formatVotingHours(election.voting_hours);
+  return {title: `${formatWeekday(date)}, ${formatRoundDate(date)}`, caption: `${election.round.number}º turno${hours ? ` · ${hours} (horário de Brasília)` : ''}`};
 }
