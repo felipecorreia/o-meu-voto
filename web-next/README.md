@@ -20,7 +20,7 @@ cd web-next
 npm ci
 npm run dev          # http://localhost:5199
 npm run build        # tsc -b && vite build -> dist/
-npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place, places and election-date contracts
+npm test             # vitest: marking, slots, pairs, comparison, profile, polling-place, places, election-date and FAQ contracts
 ```
 
 The page calls the API on the same origin (`<meta name="br-elections-api-base"
@@ -82,7 +82,7 @@ reach `dist/`.
 | `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `ComparisonBody`, reusable headers and rows (below) |
 | `#/?uf=&office=&marcar=a,b,c` | Choice with preselection | loads available profiles in the written order, keeps successful results if another load fails, and preserves marks changed while loading; "Escolher outras" uses this route |
 | `#/candidato/:sq` | Profile | Tela 3: direct links are neutral; `cmp` plus `uf`, `office`, `pair` and `tab` preserves comparison context and slot colour. Personal fields appear only in the collapsed panel |
-| `#/duvidas` | FAQ | `?abrir=<id>` opens one item; draft copy, marked as such |
+| `#/duvidas` | FAQ | Tela 7: fixed content from `src/content/faq.ts` in four theme groups; `?abrir=<id>` opens one item, scrolls to it, flashes it and focuses it; chips scroll to the themes; each open answer has a copy-link button; draft copy, marked as such while `FAQ_DRAFT` is true |
 | `#/onde-voto?uf=&zone=&section=[&round=1\|2]` | Where to vote | Tela 4: shared search/detail pieces, automatic search from valid links, form editing, client validation and safe problem states |
 | `#/quando` | When | Tela 6: the election calendar with a hero driven by the Brasília civil day (countdown, voting day, closed, over), round tiles, hours strip, office chips, link sections and safe no-data/error states |
 | `#/locais?uf=&mun=<tse_code>[&bairro=][&q=]` | Places by city | Tela 5: municipality suggestions, optional filters, alphabetic or nearby order, place cards and links to Onde voto and Maps |
@@ -145,8 +145,8 @@ text, the portal's neutral backgrounds, success #1F7F47 (the CTA green darkened 
 text), warning #FFDA59 / #061937, error #CD201F, the four CDE hues as categorical tints with
 darkened text, Inter with headings at weight 500. Rules of the palette's accessibility section:
 gold and CDE blue never as text on white; colours never mapped to parties; no TSE logo, name or
-seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header,
-the footer and the FAQ. Contrast pairs are listed in the design review report.
+seal; the "projeto independente, não oficial, com dados abertos do TSE" notice in the header
+and the footer (the FAQ page has none of its own). Contrast pairs are listed in the design review report.
 
 The redesigned screens (Telas 1 to 6: both modes of the Comparar page, the profile, where to vote, places by city and the election dates) add their own
 layer on top, the `cv` scope: the `--cv-*` tokens of the spec's section 4.1 (`cvTokens` in
@@ -193,6 +193,12 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `LoadMore` | `src/components/cv/LoadMore.tsx` | "Mostrando X de Y" with an offset-page button, announcing how many places were added |
 | `appendPlacesPage`, `PLACES_PAGE_SIZE` | `src/lib/placePages.ts` | fetches the next 20-place offset page and de-duplicates by zone/number before appending |
 | `mapsUrl` | `src/lib/links.ts` | Google Maps search link from a place's coordinates, falling back to its address and municipality |
+| `AccordionGroup`, `AccordionItem` | `src/components/cv/Accordion.tsx` | a `<section id>` with a script-focusable H2 and a card of questions; each item is a button in an H3 with `aria-expanded` and `aria-controls` and a region labelled by it; open state is the parent's, so several stay open |
+| `ChipNav` | `src/components/cv/ChipNav.tsx` | a `<nav aria-label>` row of `<button>` chips that scroll to same-page anchors (never `<a href="#…">`: the router is hash-based); `activeId` marks one with `aria-current` |
+| `TermList` | `src/components/cv/TermList.tsx` | terms and explanations as a `<dl>` of blocks |
+| `CopyLinkButton` | `src/components/cv/CopyLinkButton.tsx` | copies the page's origin, path and the given hash; "Link copiado" for 1.8 s with a polite announcement; without a clipboard it `replaceState`s the hash and says so below the button |
+| `scrollToId`, `HIGHLIGHT_CLASS` | `src/lib/scroll.ts` | smooth scroll to an element (instant under reduced motion) honouring its `scroll-margin-top`; the optional 2.4 s flash, ended earlier by a pointer or key on the element and kept until then under reduced motion |
+| `FAQ`, `FAQ_DRAFT` | `src/content/faq.ts` | the Dúvidas copy (plain text, paragraphs, optional terms and action link) and the draft flag |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -299,6 +305,37 @@ sair de casa" on the right; head and footer full width); the no-data state stays
 countdown number pops in and the hero enters like Tela 4's result; reduced motion turns both off.
 Contrast of the spec's pairs (navy on the yellow tint 12.2:1, `--cv-ink-2` on `--cv-surface-2`
 7.4:1, white on `--cv-green-strong` 5.8:1) is above 4.5:1.
+
+## FAQ (Tela 7)
+
+`src/pages/Faq.tsx` renders `src/content/faq.ts`: four theme groups (`tema-comparacao`,
+`tema-bens`, `tema-privacidade`, `tema-votar`) holding the eleven stable item ids other screens
+link to (`destino`, `porque`, `campos`, `evolucao`, `patrimonio`, `fonte`, `cpf`, `candidatos`,
+`oficial`, `zona`, `mudou`). No API call. The copy is plain text (no HTML or markdown), still a
+draft: the "Texto em rascunho" notice shows while `FAQ_DRAFT` is true.
+
+`#/duvidas?abrir=<id>` opens that item and, two frames after mount (after the router's scroll to
+the top), scrolls to it below the sticky top plus 12 px (`scroll-margin-top` on the item, from
+`--cv-topnav`), flashes it yellow for 2.4 s and puts focus on its button; when the page ends
+first the item stays whole in the viewport, as in the prototype. Opening or closing items never
+changes the URL. An unknown id is ignored. The theme chips are buttons that scroll to the group
+and focus its H2. Each open answer ends with an action link where the copy has one ("Ver locais
+da cidade" to `#/locais`, "Consultar onde voto" to `#/onde-voto`) and "Copiar link", which copies
+`origin + pathname + #/duvidas?abrir=<id>`. The page has no footer of its own: the
+independent-project disclaimer lives in the shell footer.
+
+Layout: one column under 640 px with the chip row bleeding to the edges; 640 px centred from
+640 px; from 1024 px a `240px minmax(0, 720px)` grid with a 48 px gap, the chips stacked in a
+sticky left column that marks the group under the reading line (the sticky top plus 12 px),
+through an IntersectionObserver with that line as its top margin. Two rules keep the mark where
+the person looks on a page too short to scroll every group up to the line: the last group takes
+it once it is whole in the viewport or the page is scrolled to its end, and a group chosen by a
+chip (or holding the `?abrir=` item) keeps it, ahead of that rule, until it scrolls out of the
+viewport, or out of full view once it was whole in it. Reduced motion turns off the chevron
+rotation, the answer entry and the smooth scroll, and makes the flash a fixed `--cv-slot-3-tint`
+background until the person touches the item. Contrast of the spec's pairs is above 4.5:1
+(`--cv-ink-2` on the yellow tint 6.95:1, on `--cv-surface-2` 7.38:1, the notice icon on the tint
+7.11:1).
 
 ## Astryx 0.6.3 notes (pinned exactly; beta)
 

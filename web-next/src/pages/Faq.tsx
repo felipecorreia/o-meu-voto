@@ -1,109 +1,112 @@
-import {Badge} from '@astryxdesign/core/Badge';
-import {Collapsible} from '@astryxdesign/core/Collapsible';
-import {Text} from '@astryxdesign/core/Text';
-import {PageHeader, ExternalLink} from '../components/common';
+import {useCallback, useEffect, useRef, useState, type CSSProperties} from 'react';
+import {ChevronRight, Pencil} from 'lucide-react';
+import {useTopNavOffset} from '../components/Comparison';
+import {AccordionGroup, AccordionItem} from '../components/cv/Accordion';
+import {ChipNav} from '../components/cv/ChipNav';
+import {CopyLinkButton} from '../components/cv/CopyLinkButton';
+import {NoticeBanner} from '../components/cv/NoticeBanner';
+import {TermList} from '../components/cv/TermList';
+import {FAQ, FAQ_DRAFT, type FaqGroup} from '../content/faq';
+import {scrollToId} from '../lib/scroll';
+import {useMedia} from '../lib/useMedia';
+import {href} from '../router';
+import {cvTokens} from '../themes/cde';
 
-/**
- * FAQ in plain voter language (captain decision, inbox 002 of 2026-09-25 12:54Z). DRAFT COPY,
- * marked as such in the UI. Groups: the comparator's terms, assets and growth, privacy, where and
- * when. Accordion styled after the TSE portal's (palette section 5): grey container, white item,
- * question 16px/700 navy.
- */
-interface Item { id: string; q: string; a: React.ReactNode }
-interface Group { id: string; title: string; items: Item[] }
-
-const GROUPS: Group[] = [
-  {id: 'comparador', title: 'Sobre a comparação', items: [
-    {id: 'destino', q: 'O que significam "voto válido", "anulado sub judice" e "nulo técnico"?', a: (
-      <>
-        <Text as="p">São os termos que o TSE usa para dizer o que acontece com o voto dado a uma candidatura.</Text>
-        <ul className="faq-list">
-          <li><b>Válido</b>: a candidatura está registrada e na urna. O voto conta para ela e para o partido ou federação.</li>
-          <li><b>Anulado sub judice</b>: o registro foi negado, mas a candidatura ainda recorre na Justiça Eleitoral. O voto fica guardado como anulado até a decisão final: se o registro for aceito, passa a contar; se não, fica nulo.</li>
-          <li><b>Nulo técnico</b>: o registro foi negado e não há mais recurso, ou a candidatura saiu da disputa. O voto não conta para ninguém.</li>
-        </ul>
-        <Text as="p">Mostramos o termo do TSE e, ao lado, esta explicação. Não é opinião sobre a pessoa: é a situação do registro naquele dia.</Text>
-      </>
-    )},
-    {id: 'porque', q: 'Por que comparar candidaturas aqui, e não no site do TSE?', a: (
-      <>
-        <Text as="p">O DivulgaCandContas, do TSE, compara só receitas e despesas de campanha. Aqui a comparação é do que cada candidatura declarou ao se registrar: partido, aliança, chapa, situação do registro, ocupação, bens e redes.</Text>
-        <Text as="p">Sem ranking, sem nota, sem recomendação de voto. A ordem é sempre a do número de urna. Os dados são os arquivos abertos do TSE, com a data em que o TSE os gerou.</Text>
-      </>
-    )},
-    {id: 'campos', q: 'O que entra e o que não entra na comparação?', a: (
-      <>
-        <Text as="p">Entra o que a candidatura declarou ao TSE e é público: nome, número, partido, federação ou coligação, vice ou suplentes, situação do registro e destino dos votos, ocupação, total de bens, redes sociais e o link para a ficha oficial.</Text>
-        <Text as="p">Não entra nunca: gênero, cor/raça, estado civil, escolaridade, idade, local de nascimento e a descrição de cada bem. Esses dados existem nos arquivos do TSE, mas não servem para comparar pessoas.</Text>
-      </>
-    )},
-  ]},
-  {id: 'bens', title: 'Bens declarados', items: [
-    {id: 'evolucao', q: 'Como é calculada a evolução dos bens?', a: (
-      <>
-        <Text as="p"><b>Em preparação:</b> a comparação ainda mostra só o total declarado em 2026. A evolução entra quando o serviço reconhecer a mesma pessoa entre eleições; até lá, nenhum valor anterior aparece.</Text>
-        <Text as="p">A evolução vai comparar o total de bens declarado em 2026 com a última declaração anterior da mesma pessoa em uma eleição de 2018, 2020, 2022 ou 2024, seja qual for o cargo disputado, com o ano e o cargo dessa declaração ao lado do valor, para ninguém comparar 2 anos com 8 sem saber.</Text>
-        <Text as="p">A diferença vai aparecer de duas formas: em reais, como está nos arquivos, e corrigida pela inflação (IPCA de agosto do ano da declaração anterior até agosto de 2026, o mês do registro). Sem porcentagem: com valores pequenos ela vira um número enorme que não diz nada.</Text>
-        <Text as="p">Os valores são os que a pessoa declarou ao TSE, pelo custo de aquisição, não pelo valor de mercado. Uma diferença entre duas declarações pode ser venda, herança, mudança de regime de bens ou só uma declaração refeita.</Text>
-      </>
-    )},
-    {id: 'patrimonio', q: 'O total de bens é o patrimônio real da pessoa?', a: (
-      <>
-        <Text as="p">Não necessariamente. É o que foi declarado à Justiça Eleitoral, em geral pelo valor de compra, como na declaração do imposto de renda. Quem declarou não ter bens aparece assim; quem não informou aparece como "sem informação".</Text>
-        <Text as="p">O detalhe de cada bem está na ficha oficial no DivulgaCandContas. Aqui mostramos só o total.</Text>
-      </>
-    )},
-    {id: 'fonte', q: 'De onde vêm os dados e de quando são?', a: (
-      <>
-        <Text as="p">Do <ExternalLink href="https://dadosabertos.tse.jus.br/">Portal de Dados Abertos do TSE</ExternalLink> (candidaturas, bens, locais de votação), com licença CC-BY. Em toda resposta dizemos quando o TSE gerou o arquivo; se tiver mais de 48 horas, avisamos. Datas e horários da eleição vêm da Resolução TSE nº 23.760/2026.</Text>
-      </>
-    )},
-  ]},
-  {id: 'privacidade', title: 'Privacidade', items: [
-    {id: 'cpf', q: 'Vocês pedem CPF, título ou nome?', a: (
-      <>
-        <Text as="p">Não. Para saber onde você vota, pedimos só UF, zona e seção, que estão impressas no título. Para comparar candidaturas, nada. Nada do que você digita é guardado.</Text>
-        <Text as="p">"Perto de mim" usa a localização uma vez, no seu navegador, só para ordenar a lista de locais; ela não fica guardada.</Text>
-      </>
-    )},
-    {id: 'candidatos', q: 'E os dados dos candidatos?', a: (
-      <>
-        <Text as="p">Mostramos o que o TSE publica sobre a candidatura. O número do título de eleitor do candidato existe nos arquivos do TSE e é usado só por um instante, para reconhecer a mesma pessoa entre eleições diferentes (a evolução dos bens); não é guardado nem mostrado.</Text>
-        <Text as="p">Gênero, cor/raça, estado civil e escolaridade aparecem só na ficha individual, nunca em listas ou na comparação. A descrição de cada bem (endereços, placas, contas) não entra no nosso índice.</Text>
-      </>
-    )},
-    {id: 'oficial', q: 'Este site é do TSE?', a: (
-      <>
-        <Text as="p">Não. É um projeto independente, de código aberto (licença MIT), feito com os dados abertos do TSE. Para serviços oficiais (título, local de votação pelo CPF, justificativa) use o e-Título e o site do TSE.</Text>
-      </>
-    )},
-  ]},
-  {id: 'votar', title: 'Onde e quando votar', items: [
-    {id: 'zona', q: 'Como descubro minha zona e seção?', a: <Text as="p">No título de eleitor ou no aplicativo e-Título. Este site não consulta o cadastro eleitoral: com a zona e a seção, dizemos o local de votação; sem elas, listamos os locais da sua cidade.</Text>},
-    {id: 'mudou', q: 'Meu local de votação mudou?', a: <Text as="p">Quando o TSE registra que uma seção mudou de prédio, avisamos na resposta de "Onde voto" com o local anterior. Confira no e-Título antes de sair de casa.</Text>},
-  ]},
-];
-
+/** Dúvidas (Tela 7): fixed content from `content/faq.ts`, no API. `open` is the route's `?abrir=<id>`. */
 export function FaqPage({open}: {open?: string | null}) {
-  return (
-    <div className="page">
-      <PageHeader title="Dúvidas frequentes" lead="Em linguagem de eleitor: o que os termos da comparação querem dizer, como contamos os bens e o que fazemos (e não fazemos) com os seus dados.">
-        <div className="chips chips-compact"><Badge variant="warning" label="Texto em rascunho" /><Text size="sm" color="secondary">Redação provisória para revisão; a versão final entra com a página.</Text></div>
-      </PageHeader>
-      {GROUPS.map(g => (
-        <section key={g.id} aria-labelledby={`faq-${g.id}`}>
-          <h2 id={`faq-${g.id}`} className="h2">{g.title}</h2>
-          <div className="faq">
-            {g.items.map(it => (
-              <div key={it.id} className="faq-item" id={`faq-${it.id}`}>
-                <Collapsible defaultIsOpen={open === it.id} chevronPosition="end" trigger={<span className="faq-q">{it.q}</span>}>
-                  <div className="faq-a">{it.a}</div>
-                </Collapsible>
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
+  return <FaqScreen open={open} draft={FAQ_DRAFT} groups={FAQ} />;
+}
+
+/** A group the person chose (a chip, or the group of the `?abrir=` item) that keeps the desktop
+ *  mark: `seen` once it entered the viewport, `whole` once it was entirely in it. */
+type Pin = {id: string; seen: boolean; whole: boolean};
+
+/** The screen for a given content and deep link, so every state renders without the route or the flag. */
+export function FaqScreen({open, draft, groups}: {open?: string | null; draft: boolean; groups: FaqGroup[]}) {
+  const topNav = useTopNavOffset();
+  const desktop = useMedia('(min-width: 1024px)');
+  const known = groups.some(g => g.items.some(item => item.id === open)) ? open! : null;
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(known ? [known] : []));
+  const [active, setActive] = useState<string | undefined>(groups[0]?.id);
+  const pin = useRef<Pin | null>(null);
+  const ratios = useRef(new Map<string, number>()); // per group: -1 above the line or off screen, 1 whole in the viewport
+  const hold = useCallback((id: string) => {
+    const r = ratios.current.get(id) ?? -1;
+    pin.current = {id, seen: r >= 0, whole: r >= 1};
+    setActive(id);
+  }, []);
+
+  // ?abrir=<id> (spec 5.5): open the item, then scroll to it after the router's scroll to the top
+  // (two frames later), flash it and put focus on its button. An unknown id changes nothing.
+  useEffect(() => {
+    if (!known) return;
+    setOpenIds(prev => prev.has(known) ? prev : new Set(prev).add(known));
+    hold(groups.find(g => g.items.some(item => item.id === known))!.id);
+    let second = 0;
+    let endHighlight = () => {};
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => {
+        endHighlight = scrollToId(`q-${known}`, {highlight: true});
+        document.getElementById(`b-${known}`)?.focus({preventScroll: true});
+      });
+    });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); endHighlight(); };
+  }, [known, groups, hold]);
+
+  // Desktop (spec 5.8): an IntersectionObserver whose root starts 2 px above the reading line
+  // (the sticky top plus 12 px, where scrollToId puts a group) marks the chip of the group under
+  // that line: the first group in order still crossing it. A pinned group (a chip, or the group
+  // of the ?abrir= item) keeps the mark on a page too short to scroll it up to the line, until it
+  // scrolls out of the viewport, or out of full view once it was whole in it. Below a pin, the last
+  // group takes the mark once it is whole in the viewport or the page is scrolled to its end.
+  useEffect(() => {
+    if (!desktop || !groups.length) return;
+    const byGroup = ratios.current;
+    byGroup.clear();
+    const observer = new IntersectionObserver(entries => {
+      for (const e of entries) byGroup.set(e.target.id, e.isIntersecting ? e.intersectionRatio : -1);
+      const p = pin.current;
+      const r = p ? byGroup.get(p.id) : undefined;
+      if (p && r !== undefined) {
+        if (r >= 0) p.seen = true;
+        if (r >= 1) p.whole = true;
+        if (p.seen && (r < 0 || (p.whole && r < 1))) pin.current = null;
+      }
+      const last = groups[groups.length - 1].id;
+      const page = document.scrollingElement;
+      const scrolled = !!page && page.scrollTop > 0;
+      const atEnd = scrolled && page.scrollTop + page.clientHeight >= page.scrollHeight - 1;
+      const lastWins = atEnd || (scrolled && (byGroup.get(last) ?? -1) >= 1);
+      setActive(pin.current?.id ?? (lastWins ? last : undefined) ?? groups.find(g => (byGroup.get(g.id) ?? -1) >= 0)?.id ?? groups[0].id);
+    }, {rootMargin: `-${topNav + 10}px 0px 0px 0px`, threshold: [0, 1]});
+    for (const g of groups) { const el = document.getElementById(g.id); if (el) observer.observe(el); }
+    return () => observer.disconnect();
+  }, [desktop, topNav, groups]);
+
+  const selectGroup = useCallback((id: string) => {
+    scrollToId(id);
+    document.getElementById(`${id}-title`)?.focus({preventScroll: true});
+    hold(id);
+  }, [hold]);
+  const toggle = (id: string) => setOpenIds(prev => { const next = new Set(prev); if (!next.delete(id)) next.add(id); return next; });
+
+  return <div className="page cv-page faq" style={{...cvTokens, '--cv-topnav': `${topNav}px`} as CSSProperties}>
+    <header className="faq-head"><h1>Dúvidas <span>frequentes</span></h1><p>Respostas curtas sobre a comparação, os dados e o dia da votação.</p></header>
+    <div className="faq-layout">
+      {draft ? <NoticeBanner tone="wait" title="Texto em rascunho" text="Redação provisória, ainda em revisão." icon={<Pencil size={20} />} /> : null}
+      <ChipNav items={groups.map(g => ({id: g.id, label: g.short}))} activeId={desktop ? active : null} onSelect={selectGroup} />
+      <div className="faq-groups">
+        {groups.map(g => <AccordionGroup key={g.id} id={g.id} title={g.title}>
+          {g.items.map(item => <AccordionItem key={item.id} id={item.id} question={item.q} open={openIds.has(item.id)} onToggle={() => toggle(item.id)}>
+            {item.a.map((text, i) => <p key={i}>{text}</p>)}
+            {item.terms ? <TermList terms={item.terms} /> : null}
+            <div className="cv-accordion-actions">
+              {item.link ? <a href={item.link.href}>{item.link.label}<ChevronRight size={16} strokeWidth={2.2} aria-hidden /></a> : null}
+              <CopyLinkButton hash={href('/duvidas', {abrir: item.id})} />
+            </div>
+          </AccordionItem>)}
+        </AccordionGroup>)}
+      </div>
     </div>
-  );
+  </div>;
 }
