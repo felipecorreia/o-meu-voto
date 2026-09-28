@@ -239,6 +239,18 @@ def test_search_honors_limit_and_total_counts_before_the_limit(core: Core):
     assert answer.data is not None
     assert len(answer.data.places) == 2
     assert answer.data.total == 3
+    assert (answer.data.limit, answer.data.offset) == (2, 0)
+
+
+def test_search_near_paginates_without_losing_distance_order(core: Core):
+    kwargs = {"near": {"latitude": -9.9848, "longitude": -67.8225}, "limit": 1}
+    full = core.search_polling_places("AC", "Rio Branco", **(kwargs | {"limit": 3}))
+    pages = [core.search_polling_places("AC", "Rio Branco", offset=i, **kwargs) for i in range(3)]
+    assert full.data is not None
+    assert all(page.data is not None for page in pages)
+    assert [page.data.places[0].number for page in pages if page.data is not None] == [
+        place.number for place in full.data.places
+    ]
 
 
 def test_search_without_near_has_no_distance(core: Core):
@@ -353,6 +365,8 @@ def test_search_round_explicit_and_not_published_answers_the_highest_published_r
         ({"uf": "AC", "municipality": ""}, "município inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "limit": 0}, "limite inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "limit": 51}, "limite inválido"),
+        ({"uf": "AC", "municipality": "Rio Branco", "offset": -1}, "deslocamento inválido"),
+        ({"uf": "AC", "municipality": "Rio Branco", "offset": "x"}, "deslocamento inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "round": 3}, "turno inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "near": {"latitude": -9.9}}, "coordenadas"),
         (

@@ -350,6 +350,7 @@ async def test_search_and_resolve_tools_are_listed_with_pt_br_texts_and_schemas(
         "near",
         "limit",
         "round",
+        "offset",
     }
     assert search.input_schema["required"] == ["uf", "municipality"]
     assert search.output_schema is not None
@@ -405,6 +406,19 @@ async def test_search_polling_places_with_near_carries_the_distance(core: Core):
     assert places[0]["distance_km"] > 0
     assert places[1]["distance_km"] is None
     assert "km" in result.content[0].text
+
+
+async def test_search_polling_places_accepts_offset(core: Core):
+    async with Client(create_mcp_server(core)) as client:
+        result = await client.call_tool(
+            "search_polling_places",
+            {"uf": "AC", "municipality": "Rio Branco", "limit": 1, "offset": 1},
+        )
+
+    assert result.is_error is False
+    data = result.structured_content["data"]
+    assert (data["limit"], data["offset"], data["total"]) == (1, 1, 3)
+    assert [place["number"] for place in data["places"]] == [1035]
 
 
 async def test_search_polling_places_ambiguous_municipality_lists_options(core: Core):

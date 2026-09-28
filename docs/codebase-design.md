@@ -75,7 +75,7 @@ relação a rede:
 | Método | Pergunta | Retorno |
 |---|---|---|
 | `find_polling_place(uf, zone, section, round=None)` | onde voto | `PollingPlaceAnswer` |
-| `search_polling_places(uf, municipality, neighborhood=None, query=None, near=None, limit=20, round=None)` | locais da cidade ou bairro | `PollingPlacesAnswer` |
+| `search_polling_places(uf, municipality, neighborhood=None, query=None, near=None, limit=20, round=None, offset=0)` | locais da cidade ou bairro | `PollingPlacesAnswer` |
 | `list_candidates(uf, office, party=None, name=None, on_ballot_only=True, limit=50, offset=0, round=None)` | candidatos | `CandidatesAnswer` |
 | `get_candidate(sq_candidato=None, *, uf=None, office=None, number=None, round=None)` | ficha do candidato | `CandidateAnswer` |
 | `compare_candidates(uf, office, sq_candidatos=None, numbers=None, round=None)` | comparação de 2 a 4 candidaturas | `CandidatesComparisonAnswer` |
@@ -92,7 +92,8 @@ Fatos que quem chama precisa saber, e que fazem parte da interface:
   desconhecido) e `IndexUnavailable` (índice ausente ou corrompido). Nada mais escapa.
 - **Normalização é do `core`.** "009" e 9 são a mesma zona; "Piracaia", "piracaia" e
   "PIRACAIA" são o mesmo município; `uf` aceita minúsculas. Os adaptadores não normalizam.
-- **Limites.** `limit` máximo 50 em toda lista; `offset` só em `list_candidates`. Sem SQL
+- **Limites.** `limit` máximo 50 em toda lista; `offset` em `list_candidates` e
+  `search_polling_places` (ADR 0012). Sem SQL
   livre em nenhuma entrada.
 - **Custo.** Consulta por chave em menos de 1 ms e buscas por nome em menos de 10 ms sobre o
   índice de 44 MB (relatório do scout, §5.2); o `core` pode ser chamado por requisição sem
@@ -284,7 +285,7 @@ mensagem do `core`; `IndexUnavailable` vira 503.
 | Tool MCP | Rota REST |
 |---|---|
 | `find_polling_place` | `GET /api/v1/polling-place?uf=&zone=&section=&round=` |
-| `search_polling_places` | `GET /api/v1/polling-places?uf=&municipality=&neighborhood=&query=&lat=&lon=&limit=&round=` |
+| `search_polling_places` | `GET /api/v1/polling-places?uf=&municipality=&neighborhood=&query=&lat=&lon=&limit=&offset=&round=` |
 | `list_candidates` | `GET /api/v1/candidates?uf=&office=&party=&name=&on_ballot_only=&limit=&offset=&round=` |
 | `get_candidate` | `GET /api/v1/candidates/by-number?uf=&office=&number=&round=` e `GET /api/v1/candidates/{sq_candidato}?round=` |
 | `compare_candidates` | `GET /api/v1/candidates/compare?uf=&office=&sq=&sq=&round=` ou `...&number=&number=` |
@@ -547,15 +548,21 @@ quem não sabe a zona e a seção."
 
 Input: `uf`, `municipality` (nome ou código TSE), `neighborhood` (opcional), `query`
 (opcional, casa com nome do local ou endereço), `near` (opcional, `{latitude, longitude}`),
-`limit` (1 a 50, padrão 20), `round` (inteiro, opcional; resolução na seção 3.4, linhas T1 a
-T7).
+`limit` (1 a 50, padrão 20), `offset` (inteiro não negativo, padrão 0; ADR 0012),
+`round` (inteiro, opcional; resolução na seção 3.4, linhas T1 a T7).
 
 `data`: `round` (o turno respondido, seção 3.4), `municipality`, `places[]` com `number`,
 `zone`, `name`, `kind`, `address`,
 `neighborhood`, `postal_code`, `phone`, `latitude`, `longitude`, `status`, `section_count`,
-`accessible_section_count`, `voters` e `distance_km` (só com `near`), `total` e `guidance`
+`accessible_section_count`, `voters` e `distance_km` (só com `near`), `total`, `limit`,
+`offset` e `guidance`
 ("Para saber a sua seção, consulte o e-Título."). Sem geocodificação no servidor: `near` é
 o que o cliente já tem.
+
+`total` conta todos os locais que casam com os filtros antes da paginação. Sem `near`, a ordem
+é por `name`, `number`, `zone`; com `near`, por `distance_km` (nulos por último), `name`,
+`number`, `zone`. `limit` e `offset` na resposta são os valores usados. Um `offset` igual ou
+superior a `total` retorna `places: []` com o mesmo `total`.
 
 `not_found.reason`: `municipio_nao_encontrado` ou `municipio_ambiguo` (com `options[]` no
 formato de `resolve_municipality`).

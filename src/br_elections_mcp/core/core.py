@@ -665,6 +665,7 @@ class Core:
         near: object = None,
         limit: object = None,
         round: object = None,
+        offset: object = 0,
     ) -> PollingPlacesAnswer:
         """The polling places of a municipality, for a voter without zone and section.
 
@@ -672,7 +673,8 @@ class Core:
         ``uf``) or a TSE code. ``neighborhood`` and ``query`` (place name or address) are
         accent- and case-insensitive substrings. With ``near`` (``{latitude, longitude}``)
         the places come by distance, the ones without coordinates last, each with
-        ``distance_km``; without it the field is absent. ``limit`` is 1..50 (default 20).
+        ``distance_km``; without it the field is absent. ``limit`` is 1..50 (default 20),
+        and ``offset`` is a non-negative page start (default 0).
         A municipality that matches nothing is ``municipio_nao_encontrado``; one name
         that matches several municipalities is ``municipio_ambiguo`` with the options.
         A municipality with no matching place is an empty list, never ``not_found``.
@@ -685,6 +687,7 @@ class Core:
         query_text = None if query is None else normalize_text(query, "busca inválida")
         near_point = _normalize_near(near)
         limit_value = normalize_limit(limit, MAX_LIMIT, SEARCH_PLACES_DEFAULT_LIMIT)
+        offset_value = normalize_offset(offset)
         requested_round = None if round is None else normalize_number(round, "turno inválido")
 
         with self._index_manager.query() as (index, cursor):
@@ -705,6 +708,7 @@ class Core:
                     query=query_text,
                     near=near_point,
                     limit=limit_value,
+                    offset=offset_value,
                 )
         # The query is done with the index; whether to check for a new version is the
         # task's O(1) decision, never a wait for this query.
@@ -730,6 +734,8 @@ class Core:
                     _place_list_item(row, with_distance=near_point is not None) for row in rows
                 ],
                 total=total,
+                limit=limit_value,
+                offset=offset_value,
                 guidance=SEARCH_PLACES_GUIDANCE,
             ),
             not_found=None,

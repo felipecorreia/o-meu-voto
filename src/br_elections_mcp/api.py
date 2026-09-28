@@ -273,6 +273,7 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         lat: Annotated[str | None, Query(description="Latitude do eleitor, com lon")] = None,
         lon: Annotated[str | None, Query(description="Longitude do eleitor, com lat")] = None,
         limit: Annotated[str | None, Query(description="1 a 50; padrão 20")] = None,
+        offset: Annotated[str, Query(description="Início da página")] = "0",
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> PollingPlacesAnswer:
         # lat/lon are the REST spelling of `near`; the core validates the pair.
@@ -280,7 +281,7 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         return telemetry.call(
             "GET /api/v1/polling-places",
             lambda: core.search_polling_places(
-                uf, municipality, neighborhood, query, near, limit, round
+                uf, municipality, neighborhood, query, near, limit, round, offset=offset
             ),
         )
 

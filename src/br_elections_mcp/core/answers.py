@@ -348,6 +348,8 @@ class PollingPlacesData(_Model):
     municipality: Municipality
     places: list[PollingPlaceListItem]
     total: int = Field(description="Total de locais que casam com o filtro, antes do limite")
+    limit: int
+    offset: int
     guidance: str = Field(description="Orientação ao eleitor, em PT-BR")
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -30,7 +31,7 @@ from br_elections_mcp.core import (
     PollingPlacesAnswer,
 )
 from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
-from tests.conftest import ELECTIONS_FILE, fixed_clock
+from tests.conftest import ACRE_POLLING_PLACES, ELECTIONS_FILE, build_fixture_index, fixed_clock
 
 
 @pytest.fixture
@@ -331,6 +332,71 @@ def test_polling_places_returns_the_core_envelope(client: TestClient, core: Core
     assert body["election"]["id"] == "general-2026"
 
 
+def test_polling_places_pages_cover_the_full_ordered_list(tmp_path: Path):
+    # Expand Rio Branco to 233 places. Clones share a name to exercise the sort tie-breaker.
+    with ACRE_POLLING_PLACES.open(encoding="latin-1", newline="") as source:
+        reader = csv.DictReader(source, delimiter=";")
+        rows = list(reader)
+        fieldnames = reader.fieldnames
+    assert fieldnames is not None
+    original = next(
+        row for row in rows if row["CD_MUNICIPIO"] == "01392" and row["NR_TURNO"] == "1"
+    )
+    for number in range(2000, 2230):
+        clone = original.copy()
+        clone["NR_SECAO"] = str(number)
+        clone["NR_LOCAL_VOTACAO"] = str(number)
+        clone["NR_LOCAL_VOTACAO_ORIGINAL"] = str(number)
+        clone["NM_LOCAL_VOTACAO"] = "ESCOLA MODELO"
+        clone["NM_LOCAL_VOTACAO_ORIGINAL"] = "ESCOLA MODELO"
+        if number == 2229:
+            clone["NR_ZONA"] = "10"
+            clone["NR_LOCAL_VOTACAO"] = "2228"
+            clone["NR_LOCAL_VOTACAO_ORIGINAL"] = "2228"
+        rows.append(clone)
+    source_path = tmp_path / ACRE_POLLING_PLACES.name
+    with source_path.open("w", encoding="latin-1", newline="") as output:
+        writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=";", quoting=csv.QUOTE_ALL)
+        writer.writeheader()
+        writer.writerows(rows)
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, polling_places=source_path)
+    core = Core(LocalDirectoryIndexSource(index_dir), ELECTIONS_FILE, clock=fixed_clock())
+    with TestClient(build_app(core), base_url="http://localhost") as client:
+
+        def page(offset: int, limit: int = 20) -> dict:
+            response = client.get(
+                "/api/v1/polling-places",
+                params={
+                    "uf": "AC",
+                    "municipality": "01392",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                },
+            )
+            assert response.status_code == 200
+            return response.json()["data"]
+
+        pages = [page(offset) for offset in range(0, 233, 20)]
+        beyond = page(240)
+
+    assert [(p["limit"], p["offset"], p["total"], len(p["places"])) for p in pages] == [
+        (20, offset, 233, min(20, 233 - offset)) for offset in range(0, 233, 20)
+    ]
+    numbers = [[(place["zone"], place["number"]) for place in p["places"]] for p in pages]
+    assert len(set().union(*(set(page_numbers) for page_numbers in numbers))) == 233
+    places = [place for page in pages for place in page["places"]]
+    assert places == sorted(
+        places, key=lambda place: (place["name"], place["number"], place["zone"])
+    )
+    assert (beyond["limit"], beyond["offset"], beyond["total"], beyond["places"]) == (
+        20,
+        240,
+        233,
+        [],
+    )
+
+
 def test_polling_places_lat_lon_become_near_and_order_by_distance(client: TestClient):
     response = client.get(
         "/api/v1/polling-places",
@@ -356,6 +422,18 @@ def test_polling_places_with_only_one_coordinate_is_400(client: TestClient):
     )
     assert response.status_code == 400
     assert "coordenadas" in response.json()["detail"]
+
+
+def test_polling_places_bad_offset_has_the_candidates_error_shape(client: TestClient):
+    places = client.get(
+        "/api/v1/polling-places",
+        params={"uf": "AC", "municipality": "Rio Branco", "offset": "x"},
+    )
+    candidates = client.get(
+        "/api/v1/candidates", params={"uf": "AC", "office": "governador", "offset": "x"}
+    )
+    assert places.status_code == candidates.status_code == 400
+    assert places.json() == candidates.json()
 
 
 def test_polling_places_ambiguous_municipality_is_200_with_options(client: TestClient):
@@ -387,6 +465,7 @@ def test_candidates_invalid_query_is_400_with_the_core_message(client, params, m
     [
         ({"uf": "AC", "municipality": "Rio Branco", "limit": "51"}, "limite inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "limit": "x"}, "limite inválido"),
+        ({"uf": "AC", "municipality": "Rio Branco", "offset": "x"}, "deslocamento inválido"),
         ({"uf": "AC", "municipality": "Rio Branco", "round": "3"}, "turno inválido"),
         ({"uf": "XX", "municipality": "Rio Branco"}, "UF desconhecida"),
     ],

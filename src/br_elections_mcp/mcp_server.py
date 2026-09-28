@@ -331,12 +331,13 @@ def create_mcp_server(core: Core, *, telemetry: Telemetry | None = None) -> MCPS
             int | None,
             Field(description="Turno, opcional; sem ele, o próximo turno já publicado pelo TSE"),
         ] = None,
+        offset: Annotated[int, Field(description="Início da página", ge=0)] = 0,
     ) -> Annotated[CallToolResult, PollingPlacesAnswer]:
         try:
             answer = telemetry.call(
                 "search_polling_places",
                 lambda: core.search_polling_places(
-                    uf, municipality, neighborhood, query, near, limit, round
+                    uf, municipality, neighborhood, query, near, limit, round, offset=offset
                 ),
             )
         except InvalidQuery as exc:

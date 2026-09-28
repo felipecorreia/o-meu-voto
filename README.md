@@ -50,7 +50,8 @@ vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the
 comparator (MCP tool `compare_candidates`, `GET /api/v1/candidates/compare`; ADR 0008), "what
 is this municipality's TSE code" (MCP tool
 `resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
-neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`). The voter
+neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`, with `offset`
+pagination; see [the tool contract](docs/codebase-design.md#82-search_polling_places)). The voter
 page in [`web/`](web/README.md) (static, no build) answers the same four questions over the
 REST API as a deck of cards. To run it all locally, connect Claude Desktop, or serve an index
 built from the real TSE files from the service image (`Dockerfile`, `compose.yaml`), see

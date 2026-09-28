@@ -52,11 +52,12 @@ def search_places(
     query: str | None,
     near: tuple[float, float] | None,
     limit: int,
+    offset: int,
 ) -> tuple[list[PlaceRow], int]:
-    """The places that match, in order, up to ``limit``, and the total before the limit.
+    """The places that match, in order, from ``offset``, and the total before pagination.
 
     With ``near`` (latitude, longitude) the order is by distance, places without
-    coordinates last; without it, by name and number.
+    coordinates last; without it, by name. Zone and number break ties uniquely.
     """
     filters = ["uf = ?", "municipality_tse_code = ?", "round = ?"]
     params: list[object] = [uf, municipality_tse_code, round]
@@ -72,11 +73,11 @@ def search_places(
     where = " AND ".join(filters)
 
     if near is None:
-        distance, order, distance_params = "NULL", "name, number", []
+        distance, order, distance_params = "NULL", "name, number, zone", []
     else:
         latitude, longitude = near
         distance = _DISTANCE_SQL
-        order = "distance_km ASC NULLS LAST, name, number"
+        order = "distance_km ASC NULLS LAST, name, number, zone"
         distance_params = [latitude, latitude, longitude]
 
     total = cursor.execute(f"SELECT count(*) FROM polling_places WHERE {where}", params).fetchone()
@@ -89,8 +90,8 @@ def search_places(
         FROM polling_places
         WHERE {where}
         ORDER BY {order}
-        LIMIT ?
+        LIMIT ? OFFSET ?
         """,
-        [*distance_params, *params, limit],
+        [*distance_params, *params, limit, offset],
     ).fetchall()
     return [PlaceRow(*row) for row in rows], int(total[0])
