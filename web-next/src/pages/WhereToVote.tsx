@@ -143,7 +143,7 @@ export function WhereToVotePage() {
         {view === 'error' ? <CvEmptyState icon={<TriangleAlert size={30} />} headingRef={headingRef} title="Não foi possível consultar agora" text="Tente de novo em instantes." action={<button type="button" onClick={() => void runSearch(submitted)}>Tentar de novo</button>} /> : null}
       </div> : null}
     </div>
-    <footer className="voting-foot">{env ? <SourceFooter source={env.source} election={env.election} /> : null}<span>Projeto independente, não oficial. Este serviço não acessa o cadastro eleitoral: nada é guardado.</span></footer>
+    <footer className="voting-foot">{env ? <SourceFooter source={env.source} election={env.election} /> : null}</footer>
     {!desktop && view === 'form' ? <FloatingBar className="voting-floating" role="region" aria-label="Buscar local de votação">
       <span className="cv-tray-text"><span className="cv-tray-title">{valid ? `Zona ${search.zone} · Seção ${search.section}` : 'Preencha zona e seção'}</span><span className="cv-tray-sub">{stateName(search.uf)} · {roundName(search.round)}</span></span>
       <button className="cv-tray-cta" type="submit" form="polling-search" disabled={!valid}><Search size={18} aria-hidden />Buscar local</button>

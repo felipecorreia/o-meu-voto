@@ -127,7 +127,7 @@ export function CandidatePage({sq, backHref}: {sq: number; backHref: string}) {
             <ProfileNetworks links={c.social_links} />
             {c.divulgacandcontas_url ? <LinkCard href={c.divulgacandcontas_url} icon={<ExternalLink size={20} aria-hidden />} title="Ficha oficial no DivulgaCandContas" caption="Site do TSE, abre em nova aba" /> : null}
             <PrivateDataPanel candidate={c} />
-            <footer className="profile-foot"><SourceFooter source={env.source} election={env.election} /><span>Projeto independente, não oficial. Nada é guardado.</span></footer>
+            <footer className="profile-foot"><SourceFooter source={env.source} election={env.election} /></footer>
           </div>
         </div>
         <FloatingBar className="profile-floating" role="region" aria-label="Comparar esta candidatura">
