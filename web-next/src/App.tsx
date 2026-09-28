@@ -13,7 +13,6 @@ import {WhereToVotePage} from './pages/WhereToVote';
 import {PlacesPage} from './pages/Places';
 import {WhenPage} from './pages/When';
 import {FaqPage} from './pages/Faq';
-import {IndependentNotice} from './components/common';
 import {INDEPENDENT_NOTICE} from './labels';
 
 const NAV = [
@@ -54,8 +53,7 @@ export function App() {
         <div className="shell">
           {page}
           <footer className="site-footer">
-            <IndependentNotice />
-            <Text as="p" size="sm" color="secondary">{INDEPENDENT_NOTICE} Dados sob licença CC-BY do Tribunal Superior Eleitoral (Portal de Dados Abertos). Este serviço não acessa o cadastro eleitoral: para saber a sua zona e seção, use o e-Título. Código aberto (MIT).</Text>
+            <Text as="p" size="sm" color="secondary">{INDEPENDENT_NOTICE} Dados sob licença CC-BY do Tribunal Superior Eleitoral (Portal de Dados Abertos). Este serviço não acessa o cadastro eleitoral: para saber a sua zona e seção, use o e-Título.</Text>
           </footer>
         </div>
       </AppShell>

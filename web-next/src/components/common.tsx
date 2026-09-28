@@ -4,14 +4,12 @@ import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
 import {Link} from '@astryxdesign/core/Link';
 import {Text} from '@astryxdesign/core/Text';
-import {HStack} from '@astryxdesign/core/HStack';
 import {VStack} from '@astryxdesign/core/VStack';
 import {Spinner} from '@astryxdesign/core/Spinner';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
-import {SearchX, ShieldCheck} from 'lucide-react';
+import {SearchX} from 'lucide-react';
 import type {ElectionInfo, NotFound, Source} from '../api';
 import {fmtStamp} from '../format';
-import {INDEPENDENT_NOTICE} from '../labels';
 
 export function SourceFooter({source, election}: {source: Source; election?: ElectionInfo | null}) {
   return (
@@ -50,15 +48,6 @@ export function ErrorState({message, title = 'Não foi possível consultar', onR
 
 export function Loading({label = 'Consultando os dados abertos do TSE…'}: {label?: string}) {
   return <div className="loading"><Spinner size="md" label={label} /></div>;
-}
-
-export function IndependentNotice() {
-  return (
-    <HStack gap={1} align="center" className="notice">
-      <ShieldCheck size={16} aria-hidden />
-      <Text size="sm" color="secondary">{INDEPENDENT_NOTICE} Sem cadastro, sem CPF, sem título: nada é guardado.</Text>
-    </HStack>
-  );
 }
 
 export function PageHeader({title, lead, children}: {title: string; lead?: ReactNode; children?: ReactNode}) {

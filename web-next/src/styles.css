@@ -41,7 +41,6 @@ img, svg { max-width: 100%; }
 .notes { margin: var(--spacing-2) 0 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
 .loading { display: flex; justify-content: center; padding: var(--spacing-6) 0; }
 .source { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.notice { color: var(--color-text-secondary); }
 .site-footer { max-width: var(--page-max); margin: auto auto 0; width: 100%; padding: var(--spacing-4) var(--gutter) var(--spacing-6); border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 
 .ballot-name { font-weight: var(--font-weight-semibold); font-size: 1.02rem; line-height: 1.25; color: var(--navy-700); overflow-wrap: anywhere; }
@@ -333,11 +332,9 @@ img, svg { max-width: 100%; }
 .pick-empty-text { font-size: 14px; line-height: 1.45; color: var(--cv-ink-2); }
 .pick-clear { height: 44px; padding: 0 18px; border: 1px solid var(--cv-ink); border-radius: 999px; background: #FFFFFF; color: var(--cv-ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 
-/* 5.9 Page footer: the SourceFooter at 12 px plus the independent-project line. */
+/* 5.9 Page footer: the SourceFooter at 12 px. */
 .pick-foot { display: flex; flex-direction: column; gap: 10px; padding: 28px 0 0; font-size: 12px; line-height: 1.55; color: var(--cv-ink-2); }
 .pick-foot .source p { font-size: 12px; line-height: 1.55; color: var(--cv-ink-2); }
-.pick-indep { display: flex; gap: 8px; align-items: flex-start; }
-.pick-indep svg { flex: none; margin-top: 1px; }
 
 /* 5.12 Desktop */
 @media (min-width: 640px) {

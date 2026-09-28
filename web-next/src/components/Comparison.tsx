@@ -298,7 +298,6 @@ export function CompareFoot({source, election, assetsSource}: {source: Source; e
     <footer className="comp-foot">
       <SourceFooter source={source} election={election} />
       {assetsSource ? <SourceFooter source={assetsSource} /> : null}
-      <span>Projeto independente, não oficial. Nada é guardado.</span>
     </footer>
   );
 }

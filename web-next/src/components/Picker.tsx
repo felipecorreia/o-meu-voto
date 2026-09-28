@@ -7,7 +7,7 @@
  * container (`cvTokens`, `themes/cde.ts`); no hex here.
  */
 import type {ReactNode} from 'react';
-import {Check, Search, ShieldCheck} from 'lucide-react';
+import {Check, Search} from 'lucide-react';
 import {MAX_MARKED, MIN_MARKED} from '../lib/marking';
 
 export function PickHero() {
@@ -60,10 +60,6 @@ export function PickFooter({children}: {children?: ReactNode}) {
   return (
     <footer className="pick-foot">
       {children}
-      <span className="pick-indep">
-        <ShieldCheck size={16} aria-hidden />
-        <span>Projeto independente, não oficial. Sem cadastro, sem CPF, sem título: nada é guardado.</span>
-      </span>
     </footer>
   );
 }

@@ -1,8 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
-import type {ComparedCandidate} from '../api';
-import {MissingNotice, rowsFor} from './Comparison';
+import type {ComparedCandidate, Source} from '../api';
+import {CompareFoot, MissingNotice, rowsFor} from './Comparison';
 import {CompareRow} from './cv/CompareRow';
+import {PickFooter} from './Picker';
 
 const candidate: ComparedCandidate = {
   sq_candidato: 1, number: 13, ballot_name: 'TEST CANDIDACY', name: 'Civil name',
@@ -85,6 +86,23 @@ describe('comparison rows', () => {
     expect(html).toContain('+1 redes');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(render('ocupacao')).toContain('Nenhuma rede declarada');
+  });
+});
+
+describe('page footers', () => {
+  const source: Source = {kind: 'index', license: 'CC-BY', attribution: 'TSE'};
+
+  it('CompareFoot no longer repeats the independent-project disclaimer (issue #80)', () => {
+    const html = renderToStaticMarkup(<CompareFoot source={source} />);
+    expect(html).not.toContain('Projeto independente');
+    expect(html).not.toContain('nada é guardado');
+    expect(html).toContain('TSE');
+  });
+
+  it('PickFooter no longer repeats the independent-project disclaimer (issue #80)', () => {
+    const html = renderToStaticMarkup(<PickFooter />);
+    expect(html).not.toContain('Projeto independente');
+    expect(html).not.toContain('Sem cadastro, sem CPF, sem título');
   });
 });
 
