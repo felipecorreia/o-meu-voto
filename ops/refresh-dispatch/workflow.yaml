@@ -1,0 +1,37 @@
+# Google Cloud Workflows definition that dispatches .github/workflows/refresh.yml on main.
+# Cloud Scheduler starts one execution at each refresh time (docs/deploy-runbook.md, step G),
+# because GitHub's own cron fired hours late or not at all. The GitHub token is read from
+# Secret Manager at run time and lives only in this execution's memory: deploy it with
+# --call-log-level=log-none and --execution-history-level=execution-history-basic (never
+# detailed, which stores variable values), so no call argument or variable value is logged
+# or stored. A non-2xx answer fails the execution with GitHub's
+# status and response body, which never echo the token; a success returns the run GitHub
+# created (workflow_run_id, html_url).
+main:
+  steps:
+    - read_token:
+        call: googleapis.secretmanager.v1.projects.secrets.versions.accessString
+        args:
+          secret_id: github-refresh-dispatch-token
+          version: latest
+        result: token
+    - dispatch:
+        try:
+          call: http.post
+          args:
+            url: https://api.github.com/repos/felipecorreia/br-elections-mcp/actions/workflows/refresh.yml/dispatches
+            headers:
+              Accept: application/vnd.github+json
+              Authorization: ${"Bearer " + token}
+              X-GitHub-Api-Version: "2022-11-28"
+            body:
+              ref: main
+              # Without it GitHub answers 204 with no body; with it, 200 and the run's ids.
+              return_run_details: true
+            timeout: 30
+          result: response
+        # Retries only what GitHub cannot have acted on (connection errors, 429, 503), so a
+        # retry never dispatches twice.
+        retry: ${http.default_retry_non_idempotent}
+    - done:
+        return: ${response.body}

@@ -1,7 +1,7 @@
 """Command line of the pipeline: `python -m br_elections_mcp.pipeline <stage> ...`.
 
 Stages `fetch`, `build`, `validate`, `publish` and `mirror-photos`, plus two helpers the
-scheduled workflow chains them with: `extract` (the CSV out of a fetched ZIP)
+refresh workflow chains them with: `extract` (the CSV out of a fetched ZIP)
 and `current-manifest` (the published manifest, for the count-stability gate
 of `validate`). Each stage reads and writes files, so any one of them can run
 alone (docs/codebase-design.md, section 5).

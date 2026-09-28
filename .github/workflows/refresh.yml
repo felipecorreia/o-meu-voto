@@ -1,9 +1,9 @@
 # The refresh pipeline of docs/codebase-design.md, section 5: fetch -> extract -> build ->
 # validate -> publish, on the cadences the TSE declares for its datasets (docs/domain-model.md,
-# section 2) and on demand. It runs here, never inside Cloud Run. The job stops at the first
-# failed stage, so a bad index is never published, and every raw ZIP and CSV lives in a
-# temporary directory that the last step removes even on failure (ADR 0004). Only
-# index.duckdb and manifest.json leave the runner, through the publish stage.
+# section 2), started by Cloud Scheduler or by hand. It runs here, never inside Cloud Run.
+# The job stops at the first failed stage, so a bad index is never published, and every raw
+# ZIP and CSV lives in a temporary directory that the last step removes even on failure
+# (ADR 0004). Only index.duckdb and manifest.json leave the runner, through the publish stage.
 #
 # Google Cloud access is keyless, through Workload Identity Federation: each run exchanges its
 # GitHub OIDC token for a short-lived token of the publisher service account, and the provider
@@ -27,15 +27,13 @@
 name: Refresh index
 
 on:
-  schedule:
-    # The TSE times are America/Sao_Paulo (UTC-3, no daylight saving since 2019); GitHub
-    # cron is UTC. Each entry runs about forty minutes after the declared publication so the
-    # CDN has the new file and the runner is not queued at the top of the hour.
-    - cron: "5 10 * * *" # 07:05 BRT: polling places, published daily at 06:25
-    - cron: "10 12 * * *" # 09:10 BRT: candidates, published at 08:30
-    - cron: "10 16 * * *" # 13:10 BRT: candidates, published at 12:30
-    - cron: "10 20 * * *" # 17:10 BRT: candidates, published at 16:30
-    - cron: "10 23 * * *" # 20:10 BRT: candidates, published at 19:30
+  # Started at the TSE-aligned times by Cloud Scheduler through the workflow_dispatch API
+  # (Cloud Scheduler -> Workflows refresh-dispatch -> this workflow on main), not by a
+  # schedule: GitHub cron fired hours late or skipped runs (docs/deploy-runbook.md, step G,
+  # which also says why no cron is kept as a fallback). The times, America/Sao_Paulo, each
+  # about forty minutes after the declared publication so the CDN has the new file:
+  #   07:05  polling places, published daily at 06:25
+  #   09:10, 13:10, 17:10, 20:10  candidates, published at 08:30, 12:30, 16:30 and 19:30
   # Off-season, when polling places come from the monthly ATUAL file instead of the election
   # file, is not wired here: the ATUAL ZIP is deliberately absent from the fetch registry
   # (pipeline/datasets.py) during the election year.

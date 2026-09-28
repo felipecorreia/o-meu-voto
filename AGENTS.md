@@ -38,6 +38,9 @@ Pointers only; the content lives in the files below.
   voter questions over REST and MCP. Live capacity (one instance), budget, the Monitoring
   dashboard and the one alert (JSON + idempotent `ops/monitoring/apply.sh`), and why no log
   exclusion is in place: `ops/README.md` (ADR 0011); edit the JSON and re-apply, not the console.
+  `refresh.yml` has no GitHub cron: Cloud Scheduler starts it through Workflows
+  `refresh-dispatch` and `workflow_dispatch` (runbook step G); an edit to
+  `ops/refresh-dispatch/workflow.yaml` is live only after a manual `gcloud workflows deploy`.
 
 ## Sharp edges
 

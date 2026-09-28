@@ -118,10 +118,11 @@ the SHA-256 of the index next to it, and it only ever knows those two files: the
 and CSVs stay in the runner's temporary directory and are removed at the end of the run
 (ADR 0004).
 
-The scheduled workflow [`refresh.yml`](.github/workflows/refresh.yml) runs the chain on the
-cadences the TSE declares (daily after 06:25 for polling places, four times a day after
-08:30, 12:30, 16:30 and 19:30 for candidates, all America/Sao_Paulo) and on
-`workflow_dispatch`; it stops at the first failed stage and writes the fetch statuses, the
+The workflow [`refresh.yml`](.github/workflows/refresh.yml) runs the chain on the cadences
+the TSE declares (daily after 06:25 for polling places, four times a day after 08:30, 12:30,
+16:30 and 19:30 for candidates, all America/Sao_Paulo), started through `workflow_dispatch`
+by Cloud Scheduler, since GitHub's own cron fired hours late (`docs/deploy-runbook.md`, step
+G), or by hand; it stops at the first failed stage and writes the fetch statuses, the
 manifest (generation timestamp per dataset, counts, election, SHA-256), the validation gates
 and the published version to the job summary. It reaches Google Cloud without a stored key,
 through Workload Identity Federation: each run trades its GitHub OIDC token for a short-lived
@@ -153,7 +154,7 @@ uv run python -m br_elections_mcp.pipeline mirror-photos \
   --r2-secret-access-key <secret>
 ```
 
-The scheduled workflow ([`refresh.yml`](.github/workflows/refresh.yml)) runs this stage after
+The refresh workflow ([`refresh.yml`](.github/workflows/refresh.yml)) runs this stage after
 `validate` and before `publish`, reading the R2 credentials from five repository secrets, not
 in the repo and set by the captain: `R2_PUBLIC_DOMAIN`, `R2_ENDPOINT`, `R2_BUCKET`,
 `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`--public-domain` and the `--r2-*` flags above,

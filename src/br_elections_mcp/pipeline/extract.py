@@ -1,7 +1,7 @@
 """``extract``: the one CSV ``build`` reads, taken out of a TSE ZIP.
 
 Not a stage of its own but the glue between ``fetch`` and ``build`` in the
-scheduled workflow. A TSE ZIP carries one CSV per UF plus a ``_BRASIL`` file,
+refresh workflow. A TSE ZIP carries one CSV per UF plus a ``_BRASIL`` file,
 or a single CSV (the municipality crosswalk), plus ``leiame.pdf``; ``build``
 ingests the national file, so this picks the ``_BRASIL`` member when there is
 one, the only CSV otherwise, and refuses to guess between several per-UF files.

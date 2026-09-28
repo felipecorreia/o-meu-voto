@@ -338,8 +338,8 @@ variáveis de ambiente que a configuram estão no README ("Telemetria") e em
 
 ## 5. `pipeline`: separado do serviço
 
-Roda em GitHub Actions agendado (cron alinhado às cadências do TSE) e em `workflow_dispatch`;
-nunca dentro do Cloud Run. Cinco estágios, cada um uma função com entrada e saída em arquivo,
+Roda em GitHub Actions por `workflow_dispatch`, disparado nas cadências do TSE pelo Cloud
+Scheduler (`docs/deploy-runbook.md`, passo G) ou à mão; nunca dentro do Cloud Run. Cinco estágios, cada um uma função com entrada e saída em arquivo,
 para que qualquer estágio rode sozinho:
 
 1. **fetch**: baixa os ZIPs do CDN do TSE por meio de uma porta `Downloader`. Dois adaptadores
