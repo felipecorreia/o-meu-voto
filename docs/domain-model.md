@@ -136,6 +136,12 @@ Invariantes:
   gerado em 23/09/2026) 12.212 chaves (`uf`, `zone`, `number`) abrangem mais de um município,
   e a chave com o município dá 95.601 locais com nome e endereço constantes. O pipeline valida
   essa constância (seção 7).
+- O índice só inclui em `polling_places` o prédio que tem ao menos uma seção principal no
+  turno, ou seja, uma urna. Um local com apenas seções agregadas (1.233 dos 95.601 na chave
+  com o município, arquivo de 2026) fica fora da busca; as seções continuam em
+  `polling_sections`.
+  `section_count`, `accessible_section_count` e `voters` dos locais restantes seguem contando
+  todas as seções cadastradas no local, agregadas incluídas.
 - `latitude` e `longitude` são ambos presentes ou ambos nulos; presentes, estão em [-90, 90] e
   [-180, 180].
 - `previous_place` presente implica aviso "o local mudou" em toda resposta que contenha o
@@ -178,7 +184,8 @@ Invariantes:
   cadastradas em outro local, 1.807 delas num local sem nenhuma seção principal, portanto sem
   urna (e `QT_ELEITOR_ELEICAO_*` é zero nas agregadas, contadas na principal). "Onde voto"
   responde o local da principal; o pipeline valida que a principal existe na mesma zona e
-  turno e é ela mesma principal (seção 7).
+  turno e é ela mesma principal (seção 7). Esses locais sem principal não entram em
+  `polling_places` (3.3), e a resposta de "onde voto" nunca depende deles.
 - Em 2026-09-17 o dataset só tem `NR_TURNO = 1`. Quando o TSE publicar o 2º turno, o índice
   carrega os dois e a chave passa a incluir o turno de fato (§2.1).
 - Entrada humana é normalizada antes da busca: "zona 009" e "seção 0422" viram 9 e 422.

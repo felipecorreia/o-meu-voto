@@ -3,7 +3,9 @@
 The place is the one of the section the voter votes at: the section itself, or its main
 section when it is aggregated. The TSE registers some aggregated sections at a place with
 no main section, hence no ballot box (1,807 of 17,931 in the 2026 file), so the aggregated
-row's own place is not where its voters go.
+row's own place is not where its voters go. Those places are not in ``polling_places``
+(``build`` drops a place with no main section in its round), so this lookup joins the place of
+the main section, which always has one.
 """
 
 from __future__ import annotations

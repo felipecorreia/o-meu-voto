@@ -43,7 +43,8 @@ first real ingestion (2026-09-24) confirmed up to case (`Com acessibilidade`, `A
 `BLOQUEADO`); `DS_TIPO_SECAO_AGREGADA` is `Principal`/`Agregada` in the real file, but the
 `build` stage derives the section kind from `NR_SECAO_PRINCIPAL` and never reads it. Two shapes
 of the real file that these rows do not carry are derived in `tests/conftest.py`
-(`SHARED_PLACE_NUMBER`, `AGGREGATED_ELSEWHERE`, through `with_section_fields`).
+(`SHARED_PLACE_NUMBER`, `AGGREGATED_ELSEWHERE`, through `with_section_fields`); the second
+also leaves place 1099 with no main section, so it is not a `polling_places` row.
 
 ### Candidates (`consulta_cand_2026_BRASIL.csv` and companions)
 

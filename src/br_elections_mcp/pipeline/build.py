@@ -669,6 +669,11 @@ _INSERT_POLLING_PLACES = f"""
     FROM raw_polling_places
     -- A place number is unique per municipality within a zone, not per zone (real 2026 file).
     GROUP BY 1, 2, 3, 4, 5
+    -- A place with no main section in its round has no ballot box, only aggregated sections
+    -- whose voters vote elsewhere (1,233 of 95,601 in the 2026 file): it is not a place to
+    -- search. The sections stay in polling_sections and "where do I vote" reads the place
+    -- of the main section, which always has one.
+    HAVING bool_or({_MAIN_SECTION_SQL} IS NULL)
 """
 
 _NOMINATION_KIND_SQL = """

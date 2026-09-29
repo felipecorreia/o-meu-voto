@@ -546,6 +546,9 @@ Descrição: "Lista os locais de votação de um município, com filtro por bair
 ou endereço, e ordenados pela distância a um ponto quando o cliente informa coordenadas. Para
 quem não sabe a zona e a seção."
 
+O conjunto de locais segue o invariante de `PollingPlace` em
+[domain-model 3.3](domain-model.md#33-pollingplace-local-de-votação).
+
 Input: `uf`, `municipality` (nome ou código TSE), `neighborhood` (opcional), `query`
 (opcional, casa com nome do local ou endereço), `near` (opcional, `{latitude, longitude}`),
 `limit` (1 a 50, padrão 20), `offset` (inteiro não negativo, padrão 0; ADR 0012),

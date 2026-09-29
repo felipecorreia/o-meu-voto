@@ -29,6 +29,7 @@ from tests.conftest import (
     ACRE_CANDIDATES,
     ACRE_CANDIDATES_COMPLEMENTARY,
     ACRE_POLLING_PLACES,
+    AGGREGATED_ELSEWHERE,
     BUILT_AT,
     SHARED_PLACE_NUMBER,
     SUBSTITUTED_STILL_ON_BALLOT,
@@ -89,6 +90,40 @@ def test_index_has_exactly_the_shared_schema_tables(acre_index_dir: Path):
         assert no_coordinates == (None, None, None, "bloqueado")
     finally:
         conn.close()
+
+
+def test_a_place_with_no_main_section_in_its_round_is_not_a_polling_place(tmp_path: Path):
+    # Real TSE data (2026-09-24): 1,233 of 95,601 places carry only aggregated sections.
+    # Section 9/424 (aggregated, main 422) moved to place 1099 leaves place 1099 with no ballot
+    # box: its section stays in polling_sections, but the place is not in polling_places.
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, AGGREGATED_ELSEWHERE)
+    manifest = build_fixture_index(tmp_path / "index", polling_places=polling_places)
+
+    conn = duckdb.connect(str(tmp_path / "index" / INDEX_FILE_NAME), read_only=True)
+    try:
+        places = conn.execute("SELECT count(*) FROM polling_places WHERE number = 1099").fetchone()
+        sections = conn.execute(
+            "SELECT round, section_kind, main_section, place_number FROM polling_sections "
+            "WHERE zone = 9 AND section = 424 ORDER BY round"
+        ).fetchall()
+        without_main = conn.execute(
+            """
+            SELECT count(*) FROM polling_places AS p
+            WHERE NOT EXISTS (
+                SELECT 1 FROM polling_sections AS s
+                WHERE s.uf = p.uf AND s.zone = p.zone AND s.round = p.round
+                  AND s.municipality_tse_code = p.municipality_tse_code
+                  AND s.place_number = p.number AND s.section_kind = 'principal'
+            )
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert places == (0,)
+    assert sections == [(1, "agregada", 422, 1099), (2, "agregada", 422, 1099)]
+    assert without_main == (0,)
+    assert manifest.counts["polling_places"] == 12
+    assert manifest.counts["polling_sections"] == 20
 
 
 def test_municipalities_come_from_the_crosswalk_with_the_abroad_fallback(acre_index_dir: Path):

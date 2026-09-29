@@ -13,7 +13,13 @@ from br_elections_mcp.core.core import (
     SEARCH_PLACES_GUIDANCE,
 )
 from br_elections_mcp.pipeline.datasets import MUNICIPALITIES_TSE_IBGE, POLLING_PLACES_2026
-from tests.conftest import open_core
+from tests.conftest import (
+    ACRE_POLLING_PLACES,
+    AGGREGATED_ELSEWHERE,
+    build_fixture_index,
+    open_core,
+    with_section_fields,
+)
 
 # Scenario 4: abroad
 
@@ -192,6 +198,41 @@ def test_search_without_filters_lists_every_place_of_the_municipality_by_name(co
     assert answer.data.places[2].model_dump()["section_count"] == 3
     assert answer.data.places[2].model_dump()["accessible_section_count"] == 2
     assert answer.data.places[2].model_dump()["voters"] == 260 + 251 + 38
+
+
+def test_search_leaves_out_a_place_with_no_main_section_but_where_do_i_vote_still_resolves(
+    tmp_path: Path,
+):
+    # Real TSE data (2026-09-24): 1,233 of 95,601 places carry only aggregated sections, so
+    # they have no ballot box. Section 9/424 moved to place 1099 leaves it as one of them.
+    polling_places = with_section_fields(ACRE_POLLING_PLACES, tmp_path, AGGREGATED_ELSEWHERE)
+    build_fixture_index(tmp_path / "index", polling_places=polling_places)
+    core = open_core(tmp_path / "index")
+    try:
+        for round_ in (1, 2):
+            everything = core.search_polling_places("ac", "rio branco", round=round_)
+            by_name = core.search_polling_places("ac", "rio branco", query="escola rural")
+            by_address = core.search_polling_places("ac", "rio branco", query="barro vermelho")
+            near = core.search_polling_places(
+                "ac", "rio branco", near={"latitude": -9.97, "longitude": -67.81}
+            )
+            voter = core.find_polling_place("AC", 9, 424, round=round_)
+
+            assert everything.data is not None
+            assert everything.data.total == 3
+            assert 1099 not in [p.number for p in everything.data.places]
+            assert by_name.data is not None
+            assert (by_name.data.total, by_name.data.places) == (0, [])
+            assert by_address.data is not None
+            assert (by_address.data.total, by_address.data.places) == (0, [])
+            assert near.data is not None
+            assert 1099 not in [p.number for p in near.data.places]
+            # The voter of the aggregated section still lands at the main section's place.
+            assert voter.data is not None
+            assert voter.data.place.number == 1000
+            assert voter.data.votes_at_section == 422
+    finally:
+        core.close()
 
 
 def test_search_accepts_the_municipality_by_tse_code(core: Core):
