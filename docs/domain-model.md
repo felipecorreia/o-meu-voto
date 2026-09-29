@@ -123,7 +123,7 @@ apontam para ele.
 | `postal_code` | str, 8 dígitos | `NR_CEP` |
 | `phone` | str ou nulo | `NR_TELEFONE_LOCAL` |
 | `latitude`, `longitude` | float ou nulo | `NR_LATITUDE`, `NR_LONGITUDE` (vírgula decimal; `-1` vira nulo; 2,3% das seções sem coordenada) |
-| `status` | `ativo`, `bloqueado` | `DS_SITU_LOCAL_VOTACAO` |
+| `status` | `ativo`, `bloqueado` | `DS_SITU_LOCAL_VOTACAO`, por seção; `any_value` ao agregar por local |
 | `previous_place` | `PreviousPlace(number, name, address)` ou nulo | `NR_LOCAL_VOTACAO_ORIGINAL`, `NM_LOCAL_VOTACAO_ORIGINAL`, `DS_ENDERECO_LOCVT_ORIGINAL`, só quando `NR_LOCAL_VOTACAO_ORIGINAL != NR_LOCAL_VOTACAO` |
 | `section_count` | int, **derivado** | contagem de seções do local no turno |
 | `accessible_section_count` | int, **derivado** | seções com acessibilidade |
@@ -146,9 +146,9 @@ Invariantes:
   [-180, 180].
 - `previous_place` presente implica aviso "o local mudou" em toda resposta que contenha o
   local (§2.1: 16.713 seções nessa situação).
-- `status = bloqueado` é reportado como vem; a relação exata entre `bloqueado` e a mudança de
-  local não está documentada pelo TSE, e o aviso ao eleitor se apoia em `previous_place`, não em
-  `status` (seção 7).
+- A API expõe `status`, mas seu valor por local é arbitrário quando as seções divergem; a
+  semântica de `bloqueado` permanece desconhecida. O aviso de mudança de local se apoia em
+  `previous_place`, não em `status` (seção 7).
 
 Descartadas: `CD_TIPO_LOCAL`, `CD_SITU_LOCAL_VOTACAO`, `CD_SITU_LOCALIDADE`,
 `DS_SITU_LOCALIDADE` (códigos redundantes com as descrições ou sem uso para o eleitor).
@@ -406,7 +406,8 @@ Regras complementares (detalhadas no ADR 0004):
 
 ## 7. Suposições a validar na primeira ingestão
 
-Cada item vira uma validação do pipeline que bloqueia a publicação do índice.
+As suposições abaixo foram examinadas na primeira ingestão. Quando testáveis por uma regra
+do pipeline, viram validações que bloqueiam a publicação do índice.
 
 - Identidade de PollingPlace como (`uf`, `zone`, `number`), com nome e endereço constantes
   dentro da chave. **Refutada na primeira ingestão (2026-09-24):** a chave inclui o município
@@ -414,8 +415,9 @@ Cada item vira uma validação do pipeline que bloqueia a publicação do índic
 - Seção principal de uma agregada sempre no mesmo local da agregada. **Refutada na primeira
   ingestão (2026-09-24):** a validação agora exige só que a principal exista e seja principal,
   e a resposta usa o local dela (3.4).
-- Semântica de `DS_SITU_LOCAL_VOTACAO = BLOQUEADO` em relação a `*_ORIGINAL`: inspecionar
-  linhas em que o status é `bloqueado` sem mudança de local e vice-versa.
+- Semântica de `DS_SITU_LOCAL_VOTACAO = BLOQUEADO` em relação a `*_ORIGINAL`:
+  **não confirmada na primeira ingestão (2026-09-24).** Há linhas `BLOQUEADO` sem mudança de
+  local e mudanças sem `BLOQUEADO`; o campo varia entre seções do mesmo local (3.3).
 - Textos exatos de `DS_CARGO` para os dez cargos, além de `"DEPUTADO FEDERAL"`. **Confirmados
   na primeira ingestão (2026-09-24):** os dez textos do arquivo real já estavam no mapeamento,
   inclusive `1º SUPLENTE` e `2º SUPLENTE`.

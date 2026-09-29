@@ -124,7 +124,7 @@ export function WhereToVotePage() {
             addressLine2={`${d.municipality.name} - ${d.municipality.uf}${d.place.postal_code ? ` · CEP ${cep(d.place.postal_code)}` : ''}`}
             chips={<><NumberPill n={`Zona ${d.zone} · Seção ${d.section}`} />
               {d.accessibility === 'com_acessibilidade' ? <StatusBadge status="Com acessibilidade" tone="ok" /> : null}
-              {d.place.status === 'bloqueado' ? <StatusBadge status="Local bloqueado pelo TSE" tone="wait" /> : null}
+              {/* Issue #45: hide place status until the TSE field's meaning is settled. */}
               {d.section_kind === 'agregada' ? <StatusBadge status={`Seção agregada: vota na seção ${d.votes_at_section}`} tone="neutral" /> : null}</>}
             action={desktop ? directions : undefined} />
           <section className="voting-section" aria-labelledby="polling-details-title"><h2 id="polling-details-title">Sobre o local</h2>

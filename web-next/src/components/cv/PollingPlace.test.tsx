@@ -39,7 +39,7 @@ describe('polling place accessibility contracts', () => {
     const html = renderToStaticMarkup(<StatusBadge status="Com acessibilidade" kind="bad" tone="ok" />);
     expect(html).toContain('cv-status-ok');
     expect(html).toContain('Com acessibilidade');
-    expect(renderToStaticMarkup(<StatusBadge status="Local bloqueado pelo TSE" tone="wait" />)).toContain('Local bloqueado pelo TSE');
+    expect(renderToStaticMarkup(<StatusBadge status="Aguardando atualização" tone="wait" />)).toContain('Aguardando atualização');
   });
   it('uses tab semantics for rounds while keeping prior radio semantics by default', () => {
     const props = {options: [{value: '1', label: '1º turno'}], value: '1', onChange: () => {}, ariaLabel: 'Turno'};

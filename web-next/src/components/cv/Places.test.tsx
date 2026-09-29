@@ -22,7 +22,7 @@ describe('places by city', () => {
     expect(html).toContain('Escola Centro');
     expect(html).toContain('0,4 km');
     expect(html).toContain('1 seção');
-    expect(html).toContain('Local bloqueado pelo TSE');
+    expect(html).not.toContain('Local bloqueado pelo TSE');
     expect(html).toContain('target="_blank" rel="noopener"');
     expect(html).toContain('query=-9.9%2C-67.8');
   });

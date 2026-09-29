@@ -87,6 +87,9 @@ reach `dist/`.
 | `#/quando` | When | Tela 6: the election calendar with a hero driven by the Brasília civil day (countdown, voting day, closed, over), round tiles, hours strip, office chips, link sections and safe no-data/error states |
 | `#/locais?uf=&mun=<tse_code>[&bairro=][&q=]` | Places by city | Tela 5: municipality suggestions, optional filters, alphabetic or nearby order, place cards and links to Onde voto and Maps |
 
+The place-status badge is hidden on both polling-place routes until the TSE field's meaning is
+understood (issue #45). Section and accessibility chips remain visible.
+
 The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
 `src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
 in `src/components/cv/`. Below 640 px, three or four candidacies show as a pair: "Trazer"
@@ -189,7 +192,7 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `electionPhase`, `daysUntil`, `roundTags`, `formatRoundDate`, `formatWeekday`, `formatVotingHours`, `formatHour`, `formatShortDate`, `calendarDay` | `src/lib/electionDates.ts` | the phase and the countdown on the Brasília civil day (`Intl.DateTimeFormat` with `timeZone`, never the device zone), the tags per phase and the pt-BR formatting the pages share |
 | `officeChips` | `src/labels.ts` | the office chips in the service's order, state and district deputies merged into one |
 | `ComboField` | `src/components/cv/ComboField.tsx` | debounced municipality combobox with keyboard selection and loading/empty/error status |
-| `PlaceCard` | `src/components/cv/PlaceCard.tsx` | one polling place: chips, accessibility and blocked-status badges, Onde voto and Maps links |
+| `PlaceCard` | `src/components/cv/PlaceCard.tsx` | one polling place: section and accessibility chips, Onde voto and Maps links |
 | `LoadMore` | `src/components/cv/LoadMore.tsx` | "Mostrando X de Y" with an offset-page button, announcing how many places were added |
 | `appendPlacesPage`, `PLACES_PAGE_SIZE` | `src/lib/placePages.ts` | fetches the next 20-place offset page and de-duplicates by zone/number before appending |
 | `mapsUrl` | `src/lib/links.ts` | Google Maps search link from a place's coordinates, falling back to its address and municipality |

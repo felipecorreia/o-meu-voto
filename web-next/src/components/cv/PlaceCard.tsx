@@ -22,7 +22,7 @@ export function PlaceCard({place, showDistance, uf, municipality, cardRef}: {
       {place.zone != null ? <NumberPill n={`Zona ${place.zone}`} /> : null}
       <StatusBadge status={`${place.section_count} ${place.section_count === 1 ? 'seção' : 'seções'}`} tone="neutral" />
       {place.accessible_section_count > 0 ? <StatusBadge status={`${place.accessible_section_count} com acessibilidade`} tone="ok" /> : null}
-      {place.status !== 'ativo' ? <StatusBadge status="Local bloqueado pelo TSE" tone="wait" /> : null}
+      {/* Issue #45: hide place status until the TSE field's meaning is settled. */}
     </div>
     <div className="cv-placecard-actions">
       {place.zone != null ? <a className="cv-placecard-section" href={href('/onde-voto', {uf, zone: place.zone})}>Sei minha seção<ChevronRight size={18} aria-hidden /></a> : <span />}
