@@ -1,10 +1,10 @@
 """Command line of the pipeline: `python -m br_elections_mcp.pipeline <stage> ...`.
 
-Stages `fetch`, `build`, `validate`, `publish` and `mirror-photos`, plus two helpers the
-refresh workflow chains them with: `extract` (the CSV out of a fetched ZIP)
-and `current-manifest` (the published manifest, for the count-stability gate
-of `validate`). Each stage reads and writes files, so any one of them can run
-alone (docs/codebase-design.md, section 5).
+Stages `fetch` (the datasets, or the candidate photo ZIPs with `--photos`), `build`, `validate`,
+`publish` and `mirror-photos`, plus two helpers the refresh workflow chains them with: `extract`
+(the CSV out of a fetched ZIP) and `current-manifest` (the published manifest, for the
+count-stability gate of `validate`). Each stage reads and writes files, so any one of them can
+run alone (docs/codebase-design.md, section 5).
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import argparse
 import re
 import sys
 from pathlib import Path
+
+import duckdb
 
 from br_elections_mcp.index_schema import INDEX_FILE_NAME, MANIFEST_FILE_NAME, read_manifest
 from br_elections_mcp.pipeline.bucket import (
@@ -24,6 +26,7 @@ from br_elections_mcp.pipeline.bucket import (
 from br_elections_mcp.pipeline.build import BuildError, apply_photo_urls, build_index
 from br_elections_mcp.pipeline.datasets import (
     CANDIDATE_ASSETS_2026,
+    CANDIDATE_PHOTOS_2026,
     CANDIDATE_SOCIAL_LINKS_2026,
     CANDIDATES_2026,
     CANDIDATES_COMPLEMENTARY_2026,
@@ -42,7 +45,17 @@ from br_elections_mcp.pipeline.downloader import (
 )
 from br_elections_mcp.pipeline.extract import ExtractError, extract_csv
 from br_elections_mcp.pipeline.fetch import FetchError, FetchRecord, fetch
-from br_elections_mcp.pipeline.mirror_photos import MirrorError, PhotoZip, mirror_photos
+from br_elections_mcp.pipeline.mirror_photos import (
+    MirrorError,
+    PhotoZip,
+    mirror_photos,
+    planned_photo_rows,
+)
+from br_elections_mcp.pipeline.photo_integrity import (
+    photo_problems,
+    photo_public_domain_problem,
+    photo_rows_problems,
+)
 from br_elections_mcp.pipeline.publish import PublishError, download_current_manifest, publish
 from br_elections_mcp.pipeline.validate import ValidationError, validate
 
@@ -57,12 +70,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "fetch", help="download the TSE ZIPs and write fetch.json into --output"
     )
     fetch_parser.add_argument("--output", type=Path, required=True, help="directory for the ZIPs")
-    fetch_parser.add_argument(
+    fetch_selection = fetch_parser.add_mutually_exclusive_group()
+    fetch_selection.add_argument(
         "--dataset",
         action="append",
         dest="datasets",
         choices=[dataset.id for dataset in DATASETS],
         help="dataset id to fetch (repeatable; default: all)",
+    )
+    fetch_selection.add_argument(
+        "--photos",
+        action="store_true",
+        help="fetch the per-UF candidate photo ZIPs (for mirror-photos) instead of the datasets",
     )
     fetch_parser.add_argument(
         "--from-dir",
@@ -148,6 +167,10 @@ def _build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "--previous-manifest", type=Path, help="manifest.json of the previously published index"
     )
+    validate_parser.add_argument(
+        "--photo-public-domain",
+        help="require photo_url to use this exact public base URL and its content-addressed key",
+    )
 
     extract_parser = stages.add_parser(
         "extract", help="extract the _BRASIL (or only) CSV of a TSE ZIP and print its path"
@@ -181,7 +204,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--zips-dir",
         type=Path,
         required=True,
-        help="directory of already-downloaded foto_cand<year>_<UF>_div.zip files",
+        help="directory of the foto_cand<year>_<UF>_div.zip files (`fetch --photos`), all of them",
     )
     mirror_parser.add_argument(
         "--index-dir",
@@ -222,7 +245,12 @@ def _bucket_client(args: argparse.Namespace) -> BucketClient:
 
 
 def _run_fetch(args: argparse.Namespace) -> int:
-    datasets = tuple(dataset_by_id(name) for name in args.datasets) if args.datasets else DATASETS
+    if args.photos:
+        datasets = CANDIDATE_PHOTOS_2026
+    elif args.datasets:
+        datasets = tuple(dataset_by_id(name) for name in args.datasets)
+    else:
+        datasets = DATASETS
     downloader: Downloader
     if args.from_dir is not None:
         downloader = LocalFilesDownloader(args.from_dir)
@@ -279,6 +307,7 @@ def _run_validate(args: argparse.Namespace) -> int:
             args.elections,
             args.output_dir,
             previous_manifest=previous_manifest,
+            photo_public_domain=args.photo_public_domain,
         )
     except ValidationError as exc:
         for gate in exc.report.failed:
@@ -338,6 +367,54 @@ def _iter_photo_zips(zips_dir: Path) -> list[PhotoZip]:
 
 def _run_mirror_photos(args: argparse.Namespace) -> int:
     zips = _iter_photo_zips(args.zips_dir)
+    missing = sorted(
+        {dataset.file_name for dataset in CANDIDATE_PHOTOS_2026} - {zip_.path.name for zip_ in zips}
+    )
+    if missing:
+        # Sync deletes every mirrored photo the given ZIPs do not have (ADR 0005): a partial set
+        # would wipe the photos of the missing UFs.
+        print(
+            f"mirror-photos refused: {len(missing)} of {len(CANDIDATE_PHOTOS_2026)} photo ZIPs "
+            f"missing from {args.zips_dir} ({', '.join(missing)}); "
+            "a partial set would delete the photos already mirrored",
+            file=sys.stderr,
+        )
+        return 1
+    domain_problem = photo_public_domain_problem(args.public_domain)
+    if domain_problem:
+        print(f"mirror-photos failed: {domain_problem}", file=sys.stderr)
+        return 1
+    problems = photo_problems(args.index_dir / INDEX_FILE_NAME, args.public_domain)
+    if problems:
+        print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
+        return 1
+    conn = duckdb.connect(str(args.index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute("SELECT DISTINCT sq_candidato, uf FROM candidates").fetchall()
+    finally:
+        conn.close()
+    candidate_ufs: dict[int, str] = {}
+    for sq_candidato, uf in rows:
+        previous_uf = candidate_ufs.get(sq_candidato)
+        if previous_uf is not None and previous_uf != uf:
+            print(
+                f"mirror-photos failed: sq_candidato {sq_candidato} has conflicting index UFs "
+                f"{previous_uf} and {uf}",
+                file=sys.stderr,
+            )
+            return 1
+        candidate_ufs[sq_candidato] = uf
+    try:
+        planned_rows = planned_photo_rows(
+            zips, public_domain=args.public_domain, candidate_ufs=candidate_ufs
+        )
+    except MirrorError as exc:
+        print(f"mirror-photos failed: {exc}", file=sys.stderr)
+        return 1
+    problems = photo_rows_problems(planned_rows, args.public_domain)
+    if problems:
+        print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
+        return 1
     bucket = R2BucketClient(
         endpoint_url=args.r2_endpoint,
         bucket=args.r2_bucket,
@@ -346,11 +423,17 @@ def _run_mirror_photos(args: argparse.Namespace) -> int:
         prefix=args.r2_prefix,
     )
     try:
-        result = mirror_photos(zips, bucket, public_domain=args.public_domain)
+        result = mirror_photos(
+            zips, bucket, public_domain=args.public_domain, candidate_ufs=candidate_ufs
+        )
     except MirrorError as exc:
         print(f"mirror-photos failed: {exc}", file=sys.stderr)
         return 1
-    apply_photo_urls(args.index_dir, result.photo_urls)
+    apply_photo_urls(args.index_dir, result.photo_urls, result.photo_sha256s)
+    problems = photo_problems(args.index_dir / INDEX_FILE_NAME, args.public_domain)
+    if problems:
+        print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
+        return 1
     print(
         f"uploaded {len(result.uploaded)}, skipped {len(result.skipped)}, "
         f"removed {len(result.removed)}, photo_url set for {len(result.photo_urls)} candidacies"

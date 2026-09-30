@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -198,8 +199,9 @@ def test_fewer_than_two_left_is_not_found_with_guidance(core: Core):
 def test_the_photo_url_of_each_entry_comes_from_the_mirror(tmp_path: Path, acre_index_dir: Path):
     index_dir = tmp_path / "index"
     shutil.copytree(acre_index_dir, index_dir)
-    photo = "https://fotos.example.org/AC/FAC10000000001_div.jpg"
-    apply_photo_urls(index_dir, {GOVERNOR_45: photo})
+    digest = hashlib.sha256(b"photo").hexdigest()
+    photo = f"https://fotos.example.org/AC/FAC10000000001_div-{digest}.jpg"
+    apply_photo_urls(index_dir, {GOVERNOR_45: photo}, {GOVERNOR_45: digest})
     core = open_core(index_dir)
     try:
         thirteen, forty_five = data(core.compare_candidates("AC", "governador")).candidates

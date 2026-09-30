@@ -186,24 +186,33 @@ def build_index(
     return manifest
 
 
-def apply_photo_urls(index_dir: Path, photo_urls: Mapping[int, str]) -> None:
-    """Set ``photo_url`` on an already-built index for the candidacies of ``photo_urls``.
+def apply_photo_urls(
+    index_dir: Path, photo_urls: Mapping[int, str], photo_sha256s: Mapping[int, str]
+) -> None:
+    """Set ``photo_url`` and ``photo_sha256`` on an already-built index.
 
-    Called by the ``mirror_photos`` stage after it has synced the JPEGs to R2, with one
-    URL per ``sq_candidato`` currently mirrored. A photo has no round (docs/domain-model.md,
-    3.5): every round of a mirrored ``sq_candidato`` gets the same URL. Everything else keeps
-    the ``NULL`` that ``build_index`` wrote.
+    Called by the ``mirror_photos`` stage after it has synced the JPEGs to R2, with one URL and
+    one SHA-256 (of the bytes in the TSE ZIP, the one the URL's key embeds, ADR 0013) per
+    ``sq_candidato`` currently mirrored. A photo has no round (docs/domain-model.md, 3.5):
+    every round of a mirrored ``sq_candidato`` gets the same pair. Everything else keeps the
+    ``NULL`` that ``build_index`` wrote. Raises ``ValueError`` when the two mappings do not
+    cover the same candidacies.
 
     Mutating ``index.duckdb`` changes its SHA-256, so the manifest next to it is rewritten
     with the new digest: otherwise ``publish`` would refuse the pair as mismatched (the
     check that PublishError enforces) the next time this index is published.
     """
+    if photo_urls.keys() != photo_sha256s.keys():
+        raise ValueError("photo_urls and photo_sha256s must cover the same candidacies")
     index_path = index_dir / INDEX_FILE_NAME
     conn = duckdb.connect(str(index_path))
     try:
         conn.executemany(
-            "UPDATE candidates SET photo_url = ? WHERE sq_candidato = ?",
-            [(url, sq_candidato) for sq_candidato, url in photo_urls.items()],
+            "UPDATE candidates SET photo_url = ?, photo_sha256 = ? WHERE sq_candidato = ?",
+            [
+                (url, photo_sha256s[sq_candidato], sq_candidato)
+                for sq_candidato, url in photo_urls.items()
+            ],
         )
     finally:
         conn.close()

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import zipfile
 from pathlib import Path
 
 import pytest
 
 from br_elections_mcp.index_schema import INDEX_FILE_NAME, MANIFEST_FILE_NAME, read_manifest
 from br_elections_mcp.pipeline.__main__ import main
+from br_elections_mcp.pipeline.datasets import CANDIDATE_PHOTOS_2026
+from br_elections_mcp.pipeline.fetch import FETCH_RECORD_FILE
 from tests.conftest import (
     ACRE_CANDIDATE_ASSETS,
     ACRE_CANDIDATES,
@@ -113,8 +117,6 @@ def test_validate_command_reports_a_failed_gate_and_returns_1(tmp_path: Path, ca
 
 
 def test_extract_command_prints_the_extracted_csv_path(tmp_path: Path, capsys):
-    import zipfile
-
     archive = tmp_path / "consulta_cand_2026.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("consulta_cand_2026_AC.csv", "ac")
@@ -203,3 +205,87 @@ def test_current_manifest_command_succeeds_without_a_file_when_nothing_is_publis
     )
     assert not target.exists()
     assert "no manifest" in capsys.readouterr().out
+
+
+def _photo_zips(directory: Path, *, skip: tuple[str, ...] = ()) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for dataset in CANDIDATE_PHOTOS_2026:
+        if dataset.file_name in skip:
+            continue
+        with zipfile.ZipFile(directory / dataset.file_name, "w") as zf:
+            zf.writestr("leiame.pdf", b"readme")
+
+
+def test_fetch_photos_command_downloads_the_28_photo_zips_and_writes_the_record(
+    tmp_path: Path, capsys
+):
+    source, output = tmp_path / "source", tmp_path / "photos"
+    _photo_zips(source)
+
+    assert main(["fetch", "--photos", "--output", str(output), "--from-dir", str(source)]) == 0
+
+    record = json.loads((output / FETCH_RECORD_FILE).read_text())
+    assert len(record["datasets"]) == 28
+    assert {item["status"] for item in record["datasets"]} == {200}
+    assert len(list(output.glob("foto_cand2026_*_div.zip"))) == 28
+    assert "candidate_photos_2026_BR: 200" in capsys.readouterr().out
+
+
+def test_fetch_photos_command_fails_when_a_zip_is_missing(tmp_path: Path, capsys):
+    source, output = tmp_path / "source", tmp_path / "photos"
+    _photo_zips(source, skip=("foto_cand2026_RJ_div.zip",))
+
+    assert main(["fetch", "--photos", "--output", str(output), "--from-dir", str(source)]) == 1
+
+    assert "candidate_photos_2026_RJ: 404" in capsys.readouterr().err
+    assert not (output / "foto_cand2026_RJ_div.zip").exists()
+    assert json.loads((output / FETCH_RECORD_FILE).read_text())["datasets"]
+
+
+def test_fetch_rejects_photos_together_with_a_dataset(tmp_path: Path):
+    with pytest.raises(SystemExit):
+        main(["fetch", "--photos", "--dataset", "candidates_2026", "--output", str(tmp_path)])
+
+
+def _mirror_args(zips_dir: Path, index_dir: Path) -> list[str]:
+    return [
+        "mirror-photos",
+        "--zips-dir",
+        str(zips_dir),
+        "--index-dir",
+        str(index_dir),
+        "--public-domain",
+        "https://fotos.example.org",
+        "--r2-endpoint",
+        "https://example.invalid",
+        "--r2-bucket",
+        "bucket",
+        "--r2-access-key-id",
+        "id",
+        "--r2-secret-access-key",
+        "secret",
+    ]
+
+
+def test_mirror_photos_command_refuses_an_empty_zips_directory(tmp_path: Path, capsys):
+    zips = tmp_path / "photos"
+    zips.mkdir()
+
+    assert main(_mirror_args(zips, tmp_path / "index")) == 1
+
+    assert "28 of 28 photo ZIPs missing" in capsys.readouterr().err
+
+
+def test_mirror_photos_command_refuses_a_partial_set_before_touching_the_bucket(
+    tmp_path: Path, capsys
+):
+    zips = tmp_path / "photos"
+    _photo_zips(zips, skip=("foto_cand2026_SP_div.zip", "foto_cand2026_BR_div.zip"))
+
+    assert main(_mirror_args(zips, tmp_path / "index")) == 1
+
+    err = capsys.readouterr().err
+    assert "2 of 28 photo ZIPs missing" in err
+    assert "foto_cand2026_SP_div.zip" in err
+    assert "foto_cand2026_BR_div.zip" in err
+    assert "delete the photos already mirrored" in err

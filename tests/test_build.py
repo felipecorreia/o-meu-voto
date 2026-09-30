@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -554,38 +555,49 @@ def test_a_freshly_built_index_has_no_photo_url(tmp_path: Path):
     assert rows == [(None,)]
 
 
-def test_apply_photo_urls_sets_the_column_for_the_matching_candidacy_only(tmp_path: Path):
+PHOTO_SHA256 = hashlib.sha256(b"photo").hexdigest()
+PHOTO_URL = f"https://fotos.example.org/FAC10000000001_div-{PHOTO_SHA256}.jpg"
+
+
+def test_apply_photo_urls_sets_the_columns_for_the_matching_candidacy_only(tmp_path: Path):
     build_fixture_index(tmp_path / "out")
 
-    apply_photo_urls(
-        tmp_path / "out", {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"}
-    )
+    apply_photo_urls(tmp_path / "out", {10000000001: PHOTO_URL}, {10000000001: PHOTO_SHA256})
 
     conn = duckdb.connect(str(tmp_path / "out" / INDEX_FILE_NAME), read_only=True)
     try:
-        rows = dict(conn.execute("SELECT sq_candidato, photo_url FROM candidates").fetchall())
+        rows = {
+            sq: (url, digest)
+            for sq, url, digest in conn.execute(
+                "SELECT sq_candidato, photo_url, photo_sha256 FROM candidates"
+            ).fetchall()
+        }
     finally:
         conn.close()
-    assert rows[10000000001] == "https://fotos.example.org/FAC10000000001_div.jpg"
-    assert rows[10000000002] is None
+    assert rows[10000000001] == (PHOTO_URL, PHOTO_SHA256)
+    assert rows[10000000002] == (None, None)
+
+
+def test_apply_photo_urls_refuses_urls_and_digests_that_do_not_cover_the_same_candidacies(
+    tmp_path: Path,
+):
+    build_fixture_index(tmp_path / "out")
+
+    with pytest.raises(ValueError, match="same candidacies"):
+        apply_photo_urls(tmp_path / "out", {10000000001: PHOTO_URL}, {})
 
 
 def test_photo_url_reaches_list_candidates_and_get_candidate_through_a_real_core(tmp_path: Path):
     build_fixture_index(tmp_path / "out")
-    apply_photo_urls(
-        tmp_path / "out", {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"}
-    )
+    apply_photo_urls(tmp_path / "out", {10000000001: PHOTO_URL}, {10000000001: PHOTO_SHA256})
     core = open_core(tmp_path / "out")
     try:
         list_answer = core.list_candidates("AC", "governador")
         by_number = {c.number: c for c in list_answer.data.candidates}
-        assert by_number[45].photo_url == "https://fotos.example.org/FAC10000000001_div.jpg"
+        assert by_number[45].photo_url == PHOTO_URL
         assert by_number[13].photo_url is None
 
         profile_answer = core.get_candidate(sq_candidato=10000000001)
-        assert (
-            profile_answer.data.candidate.photo_url
-            == "https://fotos.example.org/FAC10000000001_div.jpg"
-        )
+        assert profile_answer.data.candidate.photo_url == PHOTO_URL
     finally:
         core.close()

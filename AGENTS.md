@@ -80,11 +80,13 @@ Pointers only; the content lives in the files below.
   (`pipeline/casing.py`/`build.py`, `codebase-design.md` section 7), not in `core`: the
   index already stores the display value, so a `core` warning that quotes a name inherits the
   casing for free. Add a name-bearing column to `_CASED_COLUMNS` there, not to `core`.
-- The candidate photo ZIPs answer at
-  `https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`
-  (HEAD 200 on 2026-09-24), but nothing downloads them yet: `pipeline/mirror_photos.py` takes
-  the ZIPs as file input (`PhotoZip`) and wiring the download into `refresh.yml` is a
-  follow-up (README, "Mirroring candidate photos to R2").
+- The candidate photo ZIPs (27 UFs plus `BR`, each with a `leiame.pdf` beside the JPEGs) are
+  fetched by `fetch --photos` (`CANDIDATE_PHOTOS_2026`, not in `DATASETS`) and mirrored by
+  `mirror-photos`, which refuses a set missing any of the 28 because sync deletes what it is
+  not given, and never overwrites an object: keys carry the photo's SHA-256, the index records
+  it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013). `refresh.yml` runs
+  both only once the five `R2_*` secrets exist; until then every `photo_url` is null in
+  production (README, "Mirroring candidate photos to R2"; issue #43).
 
 ## Agent skills
 

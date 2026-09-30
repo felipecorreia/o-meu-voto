@@ -16,9 +16,11 @@
 # Optional repository variable:
 #   INDEX_BUCKET_PREFIX             object name prefix inside the bucket (default: none)
 #
-# Secrets for the mirror-photos step (see README, "Mirroring candidate photos to R2"), all
-# optional: until the captain provisions them, the step logs why and skips, and the rest of
-# the refresh runs as before.
+# Secrets for the photo steps (see README, "Mirroring candidate photos to R2"), all optional:
+# until the captain provisions them, the download of the photo ZIPs and the mirror-photos step
+# log why and skip, and the rest of the refresh runs as before. Once they are set, the photo
+# ZIPs are downloaded before build and any failure there, or an incomplete set, fails the run
+# before publish: the index is never published without photos that R2 still holds.
 #   R2_ENDPOINT             R2 account S3 endpoint URL
 #   R2_BUCKET               R2 bucket name
 #   R2_ACCESS_KEY_ID        R2 access key id
@@ -99,8 +101,32 @@ jobs:
           echo "WORK=$WORK" >> "$GITHUB_ENV"
           mkdir -p "$WORK/zips" "$WORK/csv" "$WORK/index" "$WORK/previous" "$WORK/photos"
 
+      - name: Decide whether to mirror candidate photos
+        # All five R2 secrets or none: the photo ZIPs (~125 MB) are only worth downloading
+        # when the mirror-photos step can use them.
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$R2_ACCESS_KEY_ID" ] ||
+             [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_PUBLIC_DOMAIN" ]; then
+            echo "mirror-photos: R2 secrets not set yet, photos are neither downloaded nor mirrored (see README, 'Mirroring candidate photos to R2')"
+            echo "MIRROR_PHOTOS=false" >> "$GITHUB_ENV"
+          else
+            echo "MIRROR_PHOTOS=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Fetch the TSE ZIPs
         run: uv run python -m br_elections_mcp.pipeline fetch --output "$WORK/zips"
+
+      - name: Fetch the candidate photo ZIPs
+        # The 27 UFs plus BR (the president), with a fetch.json next to them. A non-200 for any
+        # of them fails the run here, before anything is published.
+        if: env.MIRROR_PHOTOS == 'true'
+        run: uv run python -m br_elections_mcp.pipeline fetch --photos --output "$WORK/photos"
 
       - name: Extract the CSVs build reads
         run: |
@@ -140,6 +166,9 @@ jobs:
           if [ -f "$WORK/previous/manifest.json" ]; then
             ARGS+=(--previous-manifest "$WORK/previous/manifest.json")
           fi
+          if [ "$MIRROR_PHOTOS" = true ]; then
+            ARGS+=(--photo-public-domain "")
+          fi
           uv run python -m br_elections_mcp.pipeline validate \
             --polling-places "$POLLING_PLACES_CSV" \
             --municipalities "$MUNICIPALITIES_CSV" \
@@ -153,10 +182,9 @@ jobs:
             "${ARGS[@]}"
 
       - name: Mirror candidate photos to R2
-        # foto_cand<year>_<UF>_div.zip is not fetched by this workflow yet (README,
-        # "Mirroring candidate photos to R2"): $WORK/photos stays empty until that is wired,
-        # so this step logs why and skips rather than syncing an empty set, which would
-        # delete every photo already mirrored to R2.
+        # mirror-photos itself refuses a directory that lacks any of the 28 ZIPs, since syncing
+        # a partial set would delete the photos already mirrored to R2 for the missing UFs.
+        if: env.MIRROR_PHOTOS == 'true'
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -164,15 +192,6 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
         run: |
-          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$R2_ACCESS_KEY_ID" ] ||
-             [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_PUBLIC_DOMAIN" ]; then
-            echo "mirror-photos: R2 secrets not set yet, skipping (see README, 'Mirroring candidate photos to R2')"
-            exit 0
-          fi
-          if ! find "$WORK/photos" -maxdepth 1 -name 'foto_cand*_div.zip' -print -quit | grep -q .; then
-            echo "mirror-photos: no photo ZIPs in $WORK/photos yet, skipping"
-            exit 0
-          fi
           uv run python -m br_elections_mcp.pipeline mirror-photos \
             --zips-dir "$WORK/photos" \
             --index-dir "$WORK/index" \
@@ -200,6 +219,13 @@ jobs:
               echo "| Dataset | Status | Last-Modified | Size (bytes) |"
               echo "|---|---|---|---|"
               jq -r '.datasets[] | "| \(.dataset) | \(.status // "-") | \(.last_modified // "-") | \(.size // "-") |"' "$WORK/zips/fetch.json"
+              echo
+            fi
+            if [ -f "$WORK/photos/fetch.json" ]; then
+              echo "### Photo ZIPs"
+              echo
+              jq -r '"- \(.datasets | map(select(.status == 200)) | length) of \(.datasets | length) answered 200, \(.datasets | map(.size // 0) | add) bytes"' "$WORK/photos/fetch.json"
+              jq -r '.datasets[] | select(.status != 200) | "- not fetched: \(.dataset) (\(.status // .error))"' "$WORK/photos/fetch.json"
               echo
             fi
             if [ -f "$WORK/index/manifest.json" ]; then

@@ -3,7 +3,8 @@
 Every entry is one CC-BY resource of the Portal de Dados Abertos do TSE
 (docs/domain-model.md, section 2). The CKAN dataset page is what every answer
 cites as `source.dataset_url`; the ZIP URL on the CDN is what `fetch` downloads.
-Photos are not here: they belong to the mirror_photos stage.
+The per-UF photo ZIPs are in `CANDIDATE_PHOTOS_2026`, not in `DATASETS`: `fetch --photos`
+downloads them for the mirror_photos stage, and the index build never reads them.
 """
 
 from __future__ import annotations
@@ -11,8 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from br_elections_mcp.domain import UF
+
 CKAN_BASE_URL = "https://dadosabertos.tse.jus.br/dataset"
 CDN_BASE_URL = "https://cdn.tse.jus.br/estatistica/sead/odsele"
+PHOTOS_CDN_BASE_URL = "https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos"
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +104,26 @@ POLLING_PLACES_CURRENT = Dataset(
     file_name="eleitorado_local_votacao_ATUAL.zip",
     url=f"{CDN_BASE_URL}/eleitorado_locais_votacao/eleitorado_local_votacao_ATUAL.zip",
     election_file=False,
+)
+
+
+def candidate_photos_dataset(uf: UF) -> Dataset:
+    """The photo ZIP of one UF (``BR`` holds the president's), as the CDN serves it."""
+    file_name = f"foto_cand2026_{uf}_div.zip"
+    return Dataset(
+        id=f"candidate_photos_2026_{uf}",
+        ckan_dataset="candidatos-2026",
+        title=f"Fotos de candidatos - 2026 - {uf}",
+        file_name=file_name,
+        url=f"{PHOTOS_CDN_BASE_URL}/{file_name}",
+    )
+
+
+# One ZIP per UF that has candidacies: the 26 states, DF and BR (ZZ has none). The CDN answered
+# 200 for all 27 and for BR on 2026-09-29. Complete or nothing: `mirror-photos` deletes every
+# mirrored photo that is not in the set it is given (ADR 0005).
+CANDIDATE_PHOTOS_2026: tuple[Dataset, ...] = tuple(
+    candidate_photos_dataset(uf) for uf in sorted(UF) if uf is not UF.ZZ
 )
 
 DATASETS: tuple[Dataset, ...] = (

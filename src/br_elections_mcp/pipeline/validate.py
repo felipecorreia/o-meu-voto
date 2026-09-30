@@ -41,6 +41,7 @@ from br_elections_mcp.index_schema import (
 )
 from br_elections_mcp.pipeline.build import OFFICE_BY_DS_CARGO, office_key
 from br_elections_mcp.pipeline.datasets import SourceFile
+from br_elections_mcp.pipeline.photo_integrity import photo_problems
 
 VALIDATION_REPORT_FILE = "validation_report.json"
 VALIDATION_REPORT_VERSION = 1
@@ -142,6 +143,7 @@ def validate(
     output_dir: Path,
     *,
     previous_manifest: Manifest | None = None,
+    photo_public_domain: str | None = None,
     now: Callable[[], dt.datetime] = _utcnow,
 ) -> ValidationReport:
     """Run every gate and write ``validation_report.json`` under ``output_dir``.
@@ -201,6 +203,10 @@ def validate(
             ),
             _run("round_2_scope", lambda: _gate_round_2_scope(conn, with_round=with_round)),
             _run("municipality_crosswalk_scope", lambda: _gate_municipality_crosswalk_scope(conn)),
+            _run(
+                "photo_chain",
+                lambda: _gate_photo_chain(index_dir / INDEX_FILE_NAME, photo_public_domain),
+            ),
         )
     finally:
         conn.close()
@@ -659,4 +665,14 @@ def _gate_municipality_crosswalk_scope(conn: duckdb.DuckDBPyConnection) -> GateR
         "municipality_crosswalk_scope",
         "pass",
         "every municipality missing from the crosswalk is abroad",
+    )
+
+
+def _gate_photo_chain(index_path: Path, public_domain: str | None = None) -> GateResult:
+    """Every mirrored photo's URL carries the SHA-256 the index records for it (ADR 0013)."""
+    problems = photo_problems(index_path, public_domain)
+    if problems:
+        return GateResult("photo_chain", "fail", "; ".join(problems))
+    return GateResult(
+        "photo_chain", "pass", "every photo_url carries its recorded photo_sha256 (or none is set)"
     )

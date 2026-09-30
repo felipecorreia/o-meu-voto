@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from br_elections_mcp.domain import UF
 from br_elections_mcp.pipeline.datasets import (
+    CANDIDATE_PHOTOS_2026,
     CANDIDATES_2026,
     DATASETS,
     MUNICIPALITIES_TSE_IBGE,
@@ -182,3 +184,64 @@ def test_local_files_downloader_matches_the_file_by_url_basename(tmp_path):
     assert result.ok
     assert result.size == 3
     assert (tmp_path / "dest.zip").read_bytes() == b"zip"
+
+
+@pytest.fixture
+def photos_source_dir(tmp_path: Path) -> Path:
+    """A directory with a photo ZIP for every UF, as the TSE CDN would serve."""
+    source = tmp_path / "photos-source"
+    source.mkdir()
+    for dataset in CANDIDATE_PHOTOS_2026:
+        _make_zip(source / dataset.file_name, "leiame.pdf", dataset.id.encode())
+    return source
+
+
+def test_photo_registry_has_one_zip_per_uf_with_candidacies_and_none_for_abroad():
+    ufs = {dataset.id.removeprefix("candidate_photos_2026_") for dataset in CANDIDATE_PHOTOS_2026}
+
+    assert len(CANDIDATE_PHOTOS_2026) == 28
+    assert ufs == {uf.value for uf in UF} - {"ZZ"}
+    assert {"BR", "DF", "SP"} <= ufs
+    assert len({d.file_name for d in CANDIDATE_PHOTOS_2026}) == 28
+    for dataset in CANDIDATE_PHOTOS_2026:
+        assert dataset.ckan_dataset == "candidatos-2026"
+        assert dataset.url == (
+            "https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/"
+            f"foto_cand2026_{dataset.id[-2:]}_div.zip"
+        )
+        assert dataset.file_name == dataset.url.rsplit("/", 1)[1]
+
+
+def test_photo_zips_are_not_part_of_the_default_datasets():
+    assert not {d.id for d in CANDIDATE_PHOTOS_2026} & {d.id for d in DATASETS}
+
+
+def test_fetch_downloads_every_photo_zip_and_records_status_last_modified_and_size(
+    photos_source_dir, tmp_path
+):
+    output = tmp_path / "photos"
+
+    record = fetch(CANDIDATE_PHOTOS_2026, output, LocalFilesDownloader(photos_source_dir), now=_now)
+
+    assert record.ok
+    assert sorted(p.name for p in output.iterdir()) == sorted(
+        [FETCH_RECORD_FILE, *(d.file_name for d in CANDIDATE_PHOTOS_2026)]
+    )
+    assert len(record.datasets) == 28
+    ac = next(item for item in record.datasets if item.dataset == "candidate_photos_2026_AC")
+    assert ac.status == 200
+    assert ac.size == (photos_source_dir / "foto_cand2026_AC_div.zip").stat().st_size
+    assert ac.last_modified is not None
+    assert FetchRecord.read(output / FETCH_RECORD_FILE) == record
+
+
+def test_fetch_fails_on_a_missing_photo_zip_and_records_which(photos_source_dir, tmp_path):
+    (photos_source_dir / "foto_cand2026_BR_div.zip").unlink()
+    output = tmp_path / "photos"
+
+    with pytest.raises(FetchError) as excinfo:
+        fetch(CANDIDATE_PHOTOS_2026, output, LocalFilesDownloader(photos_source_dir), now=_now)
+
+    failed = excinfo.value.record.failed
+    assert [(item.dataset, item.status) for item in failed] == [("candidate_photos_2026_BR", 404)]
+    assert not (output / "foto_cand2026_BR_div.zip").exists()

@@ -18,3 +18,5 @@ do repositório), com a seção indicada.
 | [0009](0009-titulo-transient-join-key-and-asset-free-text.md) | The título as a transient join key for asset growth; asset free text dropped (amends 0004) |
 | [0010](0010-edge-secret-instead-of-cloudflare-ranges.md) | Edge secret instead of Cloudflare IP ranges; `CF-Connecting-IP` trusted on a valid secret (amends 0005) |
 | [0011](0011-one-instance-budget-and-monitoring.md) | One Cloud Run instance, a R$ 150 budget and monitoring as code; the voter-location log exclusion was tried and removed (amends 0005) |
+| [0012](0012-polling-places-pagination.md) | Paginate polling places with a stable order |
+| [0013](0013-content-addressed-photo-mirror.md) | Content-addressed photo objects and a recorded digest: a swapped photo cannot go unnoticed (amends 0005) |

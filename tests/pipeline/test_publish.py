@@ -141,7 +141,9 @@ def test_publish_refuses_a_manifest_whose_sha256_does_not_match_the_index(index_
 def test_publish_accepts_the_manifest_apply_photo_urls_rewrote(index_dir: Path):
     """apply_photo_urls mutates index.duckdb in place; its manifest rewrite must keep the
     two in sync, or publish would refuse the pair the next time mirror-photos runs."""
-    apply_photo_urls(index_dir, {10000000001: "https://fotos.example.org/FAC10000000001_div.jpg"})
+    digest = hashlib.sha256(b"photo").hexdigest()
+    url = f"https://fotos.example.org/FAC10000000001_div-{digest}.jpg"
+    apply_photo_urls(index_dir, {10000000001: url}, {10000000001: digest})
     manifest = read_manifest(index_dir / MANIFEST_FILE_NAME)
     assert (
         manifest.index_sha256

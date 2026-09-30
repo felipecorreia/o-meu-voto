@@ -362,7 +362,8 @@ para que qualquer estágio rode sozinho:
    eleição (o arquivo mensal `ATUAL` o pula, porque não pertence a uma eleição do YAML); e as
    suposições listadas na seção 7 do modelo de domínio.
 4. **mirror_photos**: sincroniza os JPEGs por UF com o bucket R2, gravando só o que o TSE
-   publica e removendo o que sumiu da fonte (ADR 0004, ADR 0005).
+   publica e removendo o que sumiu da fonte (ADR 0004, ADR 0005). A integridade das fotos e
+   a janela entre a remoção e a publicação são decididas no ADR 0013.
 5. **publish**: envia `index.duckdb` e `manifest.json` (`generated_at` por dataset,
    `index_built_at`, `election_year` e `election_dates` por turno presente, contagens,
    SHA-256) para o bucket do índice, mantendo as versões anteriores para rollback. A eleição

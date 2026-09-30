@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 INDEX_FILE_NAME = "index.duckdb"
 MANIFEST_FILE_NAME = "manifest.json"
@@ -264,6 +264,7 @@ TABLES: dict[str, str] = {
             marital_status         VARCHAR,
             education              VARCHAR,
             photo_url              VARCHAR,
+            photo_sha256           VARCHAR,
             election_year          INTEGER NOT NULL,
             election_date          DATE NOT NULL,
             PRIMARY KEY (sq_candidato, round)

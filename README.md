@@ -141,11 +141,14 @@ not wired into the workflow yet.
 
 ### Mirroring candidate photos to R2
 
-The `mirror-photos` stage syncs the per-UF candidate photo ZIPs
-(`foto_cand<year>_<UF>_div.zip`) to an R2 bucket and writes `photo_url` into an already-built
-`index.duckdb` (ADR 0004, ADR 0005):
+Two stages carry the per-UF candidate photo ZIPs (`foto_cand<year>_<UF>_div.zip`) to an R2
+bucket and write `photo_url` into an already-built `index.duckdb` (ADR 0004, ADR 0005).
+`fetch --photos` downloads them through the same `Downloader` port as the datasets (ADR 0003)
+and leaves a `fetch.json` next to them, with URL, status, `Last-Modified` and size per file;
+`mirror-photos` syncs them:
 
 ```sh
+uv run python -m br_elections_mcp.pipeline fetch --photos --output /tmp/tse-photos
 uv run python -m br_elections_mcp.pipeline mirror-photos \
   --zips-dir /tmp/tse-photos \
   --index-dir data/index \
@@ -156,24 +159,64 @@ uv run python -m br_elections_mcp.pipeline mirror-photos \
   --r2-secret-access-key <secret>
 ```
 
-The refresh workflow ([`refresh.yml`](.github/workflows/refresh.yml)) runs this stage after
-`validate` and before `publish`, reading the R2 credentials from five repository secrets, not
-in the repo and set by the captain: `R2_PUBLIC_DOMAIN`, `R2_ENDPOINT`, `R2_BUCKET`,
-`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`--public-domain` and the `--r2-*` flags above,
-in order). Until they are set, the step logs why and skips; the rest of the refresh runs as
-before.
+The CDN serves 28 ZIPs at
+`https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`:
+the 26 states, `DF` and `BR` (the president and vice; `ZZ` has no candidacies). All 28 answered
+200 on 2026-09-29, about 125 MB together and 20,984 photos, one per candidacy. Each ZIP also
+carries a `leiame.pdf`, which `mirror-photos` ignores; any other entry that is not a
+`F<UF><SQ_CANDIDATO>_div.jpg` still fails the run. The registry is `CANDIDATE_PHOTOS_2026` in
+`pipeline/datasets.py`, kept out of `DATASETS` because the index build never reads it.
 
-One thing a real run still needs, a follow-up for the captain, not something this change
-guesses at:
+The refresh workflow ([`refresh.yml`](.github/workflows/refresh.yml)) reads the R2 credentials
+from five repository secrets, not in the repo and set by the captain: `R2_PUBLIC_DOMAIN`,
+`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`--public-domain`
+and the `--r2-*` flags above, in order). Until all five are set, it logs why and neither
+downloads the photo ZIPs nor mirrors them; the rest of the refresh runs as before, and every
+`photo_url` stays null. Once they are set, the workflow runs `fetch --photos` right after the
+dataset fetch and `mirror-photos` after `validate` and before `publish`, and the run summary
+lists how many photo ZIPs answered 200.
 
-- **Where the photo ZIPs come from.** `--zips-dir` expects the ZIPs already on disk. The CDN
-  answers for them at
-  `https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`
-  (a `HEAD` through `curl_cffi` returned 200, 2.3 MB for AC, on 2026-09-24), but nothing
-  downloads them yet, so `refresh.yml` does not fetch them: `$WORK/photos` stays empty and
-  the mirror-photos step skips with a log line rather than syncing an empty set, which would
-  delete every photo already mirrored to R2. Wiring that download is the next step before
-  this stage does anything in production.
+Sync deletes every mirrored photo that is not in the ZIPs it is given, so the set is complete
+or nothing. `fetch --photos` fails on any non-200 or transport error, after writing its record,
+and `mirror-photos` refuses a `--zips-dir` that lacks any of the 28 ZIPs. Either failure stops
+the run before `publish`: the index already published keeps its photos, and a failed photo
+download never publishes an index without the photos R2 still holds.
+
+#### Photo integrity: what stops a swapped photo
+
+A candidate's face is what a voter recognises first, and it is served from a public bucket the
+index does not control. The design is in [ADR 0013](docs/adr/0013-content-addressed-photo-mirror.md):
+
+- Objects are named after the SHA-256 of the JPEG bytes in the TSE ZIP,
+  `F<UF><SQ>_div-<sha256>.jpg`, and the index records the same digest in `photo_sha256` next to
+  `photo_url`. A key has exactly one legitimate content; when the TSE changes a photo, the URL
+  changes.
+- `mirror-photos` never overwrites a key. If one already exists with a checksum (R2's ETag)
+  that is not the MD5 of the ZIP's photo, the run fails with `PhotoIntegrityError`, having
+  uploaded and deleted nothing, and names the key. After uploading it lists the bucket again
+  and requires every photo of the run to be there with the expected checksum before it deletes
+  anything.
+- Once the index is written, `photo_url` must carry the recorded digest and the candidacy's
+  `sq_candidato`; `mirror-photos` checks it and `validate` has a gate for it (`photo_chain`).
+  Any failure stops the run before `publish`, so the index in the bucket is never replaced by
+  one with a broken chain.
+- A stuck run is the alarm for an object still expected from the current TSE ZIPs: a failed
+  refresh with `refusing to overwrite` means that object is not what the TSE published.
+  Delete that object, rotate the R2 token and re-run; the pipeline does not repair it silently.
+
+| Threat | Covered? |
+|---|---|
+| R2 credentials leak; someone replaces or corrupts a photo object | Detected at the next refresh only if the current TSE ZIPs still contain that photo: the run fails before `publish` and never overwrites the object. If the source changes or drops the photo in the same window, the old key is deleted without an alert because the new index no longer references it; the live index still references it until `publish`. **Not prevented:** until the run, voters see the swapped photo because an `<img>` cannot verify a digest. |
+| Someone uploads extra objects to the bucket | Not served (the index never points to them) and deleted by the next successful run. |
+| The index or a `photo_url` is edited by hand or half-written | `photo_chain` rejects broken digest and candidate pairs, malformed URLs, and mixed origins; with `--photo-public-domain`, it also requires the exact configured base URL and key. `mirror-photos` checks that exact URL before touching R2 and again after updating the index. A consistently rewritten index still requires a trusted public domain at validation. |
+| R2 credentials **and** the GCS publisher (or the workflow itself) are compromised | Not covered: both the objects and the index can be rewritten consistently. Keep the two credentials separate and the R2 token scoped to this bucket. |
+| The TSE, or the CDN download, serves a wrong photo | Not covered: it is mirrored faithfully. The digest proves which bytes we took, not that the TSE meant them; the TSE publishes no signature. |
+| Old objects deleted before the new index is published | A failed `publish` leaves the live index pointing at a deleted key for the photos that changed, until the next successful run. Follow-up. |
+
+The bucket name and public URL are configuration (`R2_BUCKET`, `R2_PUBLIC_DOMAIN`), never
+hard-coded. Beyond this change, still to do: an audit that downloads the public URLs and
+compares them with the index digests (closing the detection window), deleting old objects
+only after `publish`, and a bucket-scoped R2 token with a bucket lock where available.
 
 ## How the pipeline downloads from the TSE
 

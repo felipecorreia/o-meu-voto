@@ -61,6 +61,7 @@ def run_validate(
     output_dir: Path | None = None,
     elections_path: Path = ELECTIONS_FILE,
     previous_manifest: Manifest | None = None,
+    photo_public_domain: str | None = None,
 ) -> ValidationReport:
     return validate(
         SourceFile(dataset, polling_places),
@@ -73,6 +74,7 @@ def run_validate(
         elections_path,
         output_dir or index_dir,
         previous_manifest=previous_manifest,
+        photo_public_domain=photo_public_domain,
     )
 
 
@@ -150,6 +152,7 @@ def test_clean_fixtures_pass_every_gate(acre_index_dir: Path, tmp_path: Path):
         "complementary_join_consistent",
         "round_2_scope",
         "municipality_crosswalk_scope",
+        "photo_chain",
     }
     assert _gate(report, "count_stability").message == "no previous manifest; first run"
     assert (

@@ -224,9 +224,10 @@ detailed execution history. See runbook step G for the token permissions and set
 
 The GitHub Actions run fetches and extracts TSE data, builds and validates the index, then
 publishes `index.duckdb` and `manifest.json` to GCS through Workload Identity Federation. It
-stops before publication if an earlier stage fails. The photo-mirroring step currently skips
-because photo ZIP downloads are not wired into this workflow. The current manifest is written
-last, and the Cloud Run index source checks it on requests and downloads the new index when it
+stops before publication if an earlier stage fails. The photo ZIP download and mirror run when
+all five R2 secrets are configured; see
+[README.md](../README.md#mirroring-candidate-photos-to-r2). The current manifest is written last,
+and the Cloud Run index source checks it on requests and downloads the new index when it
 changes; this does not require a service deploy. See [README.md](../README.md), "Publishing
 the index", for the pipeline stages and bucket layout.
 
