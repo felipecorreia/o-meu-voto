@@ -2,13 +2,12 @@
 
 ``LocalDirectoryIndexSource`` reads the index and its manifest from a directory: tests and
 local development. ``GcsIndexSource`` is the production adapter and the only service code
-that talks to GCS; it keeps a local cache directory in the same shape as
-``LocalDirectoryIndexSource`` and delegates the final read to one, so both adapters agree on
-what "a valid cached version" means.
+that talks to GCS; it keeps a local cache directory with one index file per version.
 """
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +20,16 @@ from br_elections_mcp.index_schema import (
     Manifest,
     manifest_version,
 )
+
+log = logging.getLogger(__name__)
+
+INDEX_SUFFIX = Path(INDEX_FILE_NAME).suffix
+_CACHED_INDEX_PREFIX = f"{Path(INDEX_FILE_NAME).stem}-"
+_TMP_SUFFIX = ".tmp"
+
+
+def _cached_index_name(version: str) -> str:
+    return f"{_CACHED_INDEX_PREFIX}{version}{INDEX_SUFFIX}"
 
 
 class LocalDirectoryIndexSource:
@@ -104,17 +113,22 @@ class _CloudStorageClient:
 
 class GcsIndexSource:
     """Downloads ``manifest.json`` from ``gs://bucket/prefix`` on every ``current()``,
-    downloading ``index.duckdb`` only when the manifest changed.
+    downloading ``index.duckdb`` only when the version is not in the cache yet.
 
-    ``cache_dir`` ends up in the same shape ``LocalDirectoryIndexSource`` expects
-    (``manifest.json`` and ``index.duckdb`` side by side, always matching each other), which
-    is what the final read delegates to. ``index.duckdb`` is written under a temporary name
-    and renamed, so a download interrupted partway never replaces a working cache; the cached
-    manifest is only overwritten once that rename succeeds, so the two files on disk always
-    describe the same version even if the process dies between downloads. Any failure -
-    bucket unreachable, missing blob, invalid manifest, interrupted download - raises
-    ``IndexSourceUnavailable`` without touching a valid cache, so the caller keeps serving the
-    version it already has open (codebase-design 3.1).
+    Each version lives at its own path, ``cache_dir/index-<version>.duckdb``. DuckDB keeps one
+    database instance per path, so a new version renamed over the path of the open one would
+    be read from the old, unlinked file while the manifest already named the new one: the
+    open version must never share a path with the next. The file is written under a
+    temporary name and renamed, so a download interrupted partway never leaves a partial
+    version under its final name; the cached ``manifest.json`` is only overwritten once that
+    rename succeeded, so it only ever names a version whose index is on disk. A version's
+    file exists if and only if it is complete, which is what lets ``current()`` skip the
+    download. After the download every other copy is deleted: the version still open keeps
+    its inode until its last cursor is released, so the cache holds about two copies at the
+    peak of a swap and one at rest. Any failure - bucket unreachable, missing blob, invalid
+    manifest, interrupted download - raises ``IndexSourceUnavailable`` without touching a
+    valid cache, so the caller keeps serving the version it already has open (codebase-design
+    3.1).
     """
 
     def __init__(
@@ -128,7 +142,6 @@ class GcsIndexSource:
         self._prefix = prefix.strip("/")
         self._cache_dir = cache_dir
         self._client = client or _CloudStorageClient(bucket)
-        self._local = LocalDirectoryIndexSource(cache_dir)
 
     def _blob_name(self, filename: str) -> str:
         return f"{self._prefix}/{filename}" if self._prefix else filename
@@ -139,23 +152,15 @@ class GcsIndexSource:
         except GcsError as exc:
             raise IndexSourceUnavailable(f"cannot download manifest: {exc}") from exc
         try:
-            Manifest.model_validate_json(raw)
+            manifest = Manifest.model_validate_json(raw)
         except ValidationError as exc:
             raise IndexSourceUnavailable(f"invalid manifest from bucket: {exc}") from exc
 
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        cached_manifest_path = self._cache_dir / MANIFEST_FILE_NAME
-        cached_index_path = self._cache_dir / INDEX_FILE_NAME
-        remote_version = manifest_version(raw)
-        cached_version = None
-        if cached_manifest_path.is_file():
-            try:
-                cached_version = manifest_version(cached_manifest_path.read_bytes())
-            except OSError:
-                cached_version = None
-
-        if cached_version != remote_version or not cached_index_path.is_file():
-            tmp_index_path = cached_index_path.with_name(cached_index_path.name + ".tmp")
+        version = manifest_version(raw)
+        index_path = self._cache_dir / _cached_index_name(version)
+        if not index_path.is_file():
+            tmp_index_path = index_path.with_name(index_path.name + _TMP_SUFFIX)
             try:
                 self._client.download_to_file(self._blob_name(INDEX_FILE_NAME), tmp_index_path)
             except GcsError as exc:
@@ -164,7 +169,27 @@ class GcsIndexSource:
             except BaseException:
                 tmp_index_path.unlink(missing_ok=True)
                 raise
-            tmp_index_path.replace(cached_index_path)
-            cached_manifest_path.write_bytes(raw)
+            tmp_index_path.replace(index_path)
+        self._write_cached_manifest(raw)
+        self._prune_except(index_path)
+        return IndexVersion(path=index_path, manifest=manifest, version=version)
 
-        return self._local.current()
+    def _write_cached_manifest(self, raw: bytes) -> None:
+        cached = self._cache_dir / MANIFEST_FILE_NAME
+        tmp = cached.with_name(cached.name + _TMP_SUFFIX)
+        tmp.write_bytes(raw)
+        tmp.replace(cached)
+
+    def _prune_except(self, keep: Path) -> None:
+        """Delete every other cached index copy, and any leftover temporary file."""
+        for stale in (
+            *self._cache_dir.glob(f"{_CACHED_INDEX_PREFIX}*{INDEX_SUFFIX}"),
+            *self._cache_dir.glob(f"{_CACHED_INDEX_PREFIX}*{INDEX_SUFFIX}{_TMP_SUFFIX}"),
+            self._cache_dir / INDEX_FILE_NAME,
+            self._cache_dir / (INDEX_FILE_NAME + _TMP_SUFFIX),
+        ):
+            if stale != keep:
+                try:
+                    stale.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("cannot delete the stale cached index %s", stale, exc_info=True)

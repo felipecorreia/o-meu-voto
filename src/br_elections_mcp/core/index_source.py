@@ -21,7 +21,9 @@ class IndexSourceUnavailable(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class IndexVersion:
     path: Path
-    """Local path of ``index.duckdb``."""
+    """Local path of the index file. Never the path of another version still open: DuckDB
+    keeps one database instance per path, so a second version there would be read from the
+    first one's file."""
     manifest: Manifest
     version: str
     """Identifier of the version: the SHA-256 of the manifest bytes."""

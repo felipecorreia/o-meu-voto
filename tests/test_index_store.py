@@ -5,8 +5,8 @@ import pytest
 
 from br_elections_mcp.core import IndexSourceUnavailable
 from br_elections_mcp.index_schema import INDEX_FILE_NAME, MANIFEST_FILE_NAME, manifest_version
-from br_elections_mcp.index_store import GcsError, GcsIndexSource, LocalDirectoryIndexSource
-from tests.conftest import build_fixture_index
+from br_elections_mcp.index_store import GcsIndexSource, LocalDirectoryIndexSource
+from tests.conftest import FakeGcsBucketClient, build_fixture_index, published_blobs
 
 REPO = Path(__file__).resolve().parents[1]
 CORE_DIR = REPO / "src" / "br_elections_mcp" / "core"
@@ -46,28 +46,6 @@ def test_invalid_manifest_is_unavailable(tmp_path: Path):
 # GcsIndexSource (ticket #16), a fake in-memory GCS client: no test touches the network.
 
 
-class _FakeGcsBucketClient:
-    def __init__(self, blobs: dict[str, bytes], *, fail: frozenset[str] = frozenset()) -> None:
-        self.blobs = dict(blobs)
-        self.fail = fail
-        self.download_to_file_calls: list[str] = []
-
-    def download_bytes(self, blob_name: str) -> bytes:
-        if blob_name in self.fail:
-            raise GcsError(f"{blob_name}: unavailable")
-        if blob_name not in self.blobs:
-            raise GcsError(f"{blob_name}: not found")
-        return self.blobs[blob_name]
-
-    def download_to_file(self, blob_name: str, destination: Path) -> None:
-        self.download_to_file_calls.append(blob_name)
-        if blob_name in self.fail:
-            raise GcsError(f"{blob_name}: interrupted")
-        if blob_name not in self.blobs:
-            raise GcsError(f"{blob_name}: not found")
-        destination.write_bytes(self.blobs[blob_name])
-
-
 GcsVersions = tuple[dict[str, bytes], dict[str, bytes]]
 
 
@@ -81,16 +59,15 @@ def gcs_versions(tmp_path_factory: pytest.TempPathFactory) -> GcsVersions:
     build_fixture_index(v1_dir, built_at=dt.datetime(2026, 9, 18, 9, 0, tzinfo=dt.UTC))
     build_fixture_index(v2_dir, built_at=dt.datetime(2026, 9, 19, 9, 0, tzinfo=dt.UTC))
 
-    def blobs_of(directory: Path) -> dict[str, bytes]:
-        return {
-            MANIFEST_FILE_NAME: (directory / MANIFEST_FILE_NAME).read_bytes(),
-            INDEX_FILE_NAME: (directory / INDEX_FILE_NAME).read_bytes(),
-        }
-
-    v1 = blobs_of(v1_dir)
-    v2 = blobs_of(v2_dir)
+    v1 = published_blobs(v1_dir)
+    v2 = published_blobs(v2_dir)
     assert v1[MANIFEST_FILE_NAME] != v2[MANIFEST_FILE_NAME]
     return v1, v2
+
+
+def _cached_index(cache_dir: Path, blobs: dict[str, bytes]) -> Path:
+    """Where the source must keep the index of the version ``blobs`` publishes."""
+    return cache_dir / f"index-{manifest_version(blobs[MANIFEST_FILE_NAME])}.duckdb"
 
 
 def _prefixed(blobs: dict[str, bytes], prefix: str) -> dict[str, bytes]:
@@ -99,7 +76,7 @@ def _prefixed(blobs: dict[str, bytes], prefix: str) -> dict[str, bytes]:
 
 def test_same_manifest_no_download(tmp_path: Path, gcs_versions: GcsVersions):
     v1, _ = gcs_versions
-    client = _FakeGcsBucketClient(_prefixed(v1, "idx"))
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
     source = GcsIndexSource("bucket", "idx", tmp_path / "cache", client=client)
 
     first = source.current()
@@ -110,21 +87,27 @@ def test_same_manifest_no_download(tmp_path: Path, gcs_versions: GcsVersions):
     assert second.version == first.version == manifest_version(v1[MANIFEST_FILE_NAME])
 
 
-def test_new_manifest_downloads_and_renames(tmp_path: Path, gcs_versions: GcsVersions):
+def test_new_manifest_downloads_to_its_own_path_and_prunes_the_old_copy(
+    tmp_path: Path, gcs_versions: GcsVersions
+):
     v1, v2 = gcs_versions
     cache_dir = tmp_path / "cache"
-    client = _FakeGcsBucketClient(_prefixed(v1, "idx"))
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
     source = GcsIndexSource("bucket", "idx", cache_dir, client=client)
-    source.current()
+    first = source.current()
 
     client.blobs = _prefixed(v2, "idx")
     version = source.current()
 
     assert client.download_to_file_calls == ["idx/index.duckdb", "idx/index.duckdb"]
     assert version.version == manifest_version(v2[MANIFEST_FILE_NAME])
-    assert (cache_dir / INDEX_FILE_NAME).read_bytes() == v2[INDEX_FILE_NAME]
+    assert version.path == _cached_index(cache_dir, v2)
+    assert version.path != first.path
+    assert version.path.read_bytes() == v2[INDEX_FILE_NAME]
     assert (cache_dir / MANIFEST_FILE_NAME).read_bytes() == v2[MANIFEST_FILE_NAME]
-    assert not list(cache_dir.glob("*.tmp"))
+    assert sorted(path.name for path in cache_dir.iterdir()) == sorted(
+        [MANIFEST_FILE_NAME, version.path.name]
+    )
 
 
 def test_download_interrupted_previous_version_still_served(
@@ -132,7 +115,7 @@ def test_download_interrupted_previous_version_still_served(
 ):
     v1, v2 = gcs_versions
     cache_dir = tmp_path / "cache"
-    client = _FakeGcsBucketClient(_prefixed(v1, "idx"))
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
     source = GcsIndexSource("bucket", "idx", cache_dir, client=client)
     source.current()
 
@@ -142,20 +125,98 @@ def test_download_interrupted_previous_version_still_served(
         source.current()
 
     assert not list(cache_dir.glob("*.tmp"))
-    previous = LocalDirectoryIndexSource(cache_dir).current()
-    assert previous.version == manifest_version(v1[MANIFEST_FILE_NAME])
-    assert (cache_dir / INDEX_FILE_NAME).read_bytes() == v1[INDEX_FILE_NAME]
+    assert _cached_index(cache_dir, v1).read_bytes() == v1[INDEX_FILE_NAME]
+    assert not _cached_index(cache_dir, v2).exists()
+    assert (cache_dir / MANIFEST_FILE_NAME).read_bytes() == v1[MANIFEST_FILE_NAME]
+
+    client.fail = frozenset()
+    assert source.current().version == manifest_version(v2[MANIFEST_FILE_NAME])
+
+
+def test_a_crash_between_the_rename_and_the_manifest_does_not_download_again(
+    tmp_path: Path, gcs_versions: GcsVersions
+):
+    v1, v2 = gcs_versions
+    cache_dir = tmp_path / "cache"
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
+    GcsIndexSource("bucket", "idx", cache_dir, client=client).current()
+    # The process died after renaming v2's index into place, before writing its manifest.
+    _cached_index(cache_dir, v2).write_bytes(v2[INDEX_FILE_NAME])
+
+    client.blobs = _prefixed(v2, "idx")
+    client.download_to_file_calls.clear()
+    version = GcsIndexSource("bucket", "idx", cache_dir, client=client).current()
+
+    assert client.download_to_file_calls == []
+    assert version.path == _cached_index(cache_dir, v2)
+    assert (cache_dir / MANIFEST_FILE_NAME).read_bytes() == v2[MANIFEST_FILE_NAME]
+    assert not _cached_index(cache_dir, v1).exists()
+
+
+def test_leftovers_of_an_earlier_layout_or_crash_are_pruned(
+    tmp_path: Path, gcs_versions: GcsVersions
+):
+    v1, _ = gcs_versions
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    for leftover in ("index.duckdb", "index.duckdb.tmp", "index-deadbeef.duckdb.tmp"):
+        (cache_dir / leftover).write_bytes(b"stale")
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
+
+    version = GcsIndexSource("bucket", "idx", cache_dir, client=client).current()
+
+    assert sorted(path.name for path in cache_dir.iterdir()) == sorted(
+        [MANIFEST_FILE_NAME, version.path.name]
+    )
+
+
+def test_an_unprunable_copy_does_not_fail_the_check(
+    tmp_path: Path, gcs_versions: GcsVersions, monkeypatch: pytest.MonkeyPatch
+):
+    v1, v2 = gcs_versions
+    cache_dir = tmp_path / "cache"
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
+    source = GcsIndexSource("bucket", "idx", cache_dir, client=client)
+    source.current()
+    client.blobs = _prefixed(v2, "idx")
+    real_unlink = Path.unlink
+
+    def refusing_unlink(self: Path, missing_ok: bool = False) -> None:
+        if self == _cached_index(cache_dir, v1):
+            raise PermissionError("busy")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", refusing_unlink)
+
+    assert source.current().version == manifest_version(v2[MANIFEST_FILE_NAME])
+
+
+def test_the_open_version_and_the_next_never_share_a_path(
+    tmp_path: Path, gcs_versions: GcsVersions
+):
+    v1, v2 = gcs_versions
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
+    source = GcsIndexSource("bucket", "idx", tmp_path / "cache", client=client)
+    first = source.current()
+    client.blobs = _prefixed(v2, "idx")
+    second = source.current()
+    client.blobs = _prefixed(v1, "idx")
+    third = source.current()
+
+    assert len({first.path, second.path}) == 2
+    assert third.path == first.path  # same version, same name: a path identifies its content
+    assert third.path.read_bytes() == v1[INDEX_FILE_NAME]
 
 
 def test_bucket_down_for_manifest_is_unavailable(tmp_path: Path):
-    client = _FakeGcsBucketClient({}, fail=frozenset({"idx/manifest.json"}))
+    client = FakeGcsBucketClient({}, fail=frozenset({"idx/manifest.json"}))
     source = GcsIndexSource("bucket", "idx", tmp_path / "cache", client=client)
     with pytest.raises(IndexSourceUnavailable, match="cannot download manifest"):
         source.current()
 
 
 def test_invalid_manifest_from_bucket_is_unavailable(tmp_path: Path):
-    client = _FakeGcsBucketClient({"idx/manifest.json": b"{}"})
+    client = FakeGcsBucketClient({"idx/manifest.json": b"{}"})
     source = GcsIndexSource("bucket", "idx", tmp_path / "cache", client=client)
     with pytest.raises(IndexSourceUnavailable, match="invalid manifest"):
         source.current()
@@ -165,7 +226,7 @@ def test_prefix_is_stripped_of_leading_and_trailing_slashes(
     tmp_path: Path, gcs_versions: GcsVersions
 ):
     v1, _ = gcs_versions
-    client = _FakeGcsBucketClient(_prefixed(v1, "idx"))
+    client = FakeGcsBucketClient(_prefixed(v1, "idx"))
     source = GcsIndexSource("bucket", "/idx/", tmp_path / "cache", client=client)
     source.current()
     assert client.download_to_file_calls == ["idx/index.duckdb"]

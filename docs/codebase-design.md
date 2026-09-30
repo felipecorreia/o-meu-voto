@@ -123,7 +123,7 @@ Fatos que quem chama precisa saber, e que fazem parte da interface:
 #### A porta `IndexSource`
 
 `IndexSource` vive em `core/index_source.py` e tem um só método: `current()` devolve um
-`IndexVersion` com o caminho local de `index.duckdb`, o conteúdo do `manifest.json` e o
+`IndexVersion` com o caminho local do arquivo do índice, o conteúdo do `manifest.json` e o
 identificador da versão (o SHA-256 do manifesto). O `core` compara o identificador com o que
 tem aberto e só reabre quando ele muda. Contrato de `current()`, igual para todo adaptador:
 pode ser lento e pode tocar a rede, por isso o `core` só o chama de forma síncrona em
@@ -134,14 +134,25 @@ pela metade. Dois adaptadores, em `index_store.py`, justificam o seam:
 
 - `LocalDirectoryIndexSource(path)`: lê o índice e o manifesto de um diretório. Usado pelos
   testes, inclusive o de recarga (que substitui os arquivos no diretório e chama de novo), e
-  por quem roda o serviço em desenvolvimento com um índice construído localmente.
+  por quem roda o serviço em desenvolvimento com um índice construído localmente. Trocar
+  o arquivo no mesmo caminho com o índice aberto só renova o manifesto, não os dados (mesma
+  razão do item seguinte): para recarregar dados, reconstrua e reinicie.
 - `GcsIndexSource(bucket, prefix, cache_dir)`: a cada chamada de `current()` baixa
-  `manifest.json` do bucket, compara com o cache local e só baixa `index.duckdb` quando o
-  manifesto mudou; grava com nome temporário e renomeia, para que o `core` nunca abra um
-  arquivo pela metade. Bucket fora ou manifesto inválido viram `IndexSourceUnavailable`, e a
-  versão em cache continua sendo a servida pelo `core`. É o único código do serviço que fala
-  com o GCS, é ele quem paga o cold start do ADR 0001 (a única chamada síncrona), e depois
-  disso só roda na tarefa de fundo, nunca no caminho de uma requisição.
+  `manifest.json` do bucket e só baixa `index.duckdb` quando a versão ainda não está no cache.
+  Cada versão fica no próprio caminho, `index-<versão>.duckdb`: o DuckDB guarda uma instância
+  de banco por caminho, então uma versão nova renomeada sobre o arquivo da versão aberta
+  seria lida do arquivo antigo, já desvinculado, enquanto o manifesto novo a descreveria
+  (visto em produção em 2026-09-30). Grava com nome temporário e
+  renomeia, para que o `core` nunca abra um arquivo pela metade; o `manifest.json` do cache
+  só é gravado depois do rename, e as outras cópias (e sobras `.tmp`) são apagadas em
+  seguida: a versão ainda aberta mantém o inode até o último cursor sair, então o cache tem
+  cerca de duas cópias no pico da troca e uma em repouso. Bucket fora ou manifesto inválido
+  viram `IndexSourceUnavailable`, e a versão em cache continua sendo a servida pelo `core`.
+  É o único código do serviço que fala com o GCS, é ele quem paga o cold start do ADR 0001
+  (a única chamada síncrona), e depois disso só roda na tarefa de fundo, nunca no caminho de
+  uma requisição. Como rede de segurança, `open_index()` recusa (`IndexUnavailable`) um
+  arquivo cujas contagens por tabela não batem com `counts` do manifesto; a versão aberta
+  segue servindo e `last_index_check_error` aparece em `/health`.
 
 `app.py` escolhe o adaptador por configuração e o injeta no `Core`. A porta é a garantia de
 que "o `core` não tem rede" continua verificável por importação: `core/` não importa

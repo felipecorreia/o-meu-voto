@@ -17,8 +17,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from br_elections_mcp.core import Core
-from br_elections_mcp.index_schema import Manifest
-from br_elections_mcp.index_store import LocalDirectoryIndexSource
+from br_elections_mcp.index_schema import INDEX_FILE_NAME, MANIFEST_FILE_NAME, Manifest
+from br_elections_mcp.index_store import GcsError, LocalDirectoryIndexSource
 from br_elections_mcp.pipeline.build import build_index
 from br_elections_mcp.pipeline.datasets import (
     CANDIDATE_ASSETS_2026,
@@ -170,6 +170,38 @@ def build_round_1_index(output_dir: Path, *, dataset: Dataset = POLLING_PLACES_2
         candidates=without_round_2(ACRE_CANDIDATES, sources),
         dataset=dataset,
     )
+
+
+class FakeGcsBucketClient:
+    """An in-memory ``GcsBucketClient``: no test touches the network."""
+
+    def __init__(self, blobs: dict[str, bytes], *, fail: frozenset[str] = frozenset()) -> None:
+        self.blobs = dict(blobs)
+        self.fail = fail
+        self.download_to_file_calls: list[str] = []
+
+    def download_bytes(self, blob_name: str) -> bytes:
+        if blob_name in self.fail:
+            raise GcsError(f"{blob_name}: unavailable")
+        if blob_name not in self.blobs:
+            raise GcsError(f"{blob_name}: not found")
+        return self.blobs[blob_name]
+
+    def download_to_file(self, blob_name: str, destination: Path) -> None:
+        self.download_to_file_calls.append(blob_name)
+        if blob_name in self.fail:
+            raise GcsError(f"{blob_name}: interrupted")
+        if blob_name not in self.blobs:
+            raise GcsError(f"{blob_name}: not found")
+        destination.write_bytes(self.blobs[blob_name])
+
+
+def published_blobs(index_dir: Path) -> dict[str, bytes]:
+    """The two objects ``publish`` puts in the bucket for the index built in ``index_dir``."""
+    return {
+        MANIFEST_FILE_NAME: (index_dir / MANIFEST_FILE_NAME).read_bytes(),
+        INDEX_FILE_NAME: (index_dir / INDEX_FILE_NAME).read_bytes(),
+    }
 
 
 def open_core(index_dir: Path, clock=CLOCK) -> Core:

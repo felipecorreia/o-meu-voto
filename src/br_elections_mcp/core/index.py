@@ -120,6 +120,18 @@ def open_index(version: IndexVersion) -> Index:
         missing = sorted(set(TABLES) - present)
         if missing:
             raise IndexUnavailable(f"index {version.path} lacks tables: {missing}")
+        counts = {
+            table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # type: ignore[index]
+            for table in TABLES
+        }
+        if counts != {table: version.manifest.counts.get(table) for table in TABLES}:
+            # The file is not the one the manifest names (DuckDB hands back a database that
+            # is already open at a path, whatever the file there now holds): refuse it, so the
+            # open version keeps serving and ``last_check_error`` shows it.
+            raise IndexUnavailable(
+                f"index {version.path} does not match its manifest: has {counts}, "
+                f"manifest says {version.manifest.counts}"
+            )
         rows = conn.execute("SELECT DISTINCT round FROM polling_sections ORDER BY round").fetchall()
     except duckdb.Error as exc:
         conn.close()
