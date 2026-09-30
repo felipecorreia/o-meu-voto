@@ -26,6 +26,7 @@ from br_elections_mcp.pipeline.publish import (
     PUBLISH_RECORD_FILE,
     PublishError,
     PublishRecord,
+    download_current_index,
     download_current_manifest,
     publish,
     version_id,
@@ -126,6 +127,22 @@ def test_publish_normalizes_a_prefix_without_trailing_slash(index_dir: Path):
     client = FakeBucketClient()
     _publish(index_dir, client, prefix="index")
     assert client.writes[-1] == f"index/{MANIFEST_FILE_NAME}"
+
+
+def test_download_current_index_uses_versioned_object_and_verifies_hash(
+    index_dir: Path, tmp_path: Path
+):
+    client = FakeBucketClient()
+    record = _publish(index_dir, client)
+    client.objects[INDEX_FILE_NAME] = b"an in-progress mutable upload"
+    target = tmp_path / "downloaded"
+
+    assert download_current_index(client, target)
+    assert (target / INDEX_FILE_NAME).read_bytes() == (index_dir / INDEX_FILE_NAME).read_bytes()
+
+    client.objects[f"versions/{record.index_version}/{INDEX_FILE_NAME}"] = b"tampered"
+    with pytest.raises(PublishError, match="does not match manifest"):
+        download_current_index(client, tmp_path / "corrupt")
 
 
 def test_publish_refuses_a_manifest_whose_sha256_does_not_match_the_index(index_dir: Path):

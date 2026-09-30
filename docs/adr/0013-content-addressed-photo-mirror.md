@@ -3,6 +3,8 @@
 Status: accepted, 2026-09-29. Amends ADR 0005 (photos in R2) and the mirror_photos stage of
 `docs/codebase-design.md`, section 5.
 
+Production refresh sequencing and old-object deletion were amended by [ADR 0014](0014-photo-refresh-independent-of-index-publication.md).
+
 ## Context
 
 The candidate photos are mirrored from the TSE ZIPs to a public R2 bucket, and the index carries

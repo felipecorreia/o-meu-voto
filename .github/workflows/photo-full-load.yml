@@ -1,0 +1,113 @@
+# One manually dispatched load of the complete 2026 photo set. It never publishes an index.
+# Normal refreshes remain in their own concurrency group and retain their 60-minute budget.
+name: Full candidate photo load
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: full-candidate-photo-load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    name: Download, verify and mirror candidate photos
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      INDEX_BUCKET: ${{ secrets.INDEX_BUCKET }}
+      INDEX_BUCKET_PREFIX: ${{ vars.INDEX_BUCKET_PREFIX }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          enable-cache: true
+
+      - name: Install Python and the pipeline dependencies
+        run: |
+          uv python install
+          uv sync --locked --group pipeline
+
+      - name: Check configuration
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_PUBLISHER_SA: ${{ vars.GCP_PUBLISHER_SA }}
+        run: |
+          for var in INDEX_BUCKET R2_ENDPOINT R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PUBLIC_DOMAIN GCP_WORKLOAD_IDENTITY_PROVIDER GCP_PUBLISHER_SA; do
+            if [ -z "${!var}" ]; then
+              echo "::error::$var is not configured"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
+
+      - name: Create the temporary work directory
+        run: |
+          WORK="$(mktemp -d "$RUNNER_TEMP/photo-load.XXXXXX")"
+          echo "WORK=$WORK" >> "$GITHUB_ENV"
+          mkdir -p "$WORK/photos" "$WORK/index"
+
+      - name: Require the one-time load to be incomplete
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          uv run python -m br_elections_mcp.pipeline photo-load-status \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY" \
+            --require-incomplete
+
+      - name: Fetch all candidate photo ZIPs
+        run: uv run python -m br_elections_mcp.pipeline fetch --photos --output "$WORK/photos"
+
+      - name: Download and verify the currently published index
+        run: |
+          uv run python -m br_elections_mcp.pipeline current-index \
+            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
+            --output-dir "$WORK/index"
+          test -f "$WORK/index/index.duckdb"
+
+      - name: Mirror candidate photos to R2
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          uv run python -m br_elections_mcp.pipeline mirror-photos \
+            --zips-dir "$WORK/photos" \
+            --index-dir "$WORK/index" \
+            --public-domain "$R2_PUBLIC_DOMAIN" \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY" \
+            --retain-old-photos \
+            --mark-full-load-complete
+
+      - name: Remove the work directory
+        if: always()
+        run: |
+          if [ -n "${WORK:-}" ]; then
+            rm -rf "$WORK"
+          fi

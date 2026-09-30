@@ -1,7 +1,8 @@
 # The refresh pipeline of docs/codebase-design.md, section 5: fetch -> extract -> build ->
 # validate -> publish, on the cadences the TSE declares for its datasets (docs/domain-model.md,
 # section 2), started by Cloud Scheduler or by hand. It runs here, never inside Cloud Run.
-# The job stops at the first failed stage, so a bad index is never published, and every raw
+# Index stages stop at the first failure; the bounded photo stages may fail independently.
+# A bad index is never published, and every raw
 # ZIP and CSV lives in a temporary directory that the last step removes even on failure
 # (ADR 0004). Only index.duckdb and manifest.json leave the runner, through the publish stage.
 #
@@ -19,8 +20,7 @@
 # Secrets for the photo steps (see README, "Mirroring candidate photos to R2"), all optional:
 # until the captain provisions them, the download of the photo ZIPs and the mirror-photos step
 # log why and skip, and the rest of the refresh runs as before. Once they are set, the photo
-# ZIPs are downloaded before build and any failure there, or an incomplete set, fails the run
-# before publish: the index is never published without photos that R2 still holds.
+# ZIPs are downloaded before build. Photo failure leaves the validated index publishable.
 #   R2_ENDPOINT             R2 account S3 endpoint URL
 #   R2_BUCKET               R2 bucket name
 #   R2_ACCESS_KEY_ID        R2 access key id
@@ -115,18 +115,31 @@ jobs:
              [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_PUBLIC_DOMAIN" ]; then
             echo "mirror-photos: R2 secrets not set yet, photos are neither downloaded nor mirrored (see README, 'Mirroring candidate photos to R2')"
             echo "MIRROR_PHOTOS=false" >> "$GITHUB_ENV"
-          else
+          elif timeout --signal=TERM --kill-after=30s 2m uv run python -m br_elections_mcp.pipeline photo-load-status \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY"; then
             echo "MIRROR_PHOTOS=true" >> "$GITHUB_ENV"
+          else
+            status=$?
+            if [ "$status" -eq 3 ]; then
+              echo "mirror-photos: first full photo load has not completed; publishing index without photos"
+            else
+              echo "::error::photo-load-status failed with exit code $status; publishing index without photos"
+              echo "PHOTO_STATUS_FAILED=true" >> "$GITHUB_ENV"
+            fi
+            echo "MIRROR_PHOTOS=false" >> "$GITHUB_ENV"
           fi
 
       - name: Fetch the TSE ZIPs
         run: uv run python -m br_elections_mcp.pipeline fetch --output "$WORK/zips"
 
       - name: Fetch the candidate photo ZIPs
-        # The 27 UFs plus BR (the president), with a fetch.json next to them. A non-200 for any
-        # of them fails the run here, before anything is published.
+        id: fetch_photos
+        continue-on-error: true
         if: env.MIRROR_PHOTOS == 'true'
-        run: uv run python -m br_elections_mcp.pipeline fetch --photos --output "$WORK/photos"
+        run: timeout --signal=TERM --kill-after=30s 5m uv run python -m br_elections_mcp.pipeline fetch --photos --output "$WORK/photos"
 
       - name: Extract the CSVs build reads
         run: |
@@ -181,10 +194,19 @@ jobs:
             --output-dir "$WORK/index" \
             "${ARGS[@]}"
 
-      - name: Mirror candidate photos to R2
-        # mirror-photos itself refuses a directory that lacks any of the 28 ZIPs, since syncing
-        # a partial set would delete the photos already mirrored to R2 for the missing UFs.
-        if: env.MIRROR_PHOTOS == 'true'
+      - name: Download the currently published index for photo carry-forward
+        id: current_index
+        if: env.MIRROR_PHOTOS == 'true' && steps.fetch_photos.outcome == 'success'
+        continue-on-error: true
+        run: |
+          timeout --signal=TERM --kill-after=30s 5m uv run python -m br_elections_mcp.pipeline current-index \
+            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
+            --output-dir "$WORK/previous"
+
+      - name: Retain verified published photo URLs
+        id: retain_photos
+        if: env.MIRROR_PHOTOS == 'true' && steps.fetch_photos.outcome == 'success' && steps.current_index.outcome == 'success'
+        continue-on-error: true
         env:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -192,19 +214,59 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
         run: |
-          uv run python -m br_elections_mcp.pipeline mirror-photos \
+          mkdir -p "$WORK/retained"
+          cp "$WORK/index/index.duckdb" "$WORK/index/manifest.json" "$WORK/retained/"
+          timeout --signal=TERM --kill-after=30s 5m uv run python -m br_elections_mcp.pipeline retain-photos \
             --zips-dir "$WORK/photos" \
-            --index-dir "$WORK/index" \
+            --index-dir "$WORK/retained" \
+            --previous-index-dir "$WORK/previous" \
             --public-domain "$R2_PUBLIC_DOMAIN" \
             --r2-endpoint "$R2_ENDPOINT" \
             --r2-bucket "$R2_BUCKET" \
             --r2-access-key-id "$R2_ACCESS_KEY_ID" \
             --r2-secret-access-key "$R2_SECRET_ACCESS_KEY"
+          echo "PHOTO_INDEX_DIR=$WORK/retained" >> "$GITHUB_ENV"
+
+      - name: Mirror candidate photos to R2
+        id: mirror_photos
+        if: env.MIRROR_PHOTOS == 'true' && steps.fetch_photos.outcome == 'success'
+        continue-on-error: true
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          mkdir -p "$WORK/mirrored"
+          cp "${PHOTO_INDEX_DIR:-$WORK/index}/index.duckdb" "${PHOTO_INDEX_DIR:-$WORK/index}/manifest.json" "$WORK/mirrored/"
+          timeout --signal=TERM --kill-after=30s 15m uv run python -m br_elections_mcp.pipeline mirror-photos \
+            --zips-dir "$WORK/photos" \
+            --index-dir "$WORK/mirrored" \
+            --public-domain "$R2_PUBLIC_DOMAIN" \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY" \
+            --retain-old-photos
+          echo "PHOTO_INDEX_DIR=$WORK/mirrored" >> "$GITHUB_ENV"
+
+      - name: Verify the final photo chain
+        env:
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          if [ "$MIRROR_PHOTOS" = true ]; then
+            domain="$R2_PUBLIC_DOMAIN"
+          else
+            domain=""
+          fi
+          uv run python -m br_elections_mcp.pipeline verify-photos \
+            --index-dir "${PHOTO_INDEX_DIR:-$WORK/index}" --public-domain "$domain"
 
       - name: Publish the index
         run: |
           uv run python -m br_elections_mcp.pipeline publish \
-            --index-dir "$WORK/index" \
+            --index-dir "${PHOTO_INDEX_DIR:-$WORK/index}" \
             --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX"
 
       - name: Report the run
@@ -228,18 +290,27 @@ jobs:
               jq -r '.datasets[] | select(.status != 200) | "- not fetched: \(.dataset) (\(.status // .error))"' "$WORK/photos/fetch.json"
               echo
             fi
-            if [ -f "$WORK/index/manifest.json" ]; then
+            echo "### Photo steps"
+            echo
+            echo "- Load status query failed: ${PHOTO_STATUS_FAILED:-false}"
+            echo "- Fetch outcome: ${{ steps.fetch_photos.outcome }}"
+            echo "- Previous index outcome: ${{ steps.current_index.outcome }}"
+            echo "- Carry-forward outcome: ${{ steps.retain_photos.outcome }}"
+            echo "- Mirror outcome: ${{ steps.mirror_photos.outcome }}"
+            echo
+            published_index_dir="${PHOTO_INDEX_DIR:-$WORK/index}"
+            if [ -f "$published_index_dir/manifest.json" ]; then
               echo "### Manifest"
               echo
               echo "| Dataset | File | Generated at |"
               echo "|---|---|---|"
-              jq -r '.datasets | to_entries[] | "| \(.key) | \(.value.file) | \(.value.generated_at) |"' "$WORK/index/manifest.json"
+              jq -r '.datasets | to_entries[] | "| \(.key) | \(.value.file) | \(.value.generated_at) |"' "$published_index_dir/manifest.json"
               echo
-              echo "- Index built at: $(jq -r .index_built_at "$WORK/index/manifest.json")"
-              echo "- Election: $(jq -c '{election_year, election_dates}' "$WORK/index/manifest.json")"
-              echo "- Counts: $(jq -c .counts "$WORK/index/manifest.json")"
-              echo "- Index SHA-256: \`$(jq -r .index_sha256 "$WORK/index/manifest.json")\`"
-              echo "- Manifest SHA-256: \`$(sha256sum "$WORK/index/manifest.json" | cut -d' ' -f1)\`"
+              echo "- Index built at: $(jq -r .index_built_at "$published_index_dir/manifest.json")"
+              echo "- Election: $(jq -c '{election_year, election_dates}' "$published_index_dir/manifest.json")"
+              echo "- Counts: $(jq -c .counts "$published_index_dir/manifest.json")"
+              echo "- Index SHA-256: \`$(jq -r .index_sha256 "$published_index_dir/manifest.json")\`"
+              echo "- Manifest SHA-256: \`$(sha256sum "$published_index_dir/manifest.json" | cut -d' ' -f1)\`"
               echo
             fi
             if [ -f "$WORK/index/validation_report.json" ]; then
@@ -250,16 +321,22 @@ jobs:
               jq -r '.gates[] | "| \(.name) | \(.status) | \(.message) |"' "$WORK/index/validation_report.json"
               echo
             fi
-            if [ -f "$WORK/index/publish.json" ]; then
+            if [ -f "$published_index_dir/publish.json" ]; then
               echo "### Publish"
               echo
-              echo "- Version: \`$(jq -r .index_version "$WORK/index/publish.json")\`"
-              echo "- Objects: $(jq -c .objects "$WORK/index/publish.json")"
-              echo "- Published at: $(jq -r .published_at "$WORK/index/publish.json")"
+              echo "- Version: \`$(jq -r .index_version "$published_index_dir/publish.json")\`"
+              echo "- Objects: $(jq -c .objects "$published_index_dir/publish.json")"
+              echo "- Published at: $(jq -r .published_at "$published_index_dir/publish.json")"
             else
               echo "Nothing was published: a stage before publish failed."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail the run after publication if a photo stage failed
+        if: env.PHOTO_STATUS_FAILED == 'true' || steps.fetch_photos.outcome == 'failure' || steps.current_index.outcome == 'failure' || steps.retain_photos.outcome == 'failure' || steps.mirror_photos.outcome == 'failure'
+        run: |
+          echo "::error::A photo stage failed; the validated index was still published. Inspect the photo outcomes in the summary."
+          exit 1
 
       - name: Remove the work directory
         if: always()

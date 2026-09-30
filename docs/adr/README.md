@@ -20,3 +20,4 @@ do repositório), com a seção indicada.
 | [0011](0011-one-instance-budget-and-monitoring.md) | One Cloud Run instance, a R$ 150 budget and monitoring as code; the voter-location log exclusion was tried and removed (amends 0005) |
 | [0012](0012-polling-places-pagination.md) | Paginate polling places with a stable order |
 | [0013](0013-content-addressed-photo-mirror.md) | Content-addressed photo objects and a recorded digest: a swapped photo cannot go unnoticed (amends 0005) |
+| [0014](0014-photo-refresh-independent-of-index-publication.md) | Bound photo mirroring independently of index publication; retain verified previous URLs and old objects (amends 0005 and 0013) |

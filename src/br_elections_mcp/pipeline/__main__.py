@@ -48,15 +48,24 @@ from br_elections_mcp.pipeline.fetch import FetchError, FetchRecord, fetch
 from br_elections_mcp.pipeline.mirror_photos import (
     MirrorError,
     PhotoZip,
+    full_photo_load_complete,
+    mark_full_photo_load_complete,
     mirror_photos,
     planned_photo_rows,
+    verified_previous_photos,
 )
 from br_elections_mcp.pipeline.photo_integrity import (
     photo_problems,
     photo_public_domain_problem,
     photo_rows_problems,
 )
-from br_elections_mcp.pipeline.publish import PublishError, download_current_manifest, publish
+from br_elections_mcp.pipeline.publish import (
+    PublishError,
+    download_current_index,
+    download_current_manifest,
+    publish,
+    verify_index_pair,
+)
 from br_elections_mcp.pipeline.validate import ValidationError, validate
 
 _PHOTO_ZIP_NAME_RE = re.compile(r"^foto_cand\d+_(?P<uf>[A-Za-z]{2})_div\.zip$")
@@ -185,6 +194,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_bucket_arguments(current_parser)
     current_parser.add_argument("--output", type=Path, required=True, help="where to write it")
 
+    current_index_parser = stages.add_parser(
+        "current-index", help="download and verify the currently published immutable index pair"
+    )
+    _add_bucket_arguments(current_index_parser)
+    current_index_parser.add_argument("--output-dir", type=Path, required=True)
+
     publish_parser = stages.add_parser(
         "publish", help="send index.duckdb and manifest.json to the bucket, manifest last"
     )
@@ -222,6 +237,43 @@ def _build_parser() -> argparse.ArgumentParser:
     mirror_parser.add_argument("--r2-access-key-id", required=True)
     mirror_parser.add_argument("--r2-secret-access-key", required=True)
     mirror_parser.add_argument("--r2-prefix", default="", help="key prefix inside the bucket")
+    mirror_parser.add_argument(
+        "--retain-old-photos",
+        action="store_true",
+        help="do not prune objects before index publication",
+    )
+    mirror_parser.add_argument(
+        "--mark-full-load-complete",
+        action="store_true",
+        help="write the verified R2 completion marker after the one-time full load",
+    )
+
+    load_status_parser = stages.add_parser(
+        "photo-load-status", help="succeed only after the full photo load completed in R2"
+    )
+    load_status_parser.add_argument("--r2-endpoint", required=True)
+    load_status_parser.add_argument("--r2-bucket", required=True)
+    load_status_parser.add_argument("--r2-access-key-id", required=True)
+    load_status_parser.add_argument("--r2-secret-access-key", required=True)
+    load_status_parser.add_argument("--r2-prefix", default="")
+    load_status_parser.add_argument("--require-incomplete", action="store_true")
+
+    retain_parser = stages.add_parser(
+        "retain-photos", help="copy previously published URLs verified against TSE and R2"
+    )
+    retain_parser.add_argument("--zips-dir", type=Path, required=True)
+    retain_parser.add_argument("--index-dir", type=Path, required=True)
+    retain_parser.add_argument("--previous-index-dir", type=Path, required=True)
+    retain_parser.add_argument("--public-domain", required=True)
+    retain_parser.add_argument("--r2-endpoint", required=True)
+    retain_parser.add_argument("--r2-bucket", required=True)
+    retain_parser.add_argument("--r2-access-key-id", required=True)
+    retain_parser.add_argument("--r2-secret-access-key", required=True)
+    retain_parser.add_argument("--r2-prefix", default="")
+
+    verify_parser = stages.add_parser("verify-photos", help="check the index photo URL chain")
+    verify_parser.add_argument("--index-dir", type=Path, required=True)
+    verify_parser.add_argument("--public-domain", required=True)
     return parser
 
 
@@ -337,6 +389,16 @@ def _run_current_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_current_index(args: argparse.Namespace) -> int:
+    try:
+        present = download_current_index(_bucket_client(args), args.output_dir, prefix=args.prefix)
+    except PublishError as exc:
+        print(f"current-index failed: {exc}", file=sys.stderr)
+        return 1
+    print("current index verified" if present else "no index is published yet")
+    return 0
+
+
 def _run_publish(args: argparse.Namespace) -> int:
     try:
         record = publish(
@@ -365,20 +427,114 @@ def _iter_photo_zips(zips_dir: Path) -> list[PhotoZip]:
     return zips
 
 
-def _run_mirror_photos(args: argparse.Namespace) -> int:
-    zips = _iter_photo_zips(args.zips_dir)
+def _candidate_ufs(index_dir: Path) -> dict[int, str]:
+    conn = duckdb.connect(str(index_dir / INDEX_FILE_NAME), read_only=True)
+    try:
+        rows = conn.execute("SELECT DISTINCT sq_candidato, uf FROM candidates").fetchall()
+    finally:
+        conn.close()
+    candidate_ufs: dict[int, str] = {}
+    for sq_candidato, uf in rows:
+        previous_uf = candidate_ufs.get(sq_candidato)
+        if previous_uf is not None and previous_uf != uf:
+            raise MirrorError(
+                f"sq_candidato {sq_candidato} has conflicting index UFs {previous_uf} and {uf}"
+            )
+        candidate_ufs[sq_candidato] = uf
+    return candidate_ufs
+
+
+def _photo_bucket(args: argparse.Namespace) -> R2BucketClient:
+    return R2BucketClient(
+        endpoint_url=args.r2_endpoint,
+        bucket=args.r2_bucket,
+        access_key_id=args.r2_access_key_id,
+        secret_access_key=args.r2_secret_access_key,
+        prefix=args.r2_prefix,
+    )
+
+
+def _complete_photo_zips(zips_dir: Path) -> list[PhotoZip]:
+    zips = _iter_photo_zips(zips_dir)
     missing = sorted(
         {dataset.file_name for dataset in CANDIDATE_PHOTOS_2026} - {zip_.path.name for zip_ in zips}
     )
     if missing:
-        # Sync deletes every mirrored photo the given ZIPs do not have (ADR 0005): a partial set
-        # would wipe the photos of the missing UFs.
-        print(
-            f"mirror-photos refused: {len(missing)} of {len(CANDIDATE_PHOTOS_2026)} photo ZIPs "
-            f"missing from {args.zips_dir} ({', '.join(missing)}); "
-            "a partial set would delete the photos already mirrored",
-            file=sys.stderr,
+        raise MirrorError(
+            f"{len(missing)} of {len(CANDIDATE_PHOTOS_2026)} photo ZIPs missing from "
+            f"{zips_dir} ({', '.join(missing)}); refusing a partial set"
         )
+    return zips
+
+
+def _run_retain_photos(args: argparse.Namespace) -> int:
+    previous_path = args.previous_index_dir / INDEX_FILE_NAME
+    if not previous_path.is_file():
+        print("no previous index; no photo URLs to retain")
+        return 0
+    try:
+        verify_index_pair(args.previous_index_dir)
+        zips = _complete_photo_zips(args.zips_dir)
+        problems = photo_problems(previous_path, args.public_domain)
+        if problems:
+            raise MirrorError("previous index photo chain: " + "; ".join(problems))
+        problems = photo_problems(args.index_dir / INDEX_FILE_NAME, "")
+        if problems:
+            raise MirrorError("new index photo chain: " + "; ".join(problems))
+        conn = duckdb.connect(str(previous_path), read_only=True)
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT sq_candidato, photo_url, photo_sha256 FROM candidates "
+                "WHERE photo_url IS NOT NULL"
+            ).fetchall()
+        finally:
+            conn.close()
+        previous = {sq: (url, digest) for sq, url, digest in rows}
+        urls, digests = verified_previous_photos(
+            zips,
+            _photo_bucket(args),
+            public_domain=args.public_domain,
+            candidate_ufs=_candidate_ufs(args.index_dir),
+            previous=previous,
+        )
+        if urls:
+            apply_photo_urls(args.index_dir, urls, digests)
+        problems = photo_problems(args.index_dir / INDEX_FILE_NAME, args.public_domain)
+        if problems:
+            raise MirrorError("retained index photo chain: " + "; ".join(problems))
+    except (MirrorError, OSError, PublishError) as exc:
+        print(f"retain-photos failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"retained {len(urls)} verified photo URLs from {len(previous)} previously published")
+    return 0
+
+
+def _run_verify_photos(args: argparse.Namespace) -> int:
+    problems = photo_problems(args.index_dir / INDEX_FILE_NAME, args.public_domain)
+    if problems:
+        print(f"verify-photos failed: {'; '.join(problems)}", file=sys.stderr)
+        return 1
+    print("photo chain verified")
+    return 0
+
+
+def _run_photo_load_status(args: argparse.Namespace) -> int:
+    try:
+        complete = full_photo_load_complete(_photo_bucket(args))
+    except MirrorError as exc:
+        print(f"photo-load-status failed: {exc}", file=sys.stderr)
+        return 2
+    print("full photo load complete" if complete else "full photo load has not completed")
+    if args.require_incomplete:
+        return 1 if complete else 0
+    return 0 if complete else 3
+
+
+def _run_mirror_photos(args: argparse.Namespace) -> int:
+    try:
+        zips = _complete_photo_zips(args.zips_dir)
+    except MirrorError as exc:
+        print(f"mirror-photos refused: {exc}", file=sys.stderr)
         return 1
     domain_problem = photo_public_domain_problem(args.public_domain)
     if domain_problem:
@@ -388,23 +544,8 @@ def _run_mirror_photos(args: argparse.Namespace) -> int:
     if problems:
         print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
         return 1
-    conn = duckdb.connect(str(args.index_dir / INDEX_FILE_NAME), read_only=True)
     try:
-        rows = conn.execute("SELECT DISTINCT sq_candidato, uf FROM candidates").fetchall()
-    finally:
-        conn.close()
-    candidate_ufs: dict[int, str] = {}
-    for sq_candidato, uf in rows:
-        previous_uf = candidate_ufs.get(sq_candidato)
-        if previous_uf is not None and previous_uf != uf:
-            print(
-                f"mirror-photos failed: sq_candidato {sq_candidato} has conflicting index UFs "
-                f"{previous_uf} and {uf}",
-                file=sys.stderr,
-            )
-            return 1
-        candidate_ufs[sq_candidato] = uf
-    try:
+        candidate_ufs = _candidate_ufs(args.index_dir)
         planned_rows = planned_photo_rows(
             zips, public_domain=args.public_domain, candidate_ufs=candidate_ufs
         )
@@ -415,16 +556,15 @@ def _run_mirror_photos(args: argparse.Namespace) -> int:
     if problems:
         print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
         return 1
-    bucket = R2BucketClient(
-        endpoint_url=args.r2_endpoint,
-        bucket=args.r2_bucket,
-        access_key_id=args.r2_access_key_id,
-        secret_access_key=args.r2_secret_access_key,
-        prefix=args.r2_prefix,
-    )
+    bucket = _photo_bucket(args)
     try:
         result = mirror_photos(
-            zips, bucket, public_domain=args.public_domain, candidate_ufs=candidate_ufs
+            zips,
+            bucket,
+            public_domain=args.public_domain,
+            candidate_ufs=candidate_ufs,
+            prune=not args.retain_old_photos,
+            progress=lambda message: print(message, flush=True),
         )
     except MirrorError as exc:
         print(f"mirror-photos failed: {exc}", file=sys.stderr)
@@ -434,6 +574,13 @@ def _run_mirror_photos(args: argparse.Namespace) -> int:
     if problems:
         print(f"mirror-photos failed: {'; '.join(problems)}", file=sys.stderr)
         return 1
+    if args.mark_full_load_complete:
+        try:
+            mark_full_photo_load_complete(bucket)
+        except MirrorError as exc:
+            print(f"mirror-photos failed: {exc}", file=sys.stderr)
+            return 1
+        print("full photo load marked complete in R2", flush=True)
     print(
         f"uploaded {len(result.uploaded)}, skipped {len(result.skipped)}, "
         f"removed {len(result.removed)}, photo_url set for {len(result.photo_urls)} candidacies"
@@ -453,10 +600,18 @@ def main(argv: list[str] | None = None) -> int:
         return _run_extract(args)
     if args.stage == "current-manifest":
         return _run_current_manifest(args)
+    if args.stage == "current-index":
+        return _run_current_index(args)
     if args.stage == "publish":
         return _run_publish(args)
     if args.stage == "mirror-photos":
         return _run_mirror_photos(args)
+    if args.stage == "retain-photos":
+        return _run_retain_photos(args)
+    if args.stage == "verify-photos":
+        return _run_verify_photos(args)
+    if args.stage == "photo-load-status":
+        return _run_photo_load_status(args)
     raise AssertionError(f"unhandled stage {args.stage!r}")
 
 

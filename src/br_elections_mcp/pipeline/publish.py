@@ -166,3 +166,39 @@ def download_current_manifest(
     if not client.download(f"{_normalize_prefix(prefix)}{MANIFEST_FILE_NAME}", target):
         return None
     return read_manifest(target)
+
+
+def download_current_index(client: BucketClient, target_dir: Path, *, prefix: str = "") -> bool:
+    """Download the immutable current version and verify it against its manifest.
+
+    A refresh may publish concurrently with a manual photo load, so download from the
+    version named by the manifest rather than the mutable current index object.
+    """
+    manifest_path = target_dir / MANIFEST_FILE_NAME
+    manifest = download_current_manifest(client, manifest_path, prefix=prefix)
+    if manifest is None:
+        return False
+    versioned = f"{_normalize_prefix(prefix)}{VERSIONS_DIR}/{version_id(manifest)}/"
+    index_path = target_dir / INDEX_FILE_NAME
+    if not client.download(f"{versioned}{INDEX_FILE_NAME}", index_path):
+        raise PublishError(f"published index missing: {versioned}{INDEX_FILE_NAME}")
+    verify_index_pair(target_dir)
+    return True
+
+
+def verify_index_pair(index_dir: Path) -> Manifest:
+    """Require an index and manifest pair with matching SHA-256 before reuse."""
+    manifest_path = index_dir / MANIFEST_FILE_NAME
+    index_path = index_dir / INDEX_FILE_NAME
+    try:
+        manifest = read_manifest(manifest_path)
+    except ValueError as exc:
+        raise PublishError(f"invalid manifest {manifest_path}: {exc}") from exc
+    if not index_path.is_file():
+        raise PublishError(f"index not found: {index_path}")
+    actual = _sha256(index_path)
+    if actual != manifest.index_sha256:
+        raise PublishError(
+            f"published index SHA-256 {actual} does not match manifest {manifest.index_sha256}"
+        )
+    return manifest

@@ -288,4 +288,4 @@ def test_mirror_photos_command_refuses_a_partial_set_before_touching_the_bucket(
     assert "2 of 28 photo ZIPs missing" in err
     assert "foto_cand2026_SP_div.zip" in err
     assert "foto_cand2026_BR_div.zip" in err
-    assert "delete the photos already mirrored" in err
+    assert "refusing a partial set" in err

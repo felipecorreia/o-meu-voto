@@ -82,10 +82,12 @@ Pointers only; the content lives in the files below.
   casing for free. Add a name-bearing column to `_CASED_COLUMNS` there, not to `core`.
 - The candidate photo ZIPs (27 UFs plus `BR`, each with a `leiame.pdf` beside the JPEGs) are
   fetched by `fetch --photos` (`CANDIDATE_PHOTOS_2026`, not in `DATASETS`) and mirrored by
-  `mirror-photos`, which refuses a set missing any of the 28 because sync deletes what it is
-  not given, and never overwrites an object: keys carry the photo's SHA-256, the index records
-  it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013). `refresh.yml` runs
-  both only once the five `R2_*` secrets exist; until then every `photo_url` is null in
+  `mirror-photos`, which refuses a set missing any of the 28, never overwrites an object and,
+  in production, passes `--retain-old-photos` (no deletes): keys carry the photo's SHA-256, the
+  index records it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013,
+  ADR 0014). `refresh.yml` runs them only once the five `R2_*` secrets exist and the manual
+  `photo-full-load.yml` has written the R2 completion marker; a photo-stage failure never blocks
+  `publish` but fails the run after it. Until then every `photo_url` is null in
   production (README, "Mirroring candidate photos to R2"; issue #43).
 
 ## Agent skills

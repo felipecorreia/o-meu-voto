@@ -31,7 +31,7 @@ import hashlib
 import re
 import tempfile
 import zipfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +45,10 @@ from br_elections_mcp.pipeline.photo_integrity import (
 _PHOTO_NAME_RE = re.compile(r"^F(?P<uf>[A-Za-z]{2})(?P<sq_candidato>\d+)_div\.jpg$")
 # The one non-photo entry every real ZIP carries (checked against AC and BR, 2026-09-29).
 _README_NAME = "leiame.pdf"
+FULL_LOAD_MARKER_KEY = "photo-load-complete-2026"
+_FULL_LOAD_MARKER_BYTES = b"candidate-photo-full-load-complete-2026\n"
+_FULL_LOAD_MARKER_MD5 = hashlib.md5(_FULL_LOAD_MARKER_BYTES).hexdigest()
+_FULL_LOAD_MARKER_SHA256 = hashlib.sha256(_FULL_LOAD_MARKER_BYTES).hexdigest()
 
 
 class MirrorError(ValueError):
@@ -53,6 +57,28 @@ class MirrorError(ValueError):
 
 class PhotoIntegrityError(MirrorError):
     """The bucket does not hold what the ZIPs say: an object was replaced or is missing."""
+
+
+def full_photo_load_complete(bucket: PhotoBucketClient) -> bool:
+    """True only after the full load wrote its verified completion marker."""
+    checksum = bucket.list_objects().get(FULL_LOAD_MARKER_KEY)
+    if checksum is None:
+        return False
+    if checksum != _FULL_LOAD_MARKER_MD5:
+        raise PhotoIntegrityError("the full photo load marker has an unexpected checksum")
+    return True
+
+
+def mark_full_photo_load_complete(bucket: PhotoBucketClient) -> None:
+    """Mark completion only after every photo and the index photo chain were verified."""
+    if full_photo_load_complete(bucket):
+        raise MirrorError("the full photo load is already marked complete")
+    with tempfile.TemporaryDirectory(prefix=".photo-load-marker-") as tmp_name:
+        path = Path(tmp_name) / FULL_LOAD_MARKER_KEY
+        path.write_bytes(_FULL_LOAD_MARKER_BYTES)
+        bucket.put(FULL_LOAD_MARKER_KEY, path, _FULL_LOAD_MARKER_SHA256)
+    if not full_photo_load_complete(bucket):
+        raise PhotoIntegrityError("the full photo load marker was not verified after upload")
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,12 +137,63 @@ def planned_photo_rows(
     return rows
 
 
+def verified_previous_photos(
+    zips: Iterable[PhotoZip],
+    bucket: PhotoBucketClient,
+    *,
+    public_domain: str,
+    candidate_ufs: Mapping[int, str],
+    previous: Mapping[int, tuple[str, str]],
+) -> tuple[dict[int, str], dict[int, str]]:
+    """Carry a published photo only if the current TSE bytes and R2 ETag still agree.
+
+    A failed or timed-out mirror can leave a partial upload in R2. This function only
+    considers URLs already in the published index, so that partial load cannot leak into
+    the next index. The previous index's chain is checked by the caller first.
+    """
+    remote = bucket.list_objects()
+    rows: list[tuple[int, str, str, str]] = []
+    urls: dict[int, str] = {}
+    digests: dict[int, str] = {}
+    base_url = public_domain.rstrip("/")
+    for photo_zip in zips:
+        with zipfile.ZipFile(photo_zip.path) as zf:
+            for info in zf.infolist():
+                if info.is_dir() or Path(info.filename).name.lower() == _README_NAME:
+                    continue
+                sq_candidato = _parse_entry(photo_zip, info.filename)
+                uf = photo_zip.uf.upper()
+                index_uf = candidate_ufs.get(sq_candidato, uf)
+                if uf != index_uf:
+                    raise PhotoIntegrityError(
+                        f"sq_candidato {sq_candidato}: ZIP UF {uf} "
+                        f"does not match index UF {index_uf}"
+                    )
+                with zf.open(info) as fh:
+                    content = fh.read()
+                key, digest = photo_key(uf, sq_candidato, content)
+                url = f"{base_url}/{key}"
+                rows.append((sq_candidato, index_uf, url, digest))
+                if previous.get(sq_candidato) != (url, digest):
+                    continue
+                if remote.get(key) != hashlib.md5(content).hexdigest():
+                    continue
+                urls[sq_candidato] = url
+                digests[sq_candidato] = digest
+    problems = photo_rows_problems(rows, public_domain)
+    if problems:
+        raise PhotoIntegrityError("; ".join(problems))
+    return urls, digests
+
+
 def mirror_photos(
     zips: Iterable[PhotoZip],
     bucket: PhotoBucketClient,
     *,
     public_domain: str,
     candidate_ufs: Mapping[int, str] | None = None,
+    prune: bool = True,
+    progress: Callable[[str], None] | None = None,
 ) -> MirrorResult:
     """Sync `zips` to `bucket` and return what changed plus every current photo URL.
 
@@ -199,8 +276,15 @@ def mirror_photos(
         problems = photo_rows_problems(planned_rows, public_domain)
         if problems:
             raise PhotoIntegrityError("; ".join(problems))
-        for key in uploaded:
+        if progress is not None:
+            progress(
+                f"mirror plan: {len(remote)} remote objects, {len(uploaded)} to upload, "
+                f"{len(skipped)} already verified"
+            )
+        for position, key in enumerate(uploaded, start=1):
             bucket.put(key, tmp_dir / key, digest_of_key[key])
+            if progress is not None and (position % 500 == 0 or position == len(uploaded)):
+                progress(f"mirror uploaded {position}/{len(uploaded)}")
 
     after = bucket.list_objects()
     missing = [key for key in expected_md5 if key not in after]
@@ -211,7 +295,13 @@ def mirror_photos(
             f"for {len(changed)} of this run's photos, e.g. "
             f"{', '.join((missing + changed)[:3])}; nothing was deleted"
         )
-    removed = [key for key in after if key not in expected_md5]
+    if progress is not None:
+        progress(f"mirror verified {len(expected_md5)} expected objects; R2 lists {len(after)}")
+    removed = (
+        [key for key in after if key not in expected_md5 and key != FULL_LOAD_MARKER_KEY]
+        if prune
+        else []
+    )
     for key in removed:
         bucket.delete(key)
 
