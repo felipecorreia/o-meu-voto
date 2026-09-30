@@ -1,10 +1,10 @@
 """Command line of the pipeline: `python -m br_elections_mcp.pipeline <stage> ...`.
 
 Stages `fetch` (the datasets, or the candidate photo ZIPs with `--photos`), `build`, `validate`,
-`publish` and `mirror-photos`, plus two helpers the refresh workflow chains them with: `extract`
-(the CSV out of a fetched ZIP) and `current-manifest` (the published manifest, for the
-count-stability gate of `validate`). Each stage reads and writes files, so any one of them can
-run alone (docs/codebase-design.md, section 5).
+`publish`, `mirror-photos` and `clean-photos`, plus two helpers the refresh workflow chains
+them with: `extract` (the CSV out of a fetched ZIP) and `current-manifest` (the published
+manifest, for the count-stability gate of `validate`). Each stage reads and writes files, so
+any one of them can run alone (docs/codebase-design.md, section 5).
 """
 
 from __future__ import annotations
@@ -53,6 +53,12 @@ from br_elections_mcp.pipeline.mirror_photos import (
     mirror_photos,
     planned_photo_rows,
     verified_previous_photos,
+)
+from br_elections_mcp.pipeline.photo_cleanup import (
+    CLEANUP_GRACE,
+    MAX_DELETE_FRACTION,
+    PhotoCleanupError,
+    clean_photos,
 )
 from br_elections_mcp.pipeline.photo_integrity import (
     photo_problems,
@@ -271,10 +277,49 @@ def _build_parser() -> argparse.ArgumentParser:
     retain_parser.add_argument("--r2-secret-access-key", required=True)
     retain_parser.add_argument("--r2-prefix", default="")
 
+    clean_parser = stages.add_parser(
+        "clean-photos",
+        help="after publish, delete R2 photos no index current in the grace window references",
+    )
+    clean_parser.add_argument(
+        "--index-dir", type=Path, required=True, help="the pair this run just published"
+    )
+    clean_parser.add_argument(
+        "--previous-index-dir",
+        type=Path,
+        required=True,
+        help="the pair current before this run's publish, as current-index downloaded it",
+    )
+    clean_parser.add_argument("--public-domain", required=True)
+    clean_parser.add_argument("--r2-endpoint", required=True)
+    clean_parser.add_argument("--r2-bucket", required=True)
+    clean_parser.add_argument("--r2-access-key-id", required=True)
+    clean_parser.add_argument("--r2-secret-access-key", required=True)
+    clean_parser.add_argument("--r2-prefix", default="")
+    _add_bucket_arguments(clean_parser)
+    clean_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what is due and update the ledger, but delete nothing",
+    )
+    clean_parser.add_argument(
+        "--max-delete-fraction",
+        type=_fraction,
+        default=MAX_DELETE_FRACTION,
+        help=f"refuse above this fraction of the photo objects (default: {MAX_DELETE_FRACTION})",
+    )
+
     verify_parser = stages.add_parser("verify-photos", help="check the index photo URL chain")
     verify_parser.add_argument("--index-dir", type=Path, required=True)
     verify_parser.add_argument("--public-domain", required=True)
     return parser
+
+
+def _fraction(value: str) -> float:
+    fraction = float(value)
+    if not 0 <= fraction <= 1:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 1, got {value}")
+    return fraction
 
 
 def _add_bucket_arguments(parser: argparse.ArgumentParser) -> None:
@@ -518,6 +563,44 @@ def _run_verify_photos(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_clean_photos(args: argparse.Namespace) -> int:
+    domain_problem = photo_public_domain_problem(args.public_domain)
+    if domain_problem:
+        print(f"clean-photos failed: {domain_problem}", file=sys.stderr)
+        return 1
+    mode = "dry run" if args.dry_run else "delete"
+    try:
+        result = clean_photos(
+            args.index_dir,
+            args.previous_index_dir,
+            _photo_bucket(args),
+            _bucket_client(args),
+            public_domain=args.public_domain,
+            prefix=args.prefix,
+            dry_run=args.dry_run,
+            max_delete_fraction=args.max_delete_fraction,
+            progress=lambda message: print(message, flush=True),
+        )
+    except (PhotoCleanupError, PublishError, OSError) as exc:
+        print(f"clean-photos ({mode}) refused: {exc}", file=sys.stderr)
+        return 1
+    plan = result.plan
+    grace_hours = int(CLEANUP_GRACE.total_seconds() // 3600)
+    print(
+        f"clean-photos ({mode}): {plan.photo_objects} photo objects, "
+        f"{len(plan.ledger.unreferenced_since)} referenced by neither the published nor the "
+        f"previous pair, {len(plan.due)} unreferenced for {grace_hours} h or more; "
+        f"ledger {'carried' if plan.chain_intact else 'restarted'}; "
+        f"{plan.other_objects} objects outside the photo key format left untouched"
+    )
+    if args.dry_run:
+        sample = f", e.g. {', '.join(plan.due[:3])}" if plan.due else ""
+        print(f"clean-photos (dry run): would delete {len(plan.due)}{sample}; deleted 0")
+    else:
+        print(f"clean-photos (delete): deleted {len(result.deleted)}")
+    return 0
+
+
 def _run_photo_load_status(args: argparse.Namespace) -> int:
     try:
         complete = full_photo_load_complete(_photo_bucket(args))
@@ -608,6 +691,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_mirror_photos(args)
     if args.stage == "retain-photos":
         return _run_retain_photos(args)
+    if args.stage == "clean-photos":
+        return _run_clean_photos(args)
     if args.stage == "verify-photos":
         return _run_verify_photos(args)
     if args.stage == "photo-load-status":

@@ -364,6 +364,8 @@ para que qualquer estágio rode sozinho:
 4. **mirror_photos**: syncs per-UF JPEGs to R2 with content-addressed keys. Production
    retains old objects and carries only previously published URLs verified against the current
    TSE bytes and R2; a bounded mirror cannot block index publication (ADR 0013, ADR 0014).
+   After `publish`, `clean-photos` deletes the objects no index current in the last 48 hours
+   references (ADR 0015).
 5. **publish**: envia `index.duckdb` e `manifest.json` (`generated_at` por dataset,
    `index_built_at`, `election_year` e `election_dates` por turno presente, contagens,
    SHA-256) para o bucket do índice, mantendo as versões anteriores para rollback. A eleição

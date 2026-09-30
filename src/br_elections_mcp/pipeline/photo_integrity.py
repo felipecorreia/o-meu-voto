@@ -28,6 +28,11 @@ def photo_key(uf: str, sq_candidato: int, content: bytes) -> tuple[str, str]:
     return f"F{uf.upper()}{sq_candidato}_div-{digest}.jpg", digest
 
 
+def is_photo_key(key: str) -> bool:
+    """Whether ``key`` has the content-addressed shape ``F<UF><SQ>_div-<sha256>.jpg``."""
+    return _KEY_RE.fullmatch(key) is not None
+
+
 def photo_problems(index_path: Path, public_domain: str | None = None) -> list[str]:
     """Every way the ``photo_url``/``photo_sha256`` pairs of the index break the chain.
 

@@ -9,6 +9,8 @@ runner's temporary directory (ADR 0004). Layout under ``prefix``::
     versions/{version}/manifest.json
     index.duckdb                       the current pair, what GcsIndexSource reads
     manifest.json                      written last: the pointer that makes a version current
+    photo-cleanup/unreferenced.json    the ledger of stage ``clean-photos`` (ADR 0015), not
+                                       written here and never read by the service
 
 ``version`` is the UTC build time plus the first twelve hex digits of the
 index SHA-256, so the directory listing sorts by build and names its index.
@@ -91,7 +93,7 @@ def version_id(manifest: Manifest) -> str:
     return f"{built_at:%Y%m%dT%H%M%SZ}-{manifest.index_sha256[:12]}"
 
 
-def _normalize_prefix(prefix: str) -> str:
+def normalize_prefix(prefix: str) -> str:
     prefix = prefix.strip("/")
     return f"{prefix}/" if prefix else ""
 
@@ -132,7 +134,7 @@ def publish(
             f"{index_path.name} ({actual}); refusing to publish a mismatched pair"
         )
 
-    base = _normalize_prefix(prefix)
+    base = normalize_prefix(prefix)
     version = version_id(manifest)
     versioned = f"{base}{VERSIONS_DIR}/{version}/"
     # Order matters: the versioned pair first, then the current index, and the current
@@ -163,7 +165,7 @@ def download_current_manifest(
 
     ``validate`` takes it as the previous manifest of its count-stability gate.
     """
-    if not client.download(f"{_normalize_prefix(prefix)}{MANIFEST_FILE_NAME}", target):
+    if not client.download(f"{normalize_prefix(prefix)}{MANIFEST_FILE_NAME}", target):
         return None
     return read_manifest(target)
 
@@ -178,7 +180,7 @@ def download_current_index(client: BucketClient, target_dir: Path, *, prefix: st
     manifest = download_current_manifest(client, manifest_path, prefix=prefix)
     if manifest is None:
         return False
-    versioned = f"{_normalize_prefix(prefix)}{VERSIONS_DIR}/{version_id(manifest)}/"
+    versioned = f"{normalize_prefix(prefix)}{VERSIONS_DIR}/{version_id(manifest)}/"
     index_path = target_dir / INDEX_FILE_NAME
     if not client.download(f"{versioned}{INDEX_FILE_NAME}", index_path):
         raise PublishError(f"published index missing: {versioned}{INDEX_FILE_NAME}")

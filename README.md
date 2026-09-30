@@ -182,9 +182,10 @@ after `publish` so the photo failure remains visible. The run summary lists how 
 outcome. The first full load has a separate manually dispatched workflow with a six-hour
 job budget; see below and [ADR 0014](docs/adr/0014-photo-refresh-independent-of-index-publication.md).
 
-The production workflow passes `--retain-old-photos`: content-addressed objects remain in R2
-even when the TSE changes or removes a photo. Deleting an old key before a new index is
-published can break the live index. `mirror-photos` still refuses a `--zips-dir` that lacks
+The production workflow passes `--retain-old-photos`: the mirror leaves content-addressed
+objects in R2 even when the TSE changes or removes a photo, because deleting an old key before
+a new index is published can break the live index. They are removed later, after `publish`,
+by `clean-photos` (below). `mirror-photos` still refuses a `--zips-dir` that lacks
 any of the 28 ZIPs. Before mirroring, the refresh carries previously published photo URLs
 only when the prior index is hash-verified, the current TSE photo has the same SHA-256, and
 the R2 ETag matches its bytes. A timed-out mirror therefore cannot publish a URL for a
@@ -221,6 +222,36 @@ The count must be positive. Fetch the printed sample `*.r2.dev` URL and confirm 
 and `Content-Type: image/jpeg` (for example, `curl -I '<sample URL>'`). Do not publish
 Cloudflare Pages as part of this load.
 
+#### Removing photos the TSE no longer publishes
+
+`clean-photos` runs in the refresh right after `publish`, only when every photo stage of the run
+succeeded, and never in the full load ([ADR 0015](docs/adr/0015-publication-aware-photo-cleanup.md)).
+It deletes an R2 object only after no index current in the last 48 hours has referenced it: a
+Cloud Run instance swaps its index only after a query, so an idle one can still serve a pair
+several refreshes old. The first-unreferenced times live in a ledger in the index bucket,
+`photo-cleanup/unreferenced.json`. The stage refuses, deleting nothing and failing the run, when
+a pair does not verify, the live manifest is not the pair just published, the R2 listing lacks
+an object the published index references (these write no ledger, so the clocks restart), or
+more than 10% of the photo objects would go (this one keeps the ledger, so the clocks keep
+running and every following refresh fails the same way until someone looks; run the stage by
+hand with a higher `--max-delete-fraction` when the removal is legitimate). The stage's output,
+refusal included, is in the "Photo steps" section of the refresh run summary.
+
+Deletion is off on merge: until the repository variable `PHOTO_CLEANUP_MODE` is `delete`, every
+refresh runs the stage as a dry run. It writes the ledger so the 48-hour clock runs, deletes
+nothing, and prints the counts in the run summary and in the "Clean up R2 photos no served
+index references" step:
+
+```sh
+gh workflow run refresh.yml --ref main   # or wait for the next scheduled refresh
+gh run view --log "$(gh run list --workflow refresh.yml --limit 1 --json databaseId --jq '.[0].databaseId')" | grep clean-photos
+```
+
+The dry run reports `would delete 0` until 48 hours of consecutive dry runs have passed. When
+its counts look right, enable deletion with `gh variable set PHOTO_CLEANUP_MODE --body delete`;
+`gh variable delete PHOTO_CLEANUP_MODE` (or any value other than `delete`) goes back to dry
+runs. Deleting needs the R2 token to allow `DeleteObject` on the bucket.
+
 #### Photo integrity: what stops a swapped photo
 
 A candidate's face is what a voter recognises first, and it is served from a public bucket the
@@ -249,16 +280,16 @@ index does not control. The design is in [ADR 0013](docs/adr/0013-content-addres
 | Threat | Covered? |
 |---|---|
 | R2 credentials leak; someone replaces or corrupts a photo object | Detected at the next refresh when the current TSE ZIPs still contain that photo: the mirror refuses to overwrite it. Carry-forward also drops a prior URL whose current bytes do not match R2. The index can publish without that URL, and the run then reports the photo failure. **Not prevented:** until detection, voters see the swapped photo because an `<img>` cannot verify a digest. |
-| Someone uploads extra objects to the bucket | Not served (the index never points to them). Production mirroring retains old objects, so they stay until a publication-aware cleanup exists. |
+| Someone uploads extra objects to the bucket | Not served (the index never points to them). With `PHOTO_CLEANUP_MODE=delete`, `clean-photos` removes those with a photo key after 48 hours unreferenced; objects with any other key stay. |
 | The index or a `photo_url` is edited by hand or half-written | `photo_chain` rejects broken digest and candidate pairs, malformed URLs, and mixed origins; with `--photo-public-domain`, it also requires the exact configured base URL and key. `mirror-photos` checks that exact URL before touching R2 and again after updating the index. A consistently rewritten index still requires a trusted public domain at validation. |
 | R2 credentials **and** the GCS publisher (or the workflow itself) are compromised | Not covered: both the objects and the index can be rewritten consistently. Keep the two credentials separate and the R2 token scoped to this bucket. |
 | The TSE, or the CDN download, serves a wrong photo | Not covered: it is mirrored faithfully. The digest proves which bytes we took, not that the TSE meant them; the TSE publishes no signature. |
-| Old objects deleted before the new index is published | Production mirroring retains old objects, including keys still referenced by a live or rollback index. Cleanup needs a separate publication-aware design. |
+| Old objects deleted while an index still points to them | Production mirroring retains old objects; `clean-photos` deletes only after `publish` and only objects no index current in the last 48 hours references. A rollback to a version superseded longer ago can point to deleted photos until the next refresh re-mirrors them. |
 
 The bucket name and public URL are configuration (`R2_BUCKET`, `R2_PUBLIC_DOMAIN`), never
 hard-coded. Beyond this change, still to do: an audit that downloads the public URLs and
-compares them with the index digests (closing the detection window), publication-aware
-cleanup of old objects, and a bucket-scoped R2 token with a bucket lock where available.
+compares them with the index digests (closing the detection window), and a bucket-scoped R2
+token with a bucket lock where available.
 
 ## How the pipeline downloads from the TSE
 

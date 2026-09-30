@@ -40,7 +40,8 @@ DivulgaCandContas entra apenas como link para o humano abrir, nunca como fonte d
   TSE; o serviço não agrega, filtra nem ordena por esses campos.
 - As fotos, espelhadas por decisão de produto (ADR 0005), são dado pessoal público sob
   custódia do projeto: o pipeline remove do R2 as que o TSE deixar de publicar, a cada
-  refresh.
+  refresh. O [ADR 0015](0015-publication-aware-photo-cleanup.md) fixa quando: depois do
+  `publish`, 48 horas após nenhum índice servido referenciá-las.
 - O repositório precisa de uma política de privacidade curta e de um canal de contato, ambos
   fora deste PR.
 - Se o TSE passar a mascarar as colunas na fonte, nada muda no pipeline: o descarte é

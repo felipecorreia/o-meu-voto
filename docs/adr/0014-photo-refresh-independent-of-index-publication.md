@@ -2,6 +2,8 @@
 
 Status: accepted, 2026-09-30. Amends ADR 0005 and ADR 0013 for production refreshes.
 
+Removal of old objects after publication was added by [ADR 0015](0015-publication-aware-photo-cleanup.md).
+
 ## Context
 
 The first content-addressed load of 20,984 TSE photos did not finish inside the refresh

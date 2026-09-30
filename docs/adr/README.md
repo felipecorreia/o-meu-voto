@@ -21,3 +21,4 @@ do repositório), com a seção indicada.
 | [0012](0012-polling-places-pagination.md) | Paginate polling places with a stable order |
 | [0013](0013-content-addressed-photo-mirror.md) | Content-addressed photo objects and a recorded digest: a swapped photo cannot go unnoticed (amends 0005) |
 | [0014](0014-photo-refresh-independent-of-index-publication.md) | Bound photo mirroring independently of index publication; retain verified previous URLs and old objects (amends 0005 and 0013) |
+| [0015](0015-publication-aware-photo-cleanup.md) | Remove unreferenced photos after publication, with a 48-hour grace, a dry-run mode and a deletion bound (amends 0004 and 0014) |

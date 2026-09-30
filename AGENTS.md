@@ -83,7 +83,8 @@ Pointers only; the content lives in the files below.
 - The candidate photo ZIPs (27 UFs plus `BR`, each with a `leiame.pdf` beside the JPEGs) are
   fetched by `fetch --photos` (`CANDIDATE_PHOTOS_2026`, not in `DATASETS`) and mirrored by
   `mirror-photos`, which refuses a set missing any of the 28, never overwrites an object and,
-  in production, passes `--retain-old-photos` (no deletes): keys carry the photo's SHA-256, the
+  in production, passes `--retain-old-photos` (no deletes; `clean-photos` removes unreferenced
+  objects after `publish`, ADR 0015): keys carry the photo's SHA-256, the
   index records it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013,
   ADR 0014). `refresh.yml` runs them only once the five `R2_*` secrets exist and the manual
   `photo-full-load.yml` has written the R2 completion marker; a photo-stage failure never blocks

@@ -26,6 +26,9 @@
 #   R2_ACCESS_KEY_ID        R2 access key id
 #   R2_SECRET_ACCESS_KEY    R2 secret access key
 #   R2_PUBLIC_DOMAIN        public base URL the mirrored photos are served from
+# Optional repository variable for the photo cleanup after publish (ADR 0015):
+#   PHOTO_CLEANUP_MODE      "delete" removes R2 photos past the grace; anything else, or unset,
+#                           is a dry run that reports them and deletes nothing
 name: Refresh index
 
 on:
@@ -264,10 +267,40 @@ jobs:
             --index-dir "${PHOTO_INDEX_DIR:-$WORK/index}" --public-domain "$domain"
 
       - name: Publish the index
+        id: publish
         run: |
           uv run python -m br_elections_mcp.pipeline publish \
             --index-dir "${PHOTO_INDEX_DIR:-$WORK/index}" \
             --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX"
+
+      - name: Clean up R2 photos no served index references
+        # Only after a successful publish and only when every photo stage succeeded, so both
+        # the pair just published and the pair it replaced were verified (ADR 0015).
+        id: clean_photos
+        if: env.MIRROR_PHOTOS == 'true' && env.PHOTO_STATUS_FAILED != 'true' && steps.fetch_photos.outcome == 'success' && steps.current_index.outcome == 'success' && steps.retain_photos.outcome == 'success' && steps.mirror_photos.outcome == 'success'
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+          PHOTO_CLEANUP_MODE: ${{ vars.PHOTO_CLEANUP_MODE }}
+        run: |
+          set -o pipefail
+          ARGS=()
+          if [ "$PHOTO_CLEANUP_MODE" != delete ]; then
+            ARGS+=(--dry-run)
+          fi
+          timeout --signal=TERM --kill-after=30s 15m uv run python -m br_elections_mcp.pipeline clean-photos \
+            --index-dir "$PHOTO_INDEX_DIR" \
+            --previous-index-dir "$WORK/previous" \
+            --public-domain "$R2_PUBLIC_DOMAIN" \
+            --r2-endpoint "$R2_ENDPOINT" \
+            --r2-bucket "$R2_BUCKET" \
+            --r2-access-key-id "$R2_ACCESS_KEY_ID" \
+            --r2-secret-access-key "$R2_SECRET_ACCESS_KEY" \
+            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
+            "${ARGS[@]}" 2>&1 | tee "$WORK/clean-photos.log"
 
       - name: Report the run
         if: always()
@@ -297,6 +330,13 @@ jobs:
             echo "- Previous index outcome: ${{ steps.current_index.outcome }}"
             echo "- Carry-forward outcome: ${{ steps.retain_photos.outcome }}"
             echo "- Mirror outcome: ${{ steps.mirror_photos.outcome }}"
+            echo "- Cleanup outcome (${{ vars.PHOTO_CLEANUP_MODE == 'delete' && 'delete' || 'dry run' }}): ${{ steps.clean_photos.outcome }}"
+            if [ -f "$WORK/clean-photos.log" ]; then
+              echo
+              echo '```'
+              cat "$WORK/clean-photos.log"
+              echo '```'
+            fi
             echo
             published_index_dir="${PHOTO_INDEX_DIR:-$WORK/index}"
             if [ -f "$published_index_dir/manifest.json" ]; then
