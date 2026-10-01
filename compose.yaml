@@ -4,7 +4,7 @@
 #   INDEX_DIR=data/raw/br/index docker compose up --build
 #
 # INDEX_DIR is a directory with index.duckdb and manifest.json, e.g. the output of the
-# pipeline's build stage (README, "Publishing the index"); default data/index.
+# pipeline's build stage (docs/pipeline.md, "Publishing the index"); default data/index.
 services:
   api:
     build: .

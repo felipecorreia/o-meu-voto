@@ -16,8 +16,8 @@ arrecadados e gastos de campanha." This project should not compete with those in
 services or ask for CPF or registration data (ADR 0004); it can add value by comparing public,
 already-ingested registration facts side by side, over the page and over MCP.
 
-This settles the "Escopo extra além das 4 perguntas do MVP" pendency that `wiki/index.md` and
-the 2026-09-21 entry of `wiki/log.md` listed as open with the captain: whether to go beyond the
+This settles the "Escopo extra além das 4 perguntas do MVP" pendency that the project's private wiki
+index and its 2026-09-21 log entry listed as open with the captain: whether to go beyond the
 four MVP questions of `docs/domain-model.md` section 1 (where do I vote, which places are near
 me, who is running, when is the election) before deploy.
 

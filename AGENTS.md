@@ -3,7 +3,8 @@
 Pointers only; the content lives in the files below.
 
 - **Start at `wiki/index.md`**, then the top entry of `wiki/log.md` for the current state and
-  the decisions still open with the captain.
+  the decisions still open with the captain. The wiki is private: the public mirror leaves it
+  out, so it may be missing; then start at `CONTEXT.md`.
 - **`CONTEXT.md`**: the ubiquitous language. Use its English identifiers in code and its terms
   in prose; each entry lists synonyms to avoid.
 - **`docs/domain-model.md`**, **`docs/codebase-design.md`**, **`docs/adr/`**: entities and
@@ -18,8 +19,6 @@ Pointers only; the content lives in the files below.
   `wrangler pages deploy dist` runs inside `web-next/`). `web-next/README.md` says how to run,
   build, deploy and serve it behind a local edge, what the page owns and the follow-ups; CI job
   `web-next` type-checks and builds it, `tests/test_web.py` checks the edge.
-- **Old voter page**: `web/` (static, six cards) is no longer deployed and waits for removal;
-  `web/README.md`, `--web-dir web` to open it locally.
 - **Dev loop**: `uv sync`, `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pytest` (same as `.github/workflows/ci.yml`). Language: identifiers in English.
   Prose finalized from 2026-09-18 on (issues, tickets, reports, commit messages, new docs)
@@ -32,9 +31,10 @@ Pointers only; the content lives in the files below.
   guard accepts only `localhost:<port>`).
   Local run, the Claude Desktop connection and the service image over real TSE data
   (`Dockerfile`, `compose.yaml`): `docs/local-run.md`. Pipeline chain, bucket layout and the
-  refresh workflow: README, "Publishing the index". Cloud Run + Cloudflare deploy checklist,
-  costs and open decisions: `docs/deploy-runbook.md` (Cloud Run and Cloudflare Pages live since
-  2026-09-26, `wiki/sessao-2026-09-27.md`); `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four
+  refresh workflow: `docs/pipeline.md`. Cloud Run + Cloudflare deploy checklist, costs and open
+  decisions: `docs/deploy-runbook.md` (private like the wiki and may be missing; the public
+  overview is `docs/architecture.md`; Cloud Run and Cloudflare Pages live since 2026-09-26,
+  `wiki/sessao-2026-09-27.md`); `scripts/smoke.sh BASE [HEALTH_BASE]` asks the four
   voter questions over REST and MCP. Live capacity (one instance), budget, the Monitoring
   dashboard and the one alert (JSON + idempotent `ops/monitoring/apply.sh`), why no log
   exclusion is in place, the CI/manual-deploy boundary and the scheduled index refresh (Cloud
@@ -88,8 +88,8 @@ Pointers only; the content lives in the files below.
   index records it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013,
   ADR 0014). `refresh.yml` runs them only once the five `R2_*` secrets exist and the manual
   `photo-full-load.yml` has written the R2 completion marker; a photo-stage failure never blocks
-  `publish` but fails the run after it. The load procedure is in README, "Mirroring candidate
-  photos to R2".
+  `publish` but fails the run after it. The load procedure is in `docs/pipeline.md`, "Mirroring
+  candidate photos to R2".
 
 ## Agent skills
 

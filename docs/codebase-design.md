@@ -43,7 +43,7 @@ src/br_elections_mcp/
   app.py               raiz de composição: escolhe o IndexSource, monta /mcp, /api/v1, /healthz, /health, segredo de borda, limite por IP, telemetria
   pipeline/            SEPARADO DO SERVIÇO: fetch, build, validate, publish, mirror_photos
 data/elections.yaml    calendário curado à mão
-web/                   página estática (Cloudflare Pages), o proxy de borda para /api e /mcp e a Pages Function que fala com o Jev
+web-next/              página publicada (Cloudflare Pages), consome REST; a Pages Function encaminha /api/* e /mcp ao Cloud Run
 ```
 
 Dependências permitidas, e só estas:
@@ -54,7 +54,7 @@ index_store.py ──▶ core (só a porta IndexSource)   (adaptadores do índic
 app.py ──▶ mcp_server.py, api.py, index_store.py, telemetry.py, edge.py, rate_limit.py   (composição; nunca lógica)
 core ──▶ domain.py, elections.py, index_schema.py  (nunca index_store.py; nunca rede)
 pipeline ──▶ domain.py, elections.py, index_schema.py     (nunca core; nunca os adaptadores)
-web/ ──▶ REST e MCP (HTTP, via o proxy de borda), Jev (HTTP, só a Pages Function)      (nunca importa Python)
+web-next/ ──▶ REST (página); Cloud Run (proxy de borda para /api/* e /mcp)      (nunca importa Python)
 ```
 
 O pipeline e o serviço se falam por um contrato de dados, não por importação: o arquivo do
@@ -336,7 +336,7 @@ Cloud Run reserva caminhos terminados em "z" em `run.app` para requisições ext
 aplica dois middlewares ASGI, nesta ordem. Primeiro o segredo de borda (`edge.py`, ADR 0010):
 com `BR_ELECTIONS_EDGE_SECRET` definido, toda requisição exceto `/healthz` e `/health` (as
 sondas do Cloud Run e as checagens externas equivalentes) precisa trazer o mesmo valor em
-`x-edge-secret`, que a Pages Function de `web/` envia, ou recebe `403`; numa requisição que o
+`x-edge-secret`, que a Pages Function de `web-next/` envia, ou recebe `403`; numa requisição que o
 trouxe, `CF-Connecting-IP` passa a ser o endereço do cliente. Sem segredo definido nada é
 checado e o cabeçalho é ignorado. Depois o limite por IP:
 token bucket em memória por instância, `429` com `Retry-After`, contando pelo endereço do
@@ -356,7 +356,7 @@ variáveis de ambiente que a configuram estão no README ("Telemetria") e em
 ## 5. `pipeline`: separado do serviço
 
 Roda em GitHub Actions por `workflow_dispatch`, disparado nas cadências do TSE pelo Cloud
-Scheduler (`docs/deploy-runbook.md`, passo G) ou à mão; nunca dentro do Cloud Run. Cinco estágios, cada um uma função com entrada e saída em arquivo,
+Scheduler (`ops/README.md`, seção 6) ou à mão; nunca dentro do Cloud Run. Cinco estágios, cada um uma função com entrada e saída em arquivo,
 para que qualquer estágio rode sozinho:
 
 1. **fetch**: baixa os ZIPs do CDN do TSE por meio de uma porta `Downloader`. Dois adaptadores
@@ -403,19 +403,21 @@ duas eleições no mesmo ano, para que "a eleição do YAML de mesmo ano" (seç�
 sempre uma só resposta; uma eleição suplementar entra como nota, não como entrada própria.
 Não contém URLs de datasets nem configuração de infraestrutura; isso fica no pipeline.
 
-## 7. Página estática e Jev
+## 7. Página publicada e Jev planejado
 
 A página publicada no Cloudflare Pages é a de `web-next/` (React + Astryx, build do Vite,
-comparação primeiro; `web-next/README.md`), e consome apenas a REST; a página sem build de
-`web/` não é mais publicada. No mesmo domínio, uma Pages Function de borda
+comparação primeiro; `web-next/README.md`), e consome apenas a REST; a página antiga, sem
+build, foi removida. No mesmo domínio, uma Pages Function de borda
 (`web-next/functions/[[path]].js`, com `web-next/public/_routes.json` restringindo-a a `/api/*`
-e `/mcp`)
-encaminha a REST e o MCP ao Cloud Run, porque no plano Free da Cloudflare não há outro jeito
-de servir o `run.app` sob o domínio da página (`docs/deploy-runbook.md`, passo D0). Ela não
+e `/mcp`) encaminha essas requisições ao Cloud Run, porque no plano Free da Cloudflare não há outro jeito
+de servir o `run.app` sob o domínio da página (`docs/architecture.md`). Ela não
 tem lógica de domínio: responde `405` ao `GET /mcp`, manda o segredo de borda como
-`x-edge-secret` e pede cache curto só para `GET` da REST sem coordenadas (ADR 0004). Ela tem sempre os formulários estruturados (UF, zona e seção; cidade e
-bairro; cargo e nome ou número; data da eleição) e, acima deles, uma caixa de linguagem
-natural. A caixa é um adaptador com dois componentes:
+`x-edge-secret` e pede cache curto só para `GET` da REST sem coordenadas (ADR 0004). A página
+usa apenas a REST e oferece formulários estruturados (UF, zona e seção; cidade e bairro;
+cargo e nome ou número; data da eleição).
+
+A caixa de linguagem natural com Jev da ADR 0006 está planejada, mas não foi publicada. O
+desenho prevê dois componentes:
 
 - Uma **Pages Function** (`web-next/functions/ask.js`) que guarda a chave do Jev como segredo,
   aplica seu próprio limite por IP e faz ao Jev uma única pergunta do tipo Choice: a intenção
@@ -463,7 +465,7 @@ social como EMEF/CRAS/APAE/UBS, códigos de superquadra de Brasília e as UFs do
 minerada do índice real construído em 2026-09-24 e é o próprio `ACRONYMS` do módulo, com a
 derivação comentada ali; issue #48 (município em caixa mista no crosswalk real, ex. "Rio
 Branco Do Ivaí") fechou junto. Fica para depois: nada — a regra já roda desde a primeira
-ingestão real. Implementação, execução local e o que foi verificado: `web/README.md`.
+ingestão real. Implementação, execução local e o que foi verificado: `web-next/README.md`.
 
 ## 8. Contratos das sete tools
 

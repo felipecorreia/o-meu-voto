@@ -1,76 +1,135 @@
-# br-elections-mcp
+# O meu voto
 
-MCP server and REST API over the open data of the Tribunal Superior Eleitoral (TSE), the
-Brazilian electoral court. It answers the questions a voter asks before election day through
-MCP, the public REST API used by chat assistants, and a static web page, without touching any
-personal data.
+Answers to the questions a Brazilian voter asks before election day, from the open data of the
+Tribunal Superior Eleitoral (TSE), the electoral court: compare candidates side by side, find a
+polling place, check the election date. One query core serves them through an MCP server for AI
+assistants, a public REST API and a web page, without touching anyone's personal registration
+data.
 
-## Connect your AI assistant
+- **Site:** <https://omeuvoto.pages.dev>
+- **MCP server:** `https://omeuvoto.pages.dev/mcp` (Streamable HTTP, no sign-in)
 
-Copy this message into your assistant:
+**Para eleitores:** compare candidaturas e encontre seu local de votação em
+<https://omeuvoto.pages.dev>, ou peça ao seu assistente de IA com a frase abaixo.
 
-> Busque e siga as instruções em https://omeuvoto.pages.dev/prompt-llm para configurar o O meu voto neste assistente.
+<!-- GIF placeholder: a 20-second recording of a question in Claude answered with its TSE source. -->
 
-The [setup instructions](https://omeuvoto.pages.dev/prompt-llm) open with a short menu for the
-voter, then cover MCP agents, chat apps with custom connectors, and a public REST fallback that
-works without a connector in ChatGPT and Claude. Their source is
-[`web-next/public/prompt-llm.md`](web-next/public/prompt-llm.md), served as a static Pages asset
-and also as plain text at `/prompt-llm.md` and `/prompt-llm.txt`. The link above is the HTML
-copy because ChatGPT follows only links it sees on a page (`web-next/README.md`).
+## Try it in 30 seconds
+
+In ChatGPT, Claude or another chat assistant, paste:
+
+> Fetch and follow the instructions at omeuvoto.pages.dev/prompt-llm to set up O meu voto in this assistant.
+
+The [setup instructions](https://omeuvoto.pages.dev/prompt-llm) (in Portuguese, for the voter)
+open with a short menu, then cover MCP agents, chat apps with custom connectors and a public
+REST fallback for chats without a connector. Their source is
+[`web-next/public/prompt-llm.md`](web-next/public/prompt-llm.md).
+
+In Claude Code:
+
+```sh
+claude mcp add --transport http --scope project o-meu-voto https://omeuvoto.pages.dev/mcp
+```
+
+Then ask, for example, "Quem são os candidatos a senador em SP?" or "Compare os candidatos 180 e
+400 a senador em SP".
 
 ## What it answers
 
-- **Where do I vote?** The state, zone and section printed on the voter's title become the
-  polling place address, with warnings when the place changed or the section votes at another one.
-- **Polling places by city and neighborhood**, for voters who do not know their section.
+- **Candidate comparison:** 2 to 4 candidacies of the same office, state and round, side by
+  side: party or alliance, ticket, registration status, whether votes for them will count, and
+  total declared assets. Always in ballot-number order; it never ranks, scores or recommends.
 - **Candidates** by office, name or ballot number: ballot name, party, federation, coalition,
-  status, occupation and photo. Never CPF, voter title, birth date or e-mail.
+  status, occupation, gender as the TSE publishes it, and the official photo.
+- **Where do I vote?** The state, zone and section printed on the voter's title become the
+  polling place address, with a warning when the place changed or the section votes at another
+  one.
+- **Polling places by city and neighborhood**, for voters who do not know their section.
 - **Election date and voting hours**, from the official electoral calendar.
 
-## What it never answers
+## The server is the only source of truth
 
-Anything that depends on the individual voter registration: zone and section from a name or
-CPF, the status of a voter's title, justifications or debts. Those questions are redirected to
-the official e-Titulo app and TSE self-service.
+An LLM is good at conversation and bad at facts it cannot check. Here the language model only
+converses; every fact comes from the server. The service runs no model: `core` is deterministic
+code over an index built from the TSE files, tested without a network. Each answer carries the
+TSE dataset, file and generation timestamp it came from, the warnings that apply (stale data, a
+changed polling place, a round not yet published) and, when nothing matches, a reason instead of
+a guess. The setup text tells the assistant to answer only with what a tool or the API returned
+in the conversation, to cite that source, and never to fill a missing field from memory or a web
+search.
 
-## Telemetry
+## Architecture
 
-Anonymous product telemetry, off by default and switchable off by configuration. When enabled,
-each MCP tool call and REST request sends one PostHog event with the tool name or route, the
-latency, whether the answer was stale and which round it answered, and the not-found reason
-when there was one. It never carries the caller's IP, any part of the request (UF, zone,
-section, municipality, name, ballot number), or a session or device identifier; the distinct id
-is a constant fixed per deployment, never generated per caller. Telemetry is sent outside the
-request path and a PostHog outage never delays or fails a query. See
-[`docs/local-run.md`](docs/local-run.md) for the environment variables that enable it.
+```mermaid
+flowchart LR
+  TSE["TSE open data"] --> GHA["GitHub Actions<br/>fetch, extract, build,<br/>validate, publish"]
+  GHA --> IDX[("Versioned DuckDB index<br/>(Cloud Storage)")]
+  IDX --> CORE["Cloud Run<br/>one query core"]
+  CORE --- MCP["/mcp (MCP)"]
+  CORE --- REST["/api/v1 (REST)"]
+  EDGE["Cloudflare Pages<br/>edge function"] --> MCP
+  EDGE --> REST
+  SITE["web-next site"] --> EDGE
+  AI["AI assistants"] --> EDGE
+```
 
-## Status
+A scheduled pipeline downloads the TSE files several times a day, on the cadence the TSE
+declares, and publishes one read-only DuckDB file with a manifest. A single Python service on
+Cloud Run loads it, swaps in new versions without a restart, and exposes the same core through
+MCP and REST. Cloudflare Pages serves the site and proxies the API and MCP on the same domain.
+Details, the refresh cadence and a one-line summary of every architecture decision:
+[`docs/architecture.md`](docs/architecture.md).
 
-Seven tools in place over an Acre fixture index (pipeline `build` stage, `core`): "where do I
-vote" (MCP tool `find_polling_place`, `GET /api/v1/polling-place`), "when is the election"
-(MCP tool `election_info`, `GET /api/v1/election`), the sanitized candidate list (MCP tool
-`list_candidates`, `GET /api/v1/candidates`), the candidate profile (MCP tool `get_candidate`,
-`GET /api/v1/candidates/by-number` and `GET /api/v1/candidates/{sq_candidato}`), the candidate
-comparator (MCP tool `compare_candidates`, `GET /api/v1/candidates/compare`; ADR 0008), "what
-is this municipality's TSE code" (MCP tool
-`resolve_municipality`, `GET /api/v1/municipalities`) and "polling places by city or
-neighborhood" (MCP tool `search_polling_places`, `GET /api/v1/polling-places`, with `offset`
-pagination; places with no main section or ballot box are excluded; see
-[the tool contract](docs/codebase-design.md#82-search_polling_places)). The voter
-page in [`web/`](web/README.md) (static, no build) answers the same four questions over the
-REST API as a deck of cards. To run it all locally, connect Claude Desktop, or serve an index
-built from the real TSE files from the service image (`Dockerfile`, `compose.yaml`), see
-[`docs/local-run.md`](docs/local-run.md). The design documents remain the reference:
+## Data and privacy
 
-- [`CONTEXT.md`](CONTEXT.md) - the glossary of the domain.
-- [`docs/domain-model.md`](docs/domain-model.md) - entities, invariants and the mapping from
-  TSE CSV columns, including the columns discarded for privacy (LGPD).
-- [`docs/codebase-design.md`](docs/codebase-design.md) - module boundaries and the contracts of
-  the seven tools.
-- [`docs/adr/`](docs/adr/) - architecture decision records.
-- [`data/elections.yaml`](data/elections.yaml) - the hand-curated electoral calendar.
+**What it never answers.** Anything that depends on the individual voter registration: zone and
+section from a name or CPF, the status of a voter's title, justifications or debts. Those
+questions are redirected to the official e-Título app and TSE self-service. The site never asks
+for a CPF or a voter title number.
 
-## Development
+**Candidate data is minimized at build time.** Original TSE ZIPs and CSVs exist only in the
+refresh runner's temporary work directory, which is removed at the end of the run. They are
+never committed or published. Build drops CPF, voter title number, birth date, e-mail and the
+free text of declared assets, which can carry addresses and plates. These fields never reach
+the published index or any answer
+([ADR 0004](docs/adr/0004-lgpd-candidate-data-minimization.md),
+[ADR 0009](docs/adr/0009-titulo-transient-join-key-and-asset-free-text.md)). A test fails if
+any of those columns reaches the index. A comparison never shows gender, race, marital status,
+education or age.
+
+**Voter inputs.** Requests that carry the voter's location are never kept in the edge cache.
+One known gap is documented rather than hidden: the Cloud Run request logs keep the request URL,
+which can hold coordinates or a zone and section, for their 30-day retention
+([ADR 0011](docs/adr/0011-one-instance-budget-and-monitoring.md)).
+
+**Telemetry.** Anonymous product telemetry, off by default and switchable off by configuration.
+When enabled, each MCP tool call and REST request sends one PostHog event with the tool name or
+route, the latency, whether the answer was stale, which round it answered, and the not-found
+reason when there was one. It never carries the caller's IP, any part of the request (state,
+zone, section, municipality, name, ballot number), or a session or device identifier; the
+distinct id is a constant fixed per deployment, never generated per caller. Telemetry is sent
+outside the request path, and a PostHog outage never delays or fails a query. The environment
+variables that enable it are in [`docs/local-run.md`](docs/local-run.md).
+
+**How the data is fetched.** The TSE's web infrastructure refuses plain HTTP clients, so the
+pipeline downloads with browser impersonation. That is stated openly, together with the volume
+(one download per file per refresh), and the TSE has been asked for a sanctioned route
+([`docs/pipeline.md`](docs/pipeline.md#how-the-pipeline-downloads-from-the-tse),
+[ADR 0003](docs/adr/0003-curl-cffi-for-tse-downloads.md)).
+
+## How it was built
+
+Built by AI coding agents under one human owner, from a domain model and decision records to
+sliced issues and automatically reviewed pull requests. The tools, the chain and what went
+wrong: [`docs/how-it-was-built.md`](docs/how-it-was-built.md).
+
+The design documents are in Portuguese, the language of the domain: [`CONTEXT.md`](CONTEXT.md)
+(the glossary), [`docs/domain-model.md`](docs/domain-model.md) (entities, invariants and the
+TSE column mapping), [`docs/codebase-design.md`](docs/codebase-design.md) (module boundaries
+and tool contracts) and [`docs/adr/`](docs/adr/) (decisions, summarized in English in
+[`docs/architecture.md`](docs/architecture.md#decisions)).
+
+## Run locally
 
 Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
@@ -82,253 +141,17 @@ uv run pytest
 ```
 
 Tests build their index from the CSV fixtures in `tests/fixtures/` with the pipeline's own
-`build` stage; none of them touches the network. The voter page has no build step: edit the
-files in `web/` and open them through `--web-dir web` (`docs/local-run.md`); `tests/test_web.py`
-checks that the page and everything it references are served.
+`build` stage; none of them touches the network. To build the Acre fixture index, start the
+server on localhost and connect Claude Desktop, or to serve an index built from the real TSE
+files in the service image (`Dockerfile`, `compose.yaml`), see
+[`docs/local-run.md`](docs/local-run.md). The site has its own build in `web-next/` (Node 22,
+`npm run dev`): [`web-next/README.md`](web-next/README.md). The refresh pipeline, its stages,
+the index bucket layout and the candidate photo mirror: [`docs/pipeline.md`](docs/pipeline.md).
 
-The refresh pipeline has its own dependency group, `pipeline`, which the service image never
-installs (`curl_cffi` and the GCS client live there; see below):
+## License and data attribution
 
-```sh
-uv sync --group pipeline
-uv run python -m br_elections_mcp.pipeline fetch --output /tmp/tse
-```
-
-`fetch` downloads the TSE ZIPs into the given directory and writes `fetch.json` next to them
-(URL, HTTP status, `Last-Modified` and size per dataset), so `build` can run alone from that
-directory. `--from-dir DIR` reads the ZIPs from a local directory instead of the CDN, which is
-what the tests do: no test touches the network.
-
-## Publishing the index
-
-The whole pipeline is `fetch -> extract -> build -> validate -> publish`, each a subcommand of
-`python -m br_elections_mcp.pipeline` that reads and writes files, so any one of them runs
-alone. `extract` takes the `_BRASIL` CSV (or the only CSV) out of a fetched ZIP;
-`current-manifest` downloads the manifest currently published, which `validate` takes as
-`--previous-manifest` for its count-stability gate; `publish` sends `index.duckdb` and
-`manifest.json` to the index bucket. A local run against a directory standing in for the
-bucket, which `LocalDirectoryIndexSource` can then serve:
-
-```sh
-uv run python -m br_elections_mcp.pipeline publish --index-dir /tmp/tse/index \
-  --local-bucket /tmp/index-bucket --prefix index
-```
-
-Layout under the prefix: `versions/{version}/index.duckdb` and
-`versions/{version}/manifest.json` are kept for every published index (`{version}` is the UTC
-build time plus the first twelve hex digits of the index SHA-256, so the listing sorts by
-build); `index.duckdb` and `manifest.json` at the root are the current pair, the manifest
-written last. Rolling back is copying an older `versions/{version}/` pair over the current
-one, index first and manifest last. `publish` refuses a manifest whose `index_sha256` is not
-the SHA-256 of the index next to it, and it only ever knows those two files: the raw ZIPs
-and CSVs stay in the runner's temporary directory and are removed at the end of the run
-(ADR 0004).
-
-The workflow [`refresh.yml`](.github/workflows/refresh.yml) runs the chain on the cadences
-the TSE declares (daily after 06:25 for polling places, four times a day after 08:30, 12:30,
-16:30 and 19:30 for candidates, all America/Sao_Paulo), started through `workflow_dispatch`
-by Cloud Scheduler, since GitHub's own cron fired hours late (`docs/deploy-runbook.md`, step
-G), or by hand; index stages stop at the first failure, while photo failures are reported
-after a valid index is published. The job summary writes the fetch statuses, the
-manifest (generation timestamp per dataset, counts, election, SHA-256), the validation gates
-and the published version to the job summary. It reaches Google Cloud without a stored key,
-through Workload Identity Federation: each run trades its GitHub OIDC token for a short-lived
-token of the publisher service account, and the provider accepts only this repository's
-`main` branch. The configuration is not in the repo and is set by the maintainer
-(`docs/deploy-runbook.md`, step B3): the `INDEX_BUCKET` secret (the GCS bucket name) and two
-repository variables, `GCP_WORKLOAD_IDENTITY_PROVIDER` (the provider's full resource name) and
-`GCP_PUBLISHER_SA` (the email of the service account allowed to write that bucket);
-`INDEX_BUCKET_PREFIX` is an optional repository variable. The first step fails with a message
-naming whatever is missing. Production writes go through
-`GcsBucketClient` (`pipeline/bucket.py`), the only pipeline code that talks to GCS; the tests
-use an in-memory fake of the same port. The off-season run over the monthly `ATUAL` file is
-not wired into the workflow yet.
-
-### Mirroring candidate photos to R2
-
-Two stages carry the per-UF candidate photo ZIPs (`foto_cand<year>_<UF>_div.zip`) to an R2
-bucket and write `photo_url` into an already-built `index.duckdb` (ADR 0004, ADR 0005).
-`fetch --photos` downloads them through the same `Downloader` port as the datasets (ADR 0003)
-and leaves a `fetch.json` next to them, with URL, status, `Last-Modified` and size per file;
-`mirror-photos` syncs them:
-
-```sh
-uv run python -m br_elections_mcp.pipeline fetch --photos --output /tmp/tse-photos
-uv run python -m br_elections_mcp.pipeline mirror-photos \
-  --zips-dir /tmp/tse-photos \
-  --index-dir data/index \
-  --public-domain https://fotos.example.org \
-  --r2-endpoint https://<account>.r2.cloudflarestorage.com \
-  --r2-bucket <bucket> \
-  --r2-access-key-id <id> \
-  --r2-secret-access-key <secret> \
-  --retain-old-photos
-```
-
-The CDN serves 28 ZIPs at
-`https://cdn.tse.jus.br/estatistica/sead/eleicoes/eleicoes2026/fotos/foto_cand2026_<UF>_div.zip`:
-the 26 states, `DF` and `BR` (the president and vice; `ZZ` has no candidacies). All 28 answered
-200 on 2026-09-29, about 125 MB together and 20,984 photos, one per candidacy. Each ZIP also
-carries a `leiame.pdf`, which `mirror-photos` ignores; any other entry that is not a
-`F<UF><SQ_CANDIDATO>_div.jpg` still fails the run. The registry is `CANDIDATE_PHOTOS_2026` in
-`pipeline/datasets.py`, kept out of `DATASETS` because the index build never reads it.
-
-The refresh workflow ([`refresh.yml`](.github/workflows/refresh.yml)) reads the R2 credentials
-from five repository secrets, not in the repo and set by the captain: `R2_PUBLIC_DOMAIN`,
-`R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` (`--public-domain`
-and the `--r2-*` flags above, in order). Until all five are set, it logs why and neither
-downloads the photo ZIPs nor mirrors them; the rest of the refresh runs as before, and every
-`photo_url` stays null. With credentials set, the workflow waits for the verified completion
-marker written by the manual full load. It then runs `fetch --photos` right after the
-dataset fetch and gives `mirror-photos` a 15-minute budget after `validate`. A failed photo
-step, or a failed completion-marker query, does not block index publication; it fails the run
-after `publish` so the photo failure remains visible. The run summary lists how many photo ZIPs answered 200 and each photo-step
-outcome. The first full load has a separate manually dispatched workflow with a six-hour
-job budget; see below and [ADR 0014](docs/adr/0014-photo-refresh-independent-of-index-publication.md).
-
-The production workflow passes `--retain-old-photos`: the mirror leaves content-addressed
-objects in R2 even when the TSE changes or removes a photo, because deleting an old key before
-a new index is published can break the live index. They are removed later, after `publish`,
-by `clean-photos` (below). `mirror-photos` still refuses a `--zips-dir` that lacks
-any of the 28 ZIPs. Before mirroring, the refresh carries previously published photo URLs
-only when the prior index is hash-verified, the current TSE photo has the same SHA-256, and
-the R2 ETag matches its bytes. A timed-out mirror therefore cannot publish a URL for a
-partial upload. The final photo chain is checked again before `publish`.
-The full-load marker is written only after all photos and the temporary index have been
-verified; refreshes that overlap the first load skip their own mirror and still publish.
-
-The first production full load completed on 2026-09-30. For a new deployment, run the full load
-once from `main`:
-
-```sh
-gh workflow run photo-full-load.yml --ref main
-```
-
-Wait for **Full candidate photo load** to finish successfully. Its mirror output reports
-the R2 object count seen before the run, uploads every 500 objects, and ends with uploaded
-and skipped totals. In the Cloudflare R2 bucket dashboard, confirm the object count is at
-least 20,984 (the 2026-09-29 source count; superseded keys may make it higher). Then run or
-wait for the next ordinary **Refresh index**. With GCP read access to the index bucket and
-`INDEX_BUCKET`/`INDEX_BUCKET_PREFIX` set, inspect the newly published index:
-
-```sh
-prefix="${INDEX_BUCKET_PREFIX#/}"
-prefix="${prefix%/}"
-gcloud storage cp "gs://$INDEX_BUCKET/${prefix:+$prefix/}index.duckdb" ./index.duckdb
-uv run python - <<'PY'
-import duckdb
-conn = duckdb.connect("index.duckdb", read_only=True)
-print("photo URLs:", conn.execute("SELECT count(*) FROM candidates WHERE photo_url IS NOT NULL").fetchone()[0])
-print("sample URL:", conn.execute("SELECT photo_url FROM candidates WHERE photo_url IS NOT NULL LIMIT 1").fetchone()[0])
-PY
-```
-
-The count must be positive. Fetch the printed sample `*.r2.dev` URL and confirm HTTP 200
-and `Content-Type: image/jpeg` (for example, `curl -I '<sample URL>'`). For a new deployment,
-publish Cloudflare Pages after verifying the photo URLs.
-
-#### Removing photos the TSE no longer publishes
-
-`clean-photos` runs in the refresh right after `publish`, only when every photo stage of the run
-succeeded, and never in the full load ([ADR 0015](docs/adr/0015-publication-aware-photo-cleanup.md)).
-It deletes an R2 object only after no index current in the last 48 hours has referenced it: a
-Cloud Run instance swaps its index only after a query, so an idle one can still serve a pair
-several refreshes old. The first-unreferenced times live in a ledger in the index bucket,
-`photo-cleanup/unreferenced.json`. The stage refuses, deleting nothing and failing the run, when
-a pair does not verify, the live manifest is not the pair just published, the R2 listing lacks
-an object the published index references (these write no ledger, so the clocks restart), or
-more than 10% of the photo objects would go (this one keeps the ledger, so the clocks keep
-running and every following refresh fails the same way until someone looks; run the stage by
-hand with a higher `--max-delete-fraction` when the removal is legitimate). The stage's output,
-refusal included, is in the "Photo steps" section of the refresh run summary.
-
-Deletion is off on merge: until the repository variable `PHOTO_CLEANUP_MODE` is `delete`, every
-refresh runs the stage as a dry run. It writes the ledger so the 48-hour clock runs, deletes
-nothing, and prints the counts in the run summary and in the "Clean up R2 photos no served
-index references" step:
-
-```sh
-gh workflow run refresh.yml --ref main   # or wait for the next scheduled refresh
-gh run view --log "$(gh run list --workflow refresh.yml --limit 1 --json databaseId --jq '.[0].databaseId')" | grep clean-photos
-```
-
-The dry run reports `would delete 0` until 48 hours of consecutive dry runs have passed. When
-its counts look right, enable deletion with `gh variable set PHOTO_CLEANUP_MODE --body delete`;
-`gh variable delete PHOTO_CLEANUP_MODE` (or any value other than `delete`) goes back to dry
-runs. Deleting needs the R2 token to allow `DeleteObject` on the bucket.
-
-#### Photo integrity: what stops a swapped photo
-
-A candidate's face is what a voter recognises first, and it is served from a public bucket the
-index does not control. The design is in [ADR 0013](docs/adr/0013-content-addressed-photo-mirror.md):
-
-- Objects are named after the SHA-256 of the JPEG bytes in the TSE ZIP,
-  `F<UF><SQ>_div-<sha256>.jpg`, and the index records the same digest in `photo_sha256` next to
-  `photo_url`. A key has exactly one legitimate content; when the TSE changes a photo, the URL
-  changes.
-- `mirror-photos` never overwrites a key. If one already exists with a checksum (R2's ETag)
-  that is not the MD5 of the ZIP's photo, the run fails with `PhotoIntegrityError`, having
-  uploaded and deleted nothing, and names the key. After uploading it lists the bucket again
-  and requires every photo of the run to be there with the expected checksum before it deletes
-  anything (production skips the deletion with `--retain-old-photos`).
-- Once the index is written, `photo_url` must carry the recorded digest and the candidacy's
-  `sq_candidato`; `mirror-photos` checks it and `validate` has a gate for it (`photo_chain`).
-  `verify-photos` runs that check on the pair about to be published and stops the run before
-  `publish` on any failure, so the index in the bucket is never replaced by one with a broken
-  chain. A failed mirror step does not: the validated index goes out with the photo URLs
-  already verified.
-- A failed mirror step is the alarm for an object still expected from the current TSE ZIPs:
-  `refusing to overwrite` means that object is not what the TSE published. The refresh
-  publishes a valid index first, then marks the run failed.
-  Delete that object, rotate the R2 token and re-run; the pipeline does not repair it silently.
-
-| Threat | Covered? |
-|---|---|
-| R2 credentials leak; someone replaces or corrupts a photo object | Detected at the next refresh when the current TSE ZIPs still contain that photo: the mirror refuses to overwrite it. Carry-forward also drops a prior URL whose current bytes do not match R2. The index can publish without that URL, and the run then reports the photo failure. **Not prevented:** until detection, voters see the swapped photo because an `<img>` cannot verify a digest. |
-| Someone uploads extra objects to the bucket | Not served (the index never points to them). With `PHOTO_CLEANUP_MODE=delete`, `clean-photos` removes those with a photo key after 48 hours unreferenced; objects with any other key stay. |
-| The index or a `photo_url` is edited by hand or half-written | `photo_chain` rejects broken digest and candidate pairs, malformed URLs, and mixed origins; with `--photo-public-domain`, it also requires the exact configured base URL and key. `mirror-photos` checks that exact URL before touching R2 and again after updating the index. A consistently rewritten index still requires a trusted public domain at validation. |
-| R2 credentials **and** the GCS publisher (or the workflow itself) are compromised | Not covered: both the objects and the index can be rewritten consistently. Keep the two credentials separate and the R2 token scoped to this bucket. |
-| The TSE, or the CDN download, serves a wrong photo | Not covered: it is mirrored faithfully. The digest proves which bytes we took, not that the TSE meant them; the TSE publishes no signature. |
-| Old objects deleted while an index still points to them | Production mirroring retains old objects; `clean-photos` deletes only after `publish` and only objects no index current in the last 48 hours references. A rollback to a version superseded longer ago can point to deleted photos until the next refresh re-mirrors them. |
-
-The bucket name and public URL are configuration (`R2_BUCKET`, `R2_PUBLIC_DOMAIN`), never
-hard-coded. Beyond this change, still to do: an audit that downloads the public URLs and
-compares them with the index digests (closing the detection window), and a bucket-scoped R2
-token with a bucket lock where available.
-
-## How the pipeline downloads from the TSE
-
-The TSE's web infrastructure, including the open-data portal and the CDN that serves the ZIPs,
-sits behind a WAF (Akamai) that answers `403` to `curl`, `requests` and headless browsers, even
-with browser headers. The block is on the TLS/HTTP2 fingerprint, not on a cookie or a
-JavaScript challenge. The pipeline therefore downloads with
-[`curl_cffi`](https://github.com/lexiforest/curl_cffi) impersonating a desktop Chrome
-fingerprint. We state this openly rather than hide it
-([ADR 0003](docs/adr/0003-curl-cffi-for-tse-downloads.md)):
-
-- **Volume.** One download per file per refresh, and nothing else: five ZIPs (about 95 MB in
-  total) for the datasets listed in
-  [`docs/tse/README.md`](docs/tse/README.md), at most a few times a day, aligned with the
-  cadence the TSE itself declares for each dataset. The service never calls the TSE at request
-  time; only the pipeline does.
-- **Data.** The datasets are open data under CC-BY. Every answer attributes the TSE and cites
-  the dataset, file and generation timestamp.
-- **Contact.** We are asking the TSE (`estatistica@tse.jus.br`, the contact named in each
-  `leiame.pdf`, and the ouvidoria) for guidance or a sanctioned route for automated reuse. If
-  the TSE prefers another arrangement, we will follow it. Until then the position is: use now,
-  ask at the same time.
-- **A `403` is a result, not an obstacle.** The manual workflow
-  [`tse-access-test.yml`](.github/workflows/tse-access-test.yml) runs the production `fetch`
-  from a GitHub-hosted runner and reports the status per dataset in the job summary. If a
-  datacenter IP is blocked, the plan B of ADR 0003 (a self-hosted runner or a Cloud Run Job in
-  `southamerica-east1`) is a decision to take, not a technique to add.
-
-## Data source and attribution
+Code: MIT, see [`LICENSE`](LICENSE).
 
 Data: Tribunal Superior Eleitoral - Portal de Dados Abertos (CC-BY),
 <https://dadosabertos.tse.jus.br>. Every response carries the dataset, file and generation
-timestamp it came from.
-
-## License
-
-MIT. See [`LICENSE`](LICENSE).
+timestamp it came from. O meu voto is an independent project, not an official TSE service.

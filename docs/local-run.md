@@ -30,16 +30,12 @@ zone 9, section 422.
 ## 2. Start the server on localhost
 
 ```sh
-uv run python -m br_elections_mcp.app --index-dir data/index --web-dir web --port 8000
+uv run python -m br_elections_mcp.app --index-dir data/index --port 8000
 ```
 
-The server prints `Uvicorn running on http://127.0.0.1:8000`. It serves:
-
-- The voter page at `http://localhost:8000/web/`, because of `--web-dir web` (or
-  `BR_ELECTIONS_WEB_DIR=web`): the static page of `web/` mounted next to the API so both share
-  one origin and the page needs no CORS. A local-run convenience only; in production the page
-  lives on Cloudflare Pages (ADR 0005). What the page does and how it was checked:
-  [`web/README.md`](../web/README.md).
+The server prints `Uvicorn running on http://127.0.0.1:8000`. The voter page is not served
+here: it is the `web-next/` build on Cloudflare Pages (ADR 0005), and
+[`web-next/README.md`](../web-next/README.md) says how to run it against this server. It serves:
 
 - MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
   tools `find_polling_place`, `election_info`, `list_candidates` and `get_candidate`.
@@ -69,7 +65,7 @@ BR_ELECTIONS_INDEX_DIR=data/index uv run uvicorn --factory br_elections_mcp.app:
 (default `127.0.0.1`) are two of the other variables. Two more configure the general per-IP
 rate limit (ticket #10): `BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS` (unset disables the limit, the
 default) and `BR_ELECTIONS_RATE_LIMIT_WINDOW_SECONDS` (default `60`), both must be positive.
-Two more give `/mcp` its own, independent bucket (ticket #64, `docs/deploy-runbook.md` D3b):
+Two more give `/mcp` its own, independent bucket (ticket #64):
 `BR_ELECTIONS_RATE_LIMIT_MCP_MAX_REQUESTS` and `BR_ELECTIONS_RATE_LIMIT_MCP_WINDOW_SECONDS`
 (same default, `60`); unset (the default), `/mcp` falls back to sharing the general bucket
 above with `/api/v1`. `BR_ELECTIONS_EDGE_SECRET` (unset by default, and unset locally) makes the
@@ -96,9 +92,9 @@ at startup with a clear message on misconfiguration:
 Setting both, or setting `BR_ELECTIONS_INDEX_BUCKET` without `BR_ELECTIONS_INDEX_CACHE_DIR`,
 raises `RuntimeError` before the server starts.
 
-Three more configure anonymous PostHog telemetry (ticket #17), described for the voter in the
-README's "Telemetry" section: `BR_ELECTIONS_POSTHOG_API_KEY` (unset disables telemetry, the
-default and the default in tests), `BR_ELECTIONS_POSTHOG_HOST` (default
+Three more configure anonymous PostHog telemetry (ticket #17), described for the voter in
+the README's "Data and privacy" section: `BR_ELECTIONS_POSTHOG_API_KEY` (unset disables
+telemetry, the default and the default in tests), `BR_ELECTIONS_POSTHOG_HOST` (default
 `https://us.i.posthog.com`) and `BR_ELECTIONS_POSTHOG_DISTINCT_ID` (default
 `br-elections-mcp`), the constant distinct id every event of this deployment carries. Getting a
 PostHog project API key is a real-run step outside this repository; it needs a PostHog account,
@@ -110,8 +106,8 @@ This runs the same service over an index built from the real TSE files, in the D
 that Cloud Run (#20) will run. Nothing here publishes anything or needs a credential, and
 telemetry stays off.
 
-Build the index with the pipeline chain of the README ("Publishing the index"), stopping
-before `publish` (`data/raw/` is git-ignored):
+Build the index with the pipeline chain of [`pipeline.md`](pipeline.md) ("Publishing the
+index"), stopping before `publish` (`data/raw/` is git-ignored):
 
 ```sh
 uv sync --group pipeline
@@ -158,7 +154,7 @@ Measured on 2026-09-24 on a MacBook (Apple silicon), over the files the TSE gene
 
 Acre alone (the `_AC` polling-places CSV with the `_AC` and `_BR` candidate CSVs) builds in
 0.5 s into a 3 MB index; Sao Paulo alone in 1.8 s into 10 MB. The run log with the requests and
-answers is the 2026-09-24 entry of `wiki/log.md`.
+answers is in the project's private session log.
 
 ## 3. Connect Claude Desktop
 

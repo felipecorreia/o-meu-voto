@@ -68,8 +68,8 @@ entries it targeted, removed it.
 - The voter's location and polling section stay in the request and access logs for the
   bucket's 30 days, so ADR 0004's "user inputs are not persisted" does not hold in the Cloud
   Run logs, and neither does its "no full IP" rule (`httpRequest.remoteIp`). Option (b) of the
-  review, excluding the whole request log, was not chosen; `wiki/pendencias.md` item 9 stays
-  open.
+  review, excluding the whole request log, was not chosen; item 9 of the private wiki's
+  pending list stays open.
 - No alert watches the 5xx ratio; a failure shows on the dashboard or when `/health` fails.
 - The project ID, the `run.app` URL, the billing account and the alert email stay out of the
   repository: the apply script and the runbook read them at apply time.

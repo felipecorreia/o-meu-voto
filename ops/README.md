@@ -175,8 +175,8 @@ gcloud logging sinks update _Default --project="$PROJECT_ID" --remove-exclusions
 ```
 
 So request logs carrying lat/lon or zone/section keep their 30-day retention, and ADR 0004's
-"user inputs are not persisted" still does not hold in the Cloud Run logs; `wiki/pendencias.md`
-item 9 stays open. For the same reason the dashboard has no logs panel (a test keeps it out):
+"user inputs are not persisted" still does not hold in the Cloud Run logs; item 9 of the private wiki's
+pending list stays open. For the same reason the dashboard has no logs panel (a test keeps it out):
 it would display those URLs. A retry should check the exclusion with the landmark request
 before trusting it; a regex-free filter using the `:` substring operator is the untried
 alternative.
@@ -188,7 +188,7 @@ Ruff checks and pytest; its `web-next` job type-checks, builds and tests the pag
 checks that the Pages build contains `index.html`, `_routes.json` and `404.html`.
 
 Cloud Run and Cloudflare Pages deploys are manual. Use the Cloud Run checklist in
-[`docs/deploy-runbook.md`](../docs/deploy-runbook.md) steps C1-C3 and the page instructions in
+the private operations runbook (steps C1-C3) and the page instructions in
 [`web-next/README.md`](../web-next/README.md). Merging to `main` does not deploy either one.
 The next scheduled refresh does use `refresh.yml` from `main`; section 6 covers that separate
 operations path. An automated service deploy remains a post-launch task (runbook step E).
@@ -226,9 +226,9 @@ The GitHub Actions run fetches and extracts TSE data, builds and validates the i
 publishes `index.duckdb` and `manifest.json` to GCS through Workload Identity Federation. It
 stops before publication if an earlier stage fails. The photo ZIP download and mirror run when
 all five R2 secrets are configured; see
-[README.md](../README.md#mirroring-candidate-photos-to-r2). The current manifest is written last,
+[`docs/pipeline.md`](../docs/pipeline.md#mirroring-candidate-photos-to-r2). The current manifest is written last,
 and the Cloud Run index source checks it on requests and downloads the new index when it
-changes; this does not require a service deploy. See [README.md](../README.md), "Publishing
+changes; this does not require a service deploy. See [`docs/pipeline.md`](../docs/pipeline.md), "Publishing
 the index", for the pipeline stages and bucket layout.
 
 `refresh.yml` has no GitHub `schedule:` block. GitHub cron missed or delayed runs in September
@@ -238,7 +238,7 @@ serializes those runs. Use `workflow_dispatch` for a manual refresh.
 
 For day-to-day checks, manual runs, pausing and resuming both jobs, token rotation before its
 2026-12-31 expiry, costs and rollback, use
-[`docs/deploy-runbook.md`](../docs/deploy-runbook.md) step G. Check both the Workflows
+the private operations runbook, step G. Check both the Workflows
 execution and the GitHub Actions run: a successful dispatch does not by itself prove the
 index was published; the Actions job summary reports the validation gates and published
 version.

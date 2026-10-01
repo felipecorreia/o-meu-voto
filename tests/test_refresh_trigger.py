@@ -1,6 +1,6 @@
 """The refresh trigger chain: Cloud Scheduler -> Workflows refresh-dispatch -> refresh.yml.
 
-The live jobs and workflow are deployed by hand (docs/deploy-runbook.md, step G); these
+The live jobs and workflow are deployed by hand (ops/README.md, section 6); these
 tests pin the two repository files that chain depends on, so an edit to one cannot silently
 break the other.
 """

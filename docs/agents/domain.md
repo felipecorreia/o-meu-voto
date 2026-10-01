@@ -15,7 +15,8 @@ codebase. Layout: **single-context**.
   six tool contracts, test strategy). Section 3.4 of `codebase-design.md` is the single owner
   of the round-resolution rule.
 - **`wiki/index.md`** and the top entry of **`wiki/log.md`**: the compiled entry point and the
-  current state, including decisions still open with the captain.
+  current state, including decisions still open with the captain. The wiki is private and absent
+  from the public mirror; skip it when it is missing.
 
 ## File structure
 
@@ -29,7 +30,7 @@ codebase. Layout: **single-context**.
 ├── docs/domain-model.md
 ├── docs/codebase-design.md
 ├── docs/agents/            ← this folder: skill configuration
-├── wiki/                   ← compiled index and session log
+├── wiki/                   ← compiled index and session log (private, may be missing)
 └── src/br_elections_mcp/
 ```
 

@@ -8,12 +8,10 @@ lifespans to mounted apps.
 
 Run locally with ``python -m br_elections_mcp.app --index-dir <dir>`` or with
 ``uvicorn --factory br_elections_mcp.app:create_app`` and the environment
-variables read by ``Settings.from_env``. ``--web-dir web`` (or
-``BR_ELECTIONS_WEB_DIR``) also serves the static page under ``/web`` so it
-reaches ``/api/v1`` on the same origin; that is a local-run convenience only,
-the page is published on Cloudflare Pages (ADR 0005), never by the service.
+variables read by ``Settings.from_env``. The page is published on Cloudflare
+Pages (ADR 0005), never by the service.
 
-In production the service sits behind the Pages Function of ``web/`` (ADR 0005, ADR 0010):
+In production the service sits behind the Pages Function of ``web-next/`` (ADR 0005, ADR 0010):
 ``BR_ELECTIONS_EDGE_SECRET`` makes it refuse traffic that did not come through that edge,
 and ``GET /mcp`` answers ``405`` so no idle event stream holds an instance.
 """
@@ -33,7 +31,6 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
-from starlette.staticfiles import StaticFiles
 
 from br_elections_mcp.api import create_api
 from br_elections_mcp.core import Core, IndexSource, IndexUnavailable
@@ -50,7 +47,6 @@ ENV_INDEX_BUCKET = "BR_ELECTIONS_INDEX_BUCKET"
 ENV_INDEX_BUCKET_PREFIX = "BR_ELECTIONS_INDEX_BUCKET_PREFIX"
 ENV_INDEX_CACHE_DIR = "BR_ELECTIONS_INDEX_CACHE_DIR"
 ENV_ELECTIONS_FILE = "BR_ELECTIONS_ELECTIONS_FILE"
-ENV_WEB_DIR = "BR_ELECTIONS_WEB_DIR"
 ENV_HOST = "BR_ELECTIONS_HOST"
 ENV_PORT = "BR_ELECTIONS_PORT"
 ENV_RATE_LIMIT_MAX_REQUESTS = "BR_ELECTIONS_RATE_LIMIT_MAX_REQUESTS"
@@ -82,7 +78,6 @@ class Settings:
     index_bucket_prefix: str = DEFAULT_INDEX_BUCKET_PREFIX
     index_cache_dir: Path | None = None
     elections_file: Path = DEFAULT_ELECTIONS_FILE
-    web_dir: Path | None = None
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     rate_limit: RateLimitConfig | None = None
@@ -133,7 +128,6 @@ class Settings:
             if mcp_max_requests
             else None
         )
-        web_dir = os.environ.get(ENV_WEB_DIR)
         posthog_api_key = os.environ.get(ENV_POSTHOG_API_KEY)
         telemetry = (
             TelemetryConfig(
@@ -152,7 +146,6 @@ class Settings:
             ),
             index_cache_dir=Path(index_cache_dir) if index_cache_dir else None,
             elections_file=Path(os.environ.get(ENV_ELECTIONS_FILE, DEFAULT_ELECTIONS_FILE)),
-            web_dir=Path(web_dir) if web_dir else None,
             host=os.environ.get(ENV_HOST, DEFAULT_HOST),
             port=int(os.environ.get(ENV_PORT, DEFAULT_PORT)),
             rate_limit=rate_limit,
@@ -171,7 +164,6 @@ def build_app(
     rate_limit_clock: Clock = time.monotonic,
     edge_secret: str | None = None,
     telemetry: Telemetry | None = None,
-    web_dir: Path | None = None,
 ) -> Starlette:
     """Mount the two adapters over an already-constructed ``Core``; tests use this directly.
 
@@ -183,8 +175,7 @@ def build_app(
     ``rate_limit_mcp`` (ticket #64) gives ``/mcp`` its own, independent bucket; unset, ``/mcp``
     falls back to ``rate_limit``'s bucket, shared with REST, today's behavior.
     ``telemetry=None`` (the default, and the default in tests) likewise disables product
-    telemetry (ticket #17). ``web_dir`` (local run only) mounts the static page of ``web/``
-    under ``/web``.
+    telemetry (ticket #17).
     """
     telemetry = telemetry if telemetry is not None else Telemetry()
     mcp_server = create_mcp_server(core, telemetry=telemetry)
@@ -213,7 +204,7 @@ def build_app(
     # Cloud Run reserves some paths ending in "z" on the default run.app domain and answers
     # them with its own 404 for external requests (a documented known issue), so /healthz is
     # unreachable from outside even though the internal startup and liveness probes on it work.
-    # /health serves the same payload for external checks (scripts/smoke.sh, deploy-runbook.md).
+    # /health serves the same payload for external checks (scripts/smoke.sh).
 
     async def mcp_stream_not_allowed(_: Request) -> Response:
         # The server is stateless and never sends server-initiated messages, so it declines
@@ -237,10 +228,8 @@ def build_app(
         # Before the MCP mount, which would otherwise take GET /mcp; POST and DELETE only
         # match partially here and fall through to it.
         Route("/mcp", mcp_stream_not_allowed, methods=["GET"]),
+        Mount("/", app=mcp_app),
     ]
-    if web_dir is not None:
-        routes.append(Mount("/web", app=StaticFiles(directory=web_dir, html=True), name="web"))
-    routes.append(Mount("/", app=mcp_app))
     return Starlette(
         routes=routes,
         middleware=middleware,
@@ -258,7 +247,6 @@ def create_app(settings: Settings | None = None) -> Starlette:
         rate_limit_mcp=settings.rate_limit_mcp,
         edge_secret=settings.edge_secret,
         telemetry=build_telemetry(settings.telemetry),
-        web_dir=settings.web_dir,
     )
 
 
@@ -268,19 +256,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m br_elections_mcp.app")
     parser.add_argument("--index-dir", type=Path, required=True)
     parser.add_argument("--elections-file", type=Path, default=DEFAULT_ELECTIONS_FILE)
-    parser.add_argument(
-        "--web-dir",
-        type=Path,
-        default=None,
-        help="serve the static page of this directory under /web (local run only)",
-    )
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args(argv)
     settings = Settings(
         index_dir=args.index_dir,
         elections_file=args.elections_file,
-        web_dir=args.web_dir,
         host=args.host,
         port=args.port,
     )

@@ -1,5 +1,5 @@
 # Google Cloud Workflows definition that dispatches .github/workflows/refresh.yml on main.
-# Cloud Scheduler starts one execution at each refresh time (docs/deploy-runbook.md, step G),
+# Cloud Scheduler starts one execution at each refresh time (ops/README.md, section 6),
 # because GitHub's own cron fired hours late or not at all. The GitHub token is read from
 # Secret Manager at run time and lives only in this execution's memory: deploy it with
 # --call-log-level=log-none and --execution-history-level=execution-history-basic (never

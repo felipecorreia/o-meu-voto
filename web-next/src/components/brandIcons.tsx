@@ -1,5 +1,5 @@
 // Brand glyphs lucide-react no longer ships (removed upstream). Paths are the Lucide brand
-// icons the current web/app.js already embeds (ISC, https://lucide.dev); X and TikTok are
+// icons the old static page embedded (ISC, https://lucide.dev); X and TikTok are
 // simple outlines drawn here. All decorative: the visible handle is the accessible text.
 import type {SVGProps} from 'react';
 type P = SVGProps<SVGSVGElement> & {size?: number};

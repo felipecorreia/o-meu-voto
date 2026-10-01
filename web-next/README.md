@@ -4,10 +4,8 @@ The next shell of the public page, comparison first: choose UF and office, mark 
 candidacies, read them side by side; then the candidate profile, the FAQ, where to vote (my
 polling place), places by city and election dates. Built with Vite,
 React 19 and `@astryxdesign/core` (Astryx, beta) on the TSE "CDE 2026" colour pattern, and
-reviewed by the captain on 2026-09-25 (design review report:
-`[private]`). It is the page Cloudflare Pages publishes (ADR
-0005), with the edge function next to it (below); `web/`, the old six-card page, is no longer
-deployed and waits for its removal.
+reviewed by the captain on 2026-09-25 (design review report kept outside the repository). It is
+the page Cloudflare Pages publishes (ADR 0005), with the edge function next to it (below).
 
 Identifiers are English, UI copy is PT-BR.
 
@@ -37,7 +35,7 @@ routes `/api/*` and `/mcp` to the service (next section).
 
 ## Deploy and the Pages edge
 
-Three files make the Pages edge (ADR 0005, `docs/deploy-runbook.md` step D0), one copy each:
+Three files make the Pages edge (ADR 0005, [`docs/architecture.md`](../docs/architecture.md)), one copy each:
 
 - `functions/[[path]].js`: a Pages Function that proxies `/api/*` and `/mcp` to the Cloud Run
   service, so the page and the API share one origin. It reads two Pages secrets: `ORIGIN_URL`
@@ -81,7 +79,7 @@ npm run build && npx wrangler pages dev dist --port 8788 --binding ORIGIN_URL=ht
 scripts/smoke.sh http://localhost:8788 http://localhost:8791                # repo root
 ```
 
-`tests/test_web.py` checks the route list, the 404 page and that `web/` holds no second copy,
+`tests/test_web.py` checks the edge function is committed, the route list and the 404 page,
 and runs the function under Node with a stub `fetch`. CI (`.github/workflows/ci.yml`, job
 `web-next`) runs `npm ci`, `npm run build` and `npm test` on Node 22, so a type error, a broken
 build or a failing utility test fails the PR, and checks that `_routes.json` and `404.html`
@@ -91,7 +89,7 @@ reach `dist/`.
 
 | Route | Page | Notes |
 |---|---|---|
-| `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`, in the order of marking), so a comparison is a link. Tela 1 of the redesign (spec in `[private]`): the reusable pieces in `src/components/cv/` and `src/lib/` (below), the page-only ones in `src/components/Picker.tsx` |
+| `#/` | Compare (home), choice mode | State pill (the Astryx Selector, bottom sheet on phones), office tabs with a sliding highlight, one search field (name, party acronym or ballot number: 2 to 5 digits go to `by-number` and head the list, a short text with no name match is retried as `party`), the "Incluir fora da urna" chip, whole-card buttons, the floating tray; the marked set lives in the URL (`sq=`, in the order of marking), so a comparison is a link. Tela 1 of the redesign (spec kept outside the repository): the reusable pieces in `src/components/cv/` and `src/lib/` (below), the page-only ones in `src/components/Picker.tsx` |
 | `#/?uf=&office=&sq=a,b,c` | Comparison | one `GET /api/v1/candidates/compare?sq=a&sq=b&sq=c`; `ComparisonBody`, reusable headers and rows (below) |
 | `#/?uf=&office=&marcar=a,b,c` | Choice with preselection | loads available profiles in the written order, keeps successful results if another load fails, and preserves marks changed while loading; "Escolher outras" uses this route |
 | `#/candidato/:sq` | Profile | Tela 3: direct links are neutral; `cmp` plus `uf`, `office`, `pair` and `tab` preserves comparison context and slot colour. Personal fields appear only in the collapsed panel |
@@ -103,7 +101,7 @@ reach `dist/`.
 The place-status badge is hidden on both polling-place routes until the TSE field's meaning is
 understood (issue #45). Section and accessibility chips remain visible.
 
-The comparison (Tela 2 spec, `[private]`) uses the page-only pieces in
+The comparison (Tela 2 spec, kept outside the repository) uses the page-only pieces in
 `src/components/Comparison.tsx` and reusable headers, pair picker, rows and icon buttons
 in `src/components/cv/`. Below 640 px, three or four candidacies show as a pair: "Trazer"
 replaces the candidacy changed least recently, and a column's swap picks the next candidacy
@@ -319,8 +317,7 @@ service reason, guidance or HTTP detail. The page footer shows only the source a
 badge; the independent-project disclaimer lives in the shell footer.
 
 The client requests the next page with `limit=20&offset=<loaded>` and appends new places.
-Backend support for `offset` is live; see [`wiki/sessao-2026-09-28.md`](../wiki/sessao-2026-09-28.md)
-for the production verification.
+Backend support for `offset` is live; it was verified in production on 2026-09-28.
 
 ## Election dates (Tela 6)
 
@@ -406,15 +403,14 @@ background until the person touches the item. Contrast of the spec's pairs is ab
 
 ## Follow-ups after landing
 
-1. Remove `web/` (the old page, no longer deployed) and its `--web-dir` tests.
-2. Drop the `layout`/`dest` review variants; ship one pre-built theme.
-3. The asset evolution row, once the service serves it.
-4. Self-host Inter (`public/fonts/`) instead of Google Fonts.
-5. Candidate photos once the R2 mirror exists (`photo_url`).
-6. Occupation casing at index build (`_CASED_COLUMNS`). Comparison rows already name each cell
+1. Drop the `layout`/`dest` review variants; ship one pre-built theme.
+2. The asset evolution row, once the service serves it.
+3. Self-host Inter (`public/fonts/`) instead of Google Fonts.
+4. Candidate photos once the R2 mirror exists (`photo_url`).
+5. Occupation casing at index build (`_CASED_COLUMNS`). Comparison rows already name each cell
    and announce pair changes through a polite live region.
-7. Bundle: 802 KB minified / 235 KB gzip of JS today (react-dom, Astryx i18n and theme engine
+6. Bundle: 802 KB minified / 235 KB gzip of JS today (react-dom, Astryx i18n and theme engine
    are the bulk); lazy chunks for the places-by-city and election-dates routes and the
    pre-built theme bring it down.
-8. Add UF and vote-destination explanation to the profile response so the page no longer
+7. Add UF and vote-destination explanation to the profile response so the page no longer
    needs to recover the electoral unit from its official URL or mirror the service copy.

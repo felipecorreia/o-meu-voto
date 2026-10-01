@@ -133,8 +133,8 @@ html.cv-has-floating-bar .cv-sitefooter { padding-bottom: calc(120px + env(safe-
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ==== The cv scope: Plus Jakarta Sans and the --cv-* tokens ===================================
-   The redesigned screens (Tela 1 today; spec in [private],
-   sections 4 to 6) sit in a `.cv-page` container that carries the `--cv-*` colour tokens
+   The redesigned screens (Tela 1 today; spec sections 4 to 6, kept outside the
+   repository) sit in a `.cv-page` container that carries the `--cv-*` colour tokens
    `cvTokens` (themes/cde.ts) sets inline, the shadows and easing curves of spec 4.3 and Plus
    Jakarta Sans. The Astryx font tokens are re-pointed in this scope so the components inside
    (Banner, EmptyState, Selector, Badge) follow the page; the global font is untouched. */

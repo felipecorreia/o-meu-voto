@@ -6,7 +6,7 @@ Status: accepted, 2026-09-25. Amends ADR 0005.
 
 ADR 0005 put the service on Cloud Run, reachable only through Cloudflare, and read the client
 IP from `CF-Connecting-IP` only when the request came from Cloudflare's published ranges. The
-deploy runbook (`docs/deploy-runbook.md`, 2026-09-24) found that neither half holds on Cloud Run
+deploy runbook (the private operations runbook, 2026-09-24) found that neither half holds on Cloud Run
 with the Cloudflare Free plan:
 
 - Cloud Run ingress offers only `all`, `internal` and `internal-and-cloud-load-balancing`, with
@@ -15,7 +15,7 @@ with the Cloudflare Free plan:
 - The TCP peer the app sees on Cloud Run is Google's front end, never a Cloudflare address, so
   the range check never passed: every voter would share one rate-limit bucket per instance.
 - On the Free plan the page's domain reaches `run.app` only through a Pages Function
-  (`web/functions/[[path]].js`), a Worker subrequest. Cloudflare sets `CF-Connecting-IP` on
+  (`web-next/functions/[[path]].js`), a Worker subrequest. Cloudflare sets `CF-Connecting-IP` on
   that subrequest to the real client IP, and a client cannot alter it
   (https://developers.cloudflare.com/fundamentals/reference/http-headers/).
 - `GET /mcp` opens a Streamable HTTP event stream that never closes on its own; on Cloud Run

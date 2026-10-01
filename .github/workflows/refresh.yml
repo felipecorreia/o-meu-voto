@@ -8,8 +8,8 @@
 #
 # Google Cloud access is keyless, through Workload Identity Federation: each run exchanges its
 # GitHub OIDC token for a short-lived token of the publisher service account, and the provider
-# accepts only this repository's main branch (docs/deploy-runbook.md, step B3). Configuration
-# the captain sets (see README, "Publishing the index"):
+# accepts only this repository's main branch (set up by the private operations runbook). Configuration
+# the captain sets (see docs/pipeline.md, "Publishing the index"):
 #   INDEX_BUCKET                    secret: name of the GCS bucket that holds the index
 #   GCP_WORKLOAD_IDENTITY_PROVIDER  variable: full resource name of the WIF provider,
 #                                   projects/<number>/locations/global/workloadIdentityPools/...
@@ -17,7 +17,7 @@
 # Optional repository variable:
 #   INDEX_BUCKET_PREFIX             object name prefix inside the bucket (default: none)
 #
-# Secrets for the photo steps (see README, "Mirroring candidate photos to R2"), all optional:
+# Secrets for the photo steps (see docs/pipeline.md, "Mirroring candidate photos to R2"), all optional:
 # until the captain provisions them, the download of the photo ZIPs and the mirror-photos step
 # log why and skip, and the rest of the refresh runs as before. Once they are set, the photo
 # ZIPs are downloaded before build. Photo failure leaves the validated index publishable.
@@ -34,7 +34,7 @@ name: Refresh index
 on:
   # Started at the TSE-aligned times by Cloud Scheduler through the workflow_dispatch API
   # (Cloud Scheduler -> Workflows refresh-dispatch -> this workflow on main), not by a
-  # schedule: GitHub cron fired hours late or skipped runs (docs/deploy-runbook.md, step G,
+  # schedule: GitHub cron fired hours late or skipped runs (ops/README.md, section 6,
   # which also says why no cron is kept as a fallback). The times, America/Sao_Paulo, each
   # about forty minutes after the declared publication so the CDN has the new file:
   #   07:05  polling places, published daily at 06:25
@@ -80,12 +80,12 @@ jobs:
         run: |
           missing=0
           if [ -z "$INDEX_BUCKET" ]; then
-            echo "::error::the INDEX_BUCKET secret is not set; see README, 'Publishing the index'"
+            echo "::error::the INDEX_BUCKET secret is not set; see docs/pipeline.md, 'Publishing the index'"
             missing=1
           fi
           for var in GCP_WORKLOAD_IDENTITY_PROVIDER GCP_PUBLISHER_SA; do
             if [ -z "${!var}" ]; then
-              echo "::error::the $var repository variable is not set; see README, 'Publishing the index'"
+              echo "::error::the $var repository variable is not set; see docs/pipeline.md, 'Publishing the index'"
               missing=1
             fi
           done
@@ -116,7 +116,7 @@ jobs:
         run: |
           if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$R2_ACCESS_KEY_ID" ] ||
              [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_PUBLIC_DOMAIN" ]; then
-            echo "mirror-photos: R2 secrets not set yet, photos are neither downloaded nor mirrored (see README, 'Mirroring candidate photos to R2')"
+            echo "mirror-photos: R2 secrets not set yet, photos are neither downloaded nor mirrored (see docs/pipeline.md, 'Mirroring candidate photos to R2')"
             echo "MIRROR_PHOTOS=false" >> "$GITHUB_ENV"
           elif timeout --signal=TERM --kill-after=30s 2m uv run python -m br_elections_mcp.pipeline photo-load-status \
             --r2-endpoint "$R2_ENDPOINT" \

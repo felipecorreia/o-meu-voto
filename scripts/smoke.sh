@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test of the four voter questions and the candidate comparison over REST and MCP
-# (docs/deploy-runbook.md, step F1).
+# (the post-deploy check of the private operations runbook).
 # Usage: scripts/smoke.sh https://BASE [https://HEALTH_BASE]
 #   /health is read from HEALTH_BASE (default BASE): the Pages domain does not route /health,
 #   so behind Cloudflare pass the run.app URL as HEALTH_BASE. Use /health, not /healthz: Cloud

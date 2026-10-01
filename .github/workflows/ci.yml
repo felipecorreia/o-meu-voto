@@ -44,6 +44,6 @@ jobs:
         run: npm run build
       - name: Test the page's utilities
         run: npm test
-      # What `wrangler pages deploy dist` publishes next to functions/ (docs/deploy-runbook.md D3).
+      # What `wrangler pages deploy dist` publishes next to functions/ (web-next/README.md, "Deploy and the Pages edge").
       - name: Check the Pages files are in the build
         run: test -f dist/index.html && test -f dist/_routes.json && test -f dist/404.html
