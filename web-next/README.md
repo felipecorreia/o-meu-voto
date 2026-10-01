@@ -1,6 +1,6 @@
 # web-next: the comparison page (React + Astryx, CDE 2026 identity)
 
-The next shell of the public page, comparison first: choose UF and office, mark 2 to 4
+The public page, comparison first: choose UF and office, mark 2 to 4
 candidacies, read them side by side; then the candidate profile, the FAQ, where to vote (my
 polling place), places by city and election dates. Built with Vite,
 React 19 and `@astryxdesign/core` (Astryx, beta) on the TSE "CDE 2026" colour pattern, and
@@ -403,7 +403,7 @@ background until the person touches the item. Contrast of the spec's pairs is ab
 
 ## Follow-ups after landing
 
-1. Drop the `layout`/`dest` review variants; ship one pre-built theme.
+1. Ship one pre-built theme.
 2. The asset evolution row, once the service serves it.
 3. Self-host Inter (`public/fonts/`) instead of Google Fonts.
 4. Candidate photos once the R2 mirror exists (`photo_url`).

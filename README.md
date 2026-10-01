@@ -14,6 +14,17 @@ data.
 
 <!-- GIF placeholder: a 20-second recording of a question in Claude answered with its TSE source. -->
 
+## Contents
+
+- [Try it in 30 seconds](#try-it-in-30-seconds)
+- [What it answers](#what-it-answers)
+- [The server is the only source of truth](#the-server-is-the-only-source-of-truth)
+- [Architecture](#architecture)
+- [Data and privacy](#data-and-privacy)
+- [How it was built](#how-it-was-built)
+- [Run locally](#run-locally)
+- [License and data attribution](#license-and-data-attribution)
+
 ## Try it in 30 seconds
 
 In ChatGPT, Claude or another chat assistant, paste:
@@ -131,7 +142,8 @@ and tool contracts) and [`docs/adr/`](docs/adr/) (decisions, summarized in Engli
 
 ## Run locally
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). The quickest path is the checks CI
+runs. The tests build their own index from small CSV fixtures and never touch the network.
 
 ```sh
 uv sync
@@ -140,13 +152,15 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-Tests build their index from the CSV fixtures in `tests/fixtures/` with the pipeline's own
-`build` stage; none of them touches the network. To build the Acre fixture index, start the
-server on localhost and connect Claude Desktop, or to serve an index built from the real TSE
-files in the service image (`Dockerfile`, `compose.yaml`), see
-[`docs/local-run.md`](docs/local-run.md). The site has its own build in `web-next/` (Node 22,
-`npm run dev`): [`web-next/README.md`](web-next/README.md). The refresh pipeline, its stages,
-the index bucket layout and the candidate photo mirror: [`docs/pipeline.md`](docs/pipeline.md).
+Where to go next:
+
+- [`docs/local-run.md`](docs/local-run.md): start the server on localhost, connect Claude
+  Desktop, or serve an index built from the real TSE files in the service image.
+- [`docs/pipeline.md`](docs/pipeline.md): the refresh pipeline, its stages, the index bucket
+  layout and the candidate photo mirror. Written for whoever operates the pipeline.
+- [`web-next/README.md`](web-next/README.md): build and run the site (Node 22, `npm run dev`)
+  and the Cloudflare edge in front of it.
+- [`docs/architecture.md`](docs/architecture.md): the overview behind the diagram above.
 
 ## License and data attribution
 

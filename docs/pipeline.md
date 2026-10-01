@@ -1,5 +1,10 @@
 # The refresh pipeline
 
+**Who this is for:** whoever runs or changes the data refresh. This is operator material, not
+an introduction. To use or call the service, start at the [README](../README.md); to run it
+locally, read [`local-run.md`](local-run.md). Come here to fetch the TSE files, build and
+publish the index, or load the candidate photos.
+
 How the index the service reads is built and published, and how candidate photos reach R2. The
 architecture overview is [`architecture.md`](architecture.md); the stage contracts are in
 [`codebase-design.md`](codebase-design.md), section 5.

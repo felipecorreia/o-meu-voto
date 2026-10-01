@@ -38,7 +38,8 @@ here: it is the `web-next/` build on Cloudflare Pages (ADR 0005), and
 [`web-next/README.md`](../web-next/README.md) says how to run it against this server. It serves:
 
 - MCP over Streamable HTTP at `http://localhost:8000/mcp` (stateless, JSON responses), with
-  tools `find_polling_place`, `election_info`, `list_candidates` and `get_candidate`.
+  tools `find_polling_place`, `election_info`, `list_candidates`, `get_candidate`,
+  `compare_candidates`, `search_polling_places` and `resolve_municipality`.
 - REST at `http://localhost:8000/api/v1/polling-place?uf=&zone=&section=&round=`,
   `http://localhost:8000/api/v1/election?on=`,
   `http://localhost:8000/api/v1/candidates?uf=&office=&party=&name=&on_ballot_only=&limit=&offset=&round=`,
@@ -178,11 +179,11 @@ yet, enable it under Settings > Developer) and restart Claude Desktop:
 
 Node.js is required (`npx` ships with it; verified with Node 25.8.1). The tools appear as
 `find_polling_place` ("Onde voto"), `election_info` ("Quando é a eleição"), `list_candidates`
-("Candidatos"), `get_candidate` ("Ficha do candidato"), `search_polling_places` ("Locais de
-votação da cidade") and `resolve_municipality` ("Código do município"). Prompts to try: "Onde
-voto? Acre, zona 9, seção 422.", "Quando é a eleição?", "Quem são os candidatos a governador do
-Acre?", "Quem é o 45 para governador do Acre?" and "Quais são os locais de votação no Centro de
-Rio Branco?"
+("Candidatos"), `get_candidate` ("Ficha do candidato"), `compare_candidates` ("Comparar
+candidatos"), `search_polling_places` ("Locais de votação da cidade") and `resolve_municipality`
+("Código do município"). Prompts to try: "Onde voto? Acre, zona 9, seção 422.", "Quando é a
+eleição?", "Quem são os candidatos a governador do Acre?", "Quem é o 45 para governador do
+Acre?" and "Quais são os locais de votação no Centro de Rio Branco?"
 
 ### What was verified, and how
 
@@ -203,7 +204,7 @@ Environment used: macOS, Python 3.12.13, `uv` 0.10.10, Node 25.8.1, `mcp` SDK 2.
   `Connected to remote server using StreamableHTTPClientTransport` and
   `Proxy established successfully between local STDIO and remote StreamableHTTPClientTransport`.
 - **Claude Desktop itself was not exercised.** This document was written by an automated
-  agent that must not open the captain's Claude Desktop nor edit his real
+  agent that must not open the owner's Claude Desktop nor edit their real
   `claude_desktop_config.json`. The snippet above follows the config format and the Claude
   Desktop section of the `mcp-remote` 0.14.2 README, with the bridge version pinned to the one
   verified. The Desktop custom connector with a plain `http://localhost` URL was not tried
