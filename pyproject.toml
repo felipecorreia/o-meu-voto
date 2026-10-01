@@ -34,6 +34,7 @@ Repository = "https://github.com/felipecorreia/br-elections-mcp"
 [dependency-groups]
 dev = [
     "anyio>=4.15.1",
+    "git-filter-repo>=2.47",
     "httpx>=0.28.1",
     "pytest>=8.3",
     "ruff>=0.8",

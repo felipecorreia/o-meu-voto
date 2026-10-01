@@ -11,13 +11,18 @@ import json
 import re
 import subprocess
 
+import pytest
+
 from tests.conftest import REPO
 
 OPS = REPO / "ops"
+RUNBOOK = REPO / "docs" / "deploy-runbook.md"
 
 
+# The runbook stays out of the public copy of this repository, which runs the same tests.
+@pytest.mark.skipif(not RUNBOOK.exists(), reason="the deploy runbook is private")
 def test_the_runbook_deploys_at_most_the_instances_the_dashboard_draws():
-    runbook = (REPO / "docs" / "deploy-runbook.md").read_text()
+    runbook = RUNBOOK.read_text()
     assert set(re.findall(r"--max-instances=(\d+)", runbook)) == {"1"}
     assert set(re.findall(r"--max=(\d+)", runbook)) == {"1"}
     dashboard = json.loads((OPS / "monitoring" / "dashboard.json").read_text())
