@@ -52,6 +52,19 @@ Three files make the Pages edge (ADR 0005, `docs/deploy-runbook.md` step D0), on
   unknown path, the MCP OAuth discovery probes (`/.well-known/oauth-*`) included, with `200`
   and `index.html`. The page's own routes are in the hash, so it needs no fallback.
 
+The assistant setup instructions (issue #115) are static too, authored once in
+`public/prompt-llm.md`. `npm run build` ends with `scripts/build-assistant-resources.mjs`, which
+writes `dist/prompt-llm.txt` (the same text) and `dist/prompt-llm.html`, served at `/prompt-llm`:
+the same text with every URL as a link, plus ready candidate-list links per UF and office,
+because ChatGPT opens only URLs that appear as links on a page it read or in the user's message,
+never URLs it builds. The text writes no full URL for a route the assistant must build
+(`compare`, `by-number`, `polling-place(s)`, `municipalities`), only the route and its
+parameters: Claude's reader answers a new URL with an already seen URL of the same path, even
+one seen as plain text, and keeps one value per parameter name, hence `number=180,400` for a
+comparison. `public/_headers` serves the `.md` and `.txt` as `text/plain` (ChatGPT
+rejects `text/markdown`), and `public/robots.txt` replaces the rule-less content-signals file
+Cloudflare serves when a site has none. `tests/test_assistant_resources.py` checks all of it.
+
 Vite copies `public/` into `dist/`; wrangler reads `functions/` from the directory it runs in.
 So the deploy is the build plus one command, from this directory (step D3 of the runbook):
 

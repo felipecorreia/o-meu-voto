@@ -141,9 +141,14 @@ def test_openapi_is_served_under_the_prefix_and_generated_from_the_answer_model(
         assert set(model.model_json_schema()["properties"]) == set(
             schemas[model.__name__]["properties"]
         )
-    assert not {"gender", "race_color", "marital_status", "education"} & set(
+    assert not {"race_color", "marital_status", "education"} & set(
         schemas["CandidateListItem"]["properties"]
     )
+    assert schemas["CandidateListItem"]["properties"]["gender"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
+    assert "gender" not in schemas["ComparedCandidate"]["properties"]
     assert {"gender", "race_color", "marital_status", "education"} <= set(
         schemas["CandidateProfile"]["properties"]
     )
@@ -637,3 +642,62 @@ def test_compare_invalid_query_is_400(client: TestClient, params, message):
     response = client.get("/api/v1/candidates/compare", params=params)
     assert response.status_code == 400
     assert message in response.json()["detail"]
+
+
+def test_candidate_list_returns_tse_gender_without_other_profile_only_fields(client: TestClient):
+    response = client.get("/api/v1/candidates?uf=AC&office=governador&round=1")
+    assert response.status_code == 200
+    candidates = response.json()["data"]["candidates"]
+    assert [(candidate["number"], candidate["gender"]) for candidate in candidates] == [
+        (13, "MASCULINO"),
+        (45, "FEMININO"),
+    ]
+    for candidate in candidates:
+        assert not {"race_color", "marital_status", "education"} & candidate.keys()
+
+
+@pytest.mark.parametrize("round_query", ["", "&round=1"])
+def test_sp_senator_request_is_valid_even_without_sp_fixture_candidates(client, round_query):
+    response = client.get(f"/api/v1/candidates?uf=SP&office=senador{round_query}")
+    assert response.status_code == 200
+    assert response.json()["data"]["candidates"] == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "uf=AC&amp;office=governador&amp;round=1",
+        "uf=AC&amp;office=governador&round=1",
+        "uf=AC&AMP;office=governador&amp;round=1",
+    ],
+)
+def test_html_escaped_query_separators_reach_the_endpoint_as_parameters(client, query):
+    # Assistants that copy a URL out of rendered HTML send `&amp;` literally, which would
+    # otherwise drop `office` and answer 422 (issue #115).
+    response = client.get(f"/api/v1/candidates?{query}")
+    assert response.status_code == 200
+    expected = client.get("/api/v1/candidates?uf=AC&office=governador&round=1").json()
+    assert response.json() == expected
+
+
+def test_a_query_value_containing_amp_is_left_as_sent(client: TestClient):
+    response = client.get("/api/v1/candidates", params={"uf": "AC", "office": "amp;governador"})
+    assert response.status_code == 400
+    assert "amp;governador" in response.json()["detail"]
+
+
+def test_compare_also_takes_one_comma_separated_selector(client: TestClient):
+    # Some assistants' URL readers keep one value per parameter name (issue #115).
+    repeated = client.get(
+        "/api/v1/candidates/compare?uf=BR&office=presidente&number=45&number=13&number=22&round=1"
+    )
+    for query in ("number=45,13,22", "number=45%2C13%2C22", "number=45,13&number=22"):
+        response = client.get(f"/api/v1/candidates/compare?uf=BR&office=presidente&{query}&round=1")
+        assert response.status_code == 200
+        assert response.json() == repeated.json()
+    by_sq = client.get(
+        "/api/v1/candidates/compare?uf=AC&office=governador&sq=10000000001,10000000005"
+    )
+    assert by_sq.json()["not_found"]["reason"] == "candidaturas_insuficientes"
+    one = client.get("/api/v1/candidates/compare?uf=AC&office=governador&number=45,")
+    assert one.status_code == 400

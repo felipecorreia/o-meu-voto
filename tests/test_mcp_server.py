@@ -194,8 +194,12 @@ async def test_list_candidates_tool_is_listed_with_the_lgpd_promise_and_schemas(
     assert set(tool.output_schema["properties"]) == set(
         CandidatesAnswer.model_json_schema()["properties"]
     )
+    assert tool.output_schema["$defs"]["CandidateListItem"]["properties"]["gender"]["anyOf"] == [
+        {"type": "string"},
+        {"type": "null"},
+    ]
     serialized = str(tool.output_schema)
-    for field in ("gender", "race_color", "marital_status", "education"):
+    for field in ("race_color", "marital_status", "education"):
         assert f"'{field}'" not in serialized
 
 

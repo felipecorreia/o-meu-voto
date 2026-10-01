@@ -28,7 +28,7 @@ export const FAQ: FaqGroup[] = [
         'Sem ranking, sem nota, sem recomendação de voto. A ordem é sempre a do número de urna. Os dados são os arquivos abertos do TSE, com a data em que o TSE os gerou.',
       ]},
     {id: 'campos', q: 'O que entra e o que não entra na comparação?',
-      a: ['Entra o que cada candidatura declarou ao TSE: partido, chapa, bens, ocupação e redes. Gênero, cor/raça, estado civil e escolaridade nunca entram na comparação; aparecem só na ficha de cada candidatura.']},
+      a: ['Entra o que cada candidatura declarou ao TSE: partido, chapa, bens, ocupação e redes. Gênero, cor/raça, estado civil e escolaridade nunca entram na comparação. O gênero, como o TSE o publica, aparece também nas listas; os outros três só na ficha de cada candidatura.']},
   ]},
   {id: 'tema-bens', title: 'Bens declarados', short: 'Bens', items: [
     {id: 'evolucao', q: 'Por que a evolução dos bens ainda não aparece?',
@@ -44,7 +44,7 @@ export const FAQ: FaqGroup[] = [
     {id: 'candidatos', q: 'Que dados das candidaturas aparecem aqui?',
       a: [
         'Mostramos o que o TSE publica sobre a candidatura. O número do título de eleitor do candidato existe nos arquivos do TSE e é usado só por um instante, para reconhecer a mesma pessoa entre eleições diferentes (a evolução dos bens); não é guardado nem mostrado.',
-        'Gênero, cor/raça, estado civil e escolaridade aparecem só na ficha individual, nunca em listas ou na comparação. A descrição de cada bem (endereços, placas, contas) não entra no nosso índice.',
+        'O gênero, como o TSE o publica, aparece também nas listas de candidaturas. Cor/raça, estado civil e escolaridade aparecem só na ficha individual. Nenhum desses dados serve para filtrar, ordenar ou contar, e o gênero não entra na comparação. A descrição de cada bem (endereços, placas, contas) não entra no nosso índice.',
       ]},
     {id: 'oficial', q: 'Este site é do TSE?',
       a: ['Não. É um projeto independente e não oficial, feito com os dados abertos do TSE.']},

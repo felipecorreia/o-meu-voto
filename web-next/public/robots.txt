@@ -1,0 +1,11 @@
+# O meu voto: public TSE election data for voters and the assistants they use.
+# Assistants may fetch the setup instructions and the REST API on a user's request.
+User-agent: *
+Content-Signal: search=yes, ai-input=yes
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /

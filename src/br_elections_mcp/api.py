@@ -1,17 +1,20 @@
 """REST adapter: the same envelope as the MCP tools, as JSON under ``/api/v1``, GET only.
 
 Thin by construction: it does not normalize input, format warnings or touch
-the index. ``InvalidQuery`` is 400 with the core's message;
+the index. The one transport repair is ``&amp;`` read as a query separator (issue #115).
+``InvalidQuery`` is 400 with the core's message;
 ``IndexUnavailable`` is 503. OpenAPI is served at ``/api/v1/openapi.json``
 once the app is mounted there.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 from fastapi import FastAPI, Path, Query, Request
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from br_elections_mcp import __version__
 from br_elections_mcp.core import (
@@ -28,6 +31,32 @@ from br_elections_mcp.core import (
 )
 from br_elections_mcp.telemetry import Telemetry
 
+_HTML_ESCAPED_SEPARATOR = re.compile(rb"&amp;", re.IGNORECASE)
+
+
+class HtmlEscapedQueryMiddleware:
+    """Read a literal ``&amp;`` in the raw query string as the ``&`` separator.
+
+    Assistants that copy a URL out of rendered HTML send ``uf=SP&amp;office=senador``, which
+    parses as ``amp;office`` and answers 422 for a missing ``office`` (issue #115). A value
+    that really contains ``&amp;`` arrives percent-encoded, so only the separator changes.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            query = _HTML_ESCAPED_SEPARATOR.sub(b"&", scope["query_string"])
+            if query != scope["query_string"]:
+                scope = {**scope, "query_string": query}
+        await self.app(scope, receive, send)
+
+
+def _split_commas(values: list[str] | None) -> list[str] | None:
+    """``number=45,13`` is ``number=45&number=13``: some URL readers keep one value per name."""
+    return None if values is None else [part for value in values for part in value.split(",")]
+
 
 def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
     telemetry = telemetry if telemetry is not None else Telemetry()
@@ -42,6 +71,7 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         docs_url="/docs",
         redoc_url=None,
     )
+    api.add_middleware(HtmlEscapedQueryMiddleware)
 
     @api.exception_handler(InvalidQuery)
     async def invalid_query(_: Request, exc: InvalidQuery) -> JSONResponse:
@@ -185,9 +215,10 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         summary="Comparar candidatos",
         description=(
             "Compara lado a lado de 2 a 4 candidaturas do mesmo cargo, UF e turno, por sq "
-            "(repetido) ou por number (repetido): partido, aliança, situação do registro, destino "
-            "dos votos, ocupação, chapa, foto, total de bens declarados e links oficiais. Sempre "
-            "em ordem de número de urna: não ordena por valor, não pontua e não recomenda voto. "
+            "ou por number, repetido ou separado por vírgula (number=45,13): partido, aliança, "
+            "situação do registro, destino dos votos, ocupação, chapa, foto, total de bens "
+            "declarados e links oficiais. Sempre em ordem de número de urna: não ordena por "
+            "valor, não pontua e não recomenda voto. "
             "Sem sq nem number, compara todas as candidaturas na urna quando são de 2 a 4. Nunca "
             "inclui CPF, título de eleitor, data de nascimento, idade, gênero, cor/raça, estado "
             "civil ou escolaridade."
@@ -210,18 +241,24 @@ def create_api(core: Core, *, telemetry: Telemetry | None = None) -> FastAPI:
         ],
         sq: Annotated[
             list[str] | None,
-            Query(description="sq_candidato, de 2 a 4 vezes; ou number"),
+            Query(
+                description="sq_candidato, de 2 a 4, repetido ou separado por vírgula; ou number"
+            ),
         ] = None,
         number: Annotated[
             list[str] | None,
-            Query(description="Número de urna, de 2 a 4 vezes; ou sq"),
+            Query(description="Número de urna, de 2 a 4, repetido ou separado por vírgula; ou sq"),
         ] = None,
         round: Annotated[str | None, Query(description="Turno, opcional")] = None,
     ) -> CandidatesComparisonAnswer:
         return telemetry.call(
             "GET /api/v1/candidates/compare",
             lambda: core.compare_candidates(
-                uf, office, sq_candidatos=sq, numbers=number, round=round
+                uf,
+                office,
+                sq_candidatos=_split_commas(sq),
+                numbers=_split_commas(number),
+                round=round,
             ),
         )
 

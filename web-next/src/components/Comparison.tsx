@@ -282,7 +282,7 @@ export function GuardrailsNote() {
     <section className="comp-note" aria-label="Regras da comparação">
       <ShieldCheck size={20} aria-hidden />
       <div className="comp-note-body">
-        <span><strong>Ordem pelo número de urna.</strong> Sem ranking, sem pontuação. Gênero, cor/raça, estado civil e escolaridade nunca entram na comparação.</span>
+        <span><strong>Ordem pelo número de urna.</strong> Sem ranking, sem pontuação. Gênero, cor/raça, estado civil e escolaridade nunca entram na comparação, e nenhum deles serve para filtrar, ordenar ou contar.</span>
         <span className="comp-note-links">
           <a href={href('/duvidas', {abrir: 'destino'})}>Destino dos votos</a>
           <a href={href('/duvidas', {abrir: 'evolucao'})}>Evolução dos bens</a>

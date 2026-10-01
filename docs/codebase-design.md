@@ -92,6 +92,11 @@ Fatos que quem chama precisa saber, e que fazem parte da interface:
   desconhecido) e `IndexUnavailable` (índice ausente ou corrompido). Nada mais escapa.
 - **Normalização é do `core`.** "009" e 9 são a mesma zona; "Piracaia", "piracaia" e
   "PIRACAIA" são o mesmo município; `uf` aceita minúsculas. Os adaptadores não normalizam.
+  The one transport repair is in the REST adapter: a literal `&amp;` in the query string is
+  read as the `&` separator, because assistants that copy a URL out of rendered HTML send it
+  that way and would otherwise get a 422 (issue #115). For the same reason the REST
+  `compare` also takes its 2 to 4 `number` or `sq` values comma-separated in one parameter
+  (`number=180,400`): some URL readers keep one value per parameter name.
 - **Limites.** `limit` máximo 50 em toda lista; `offset` em `list_candidates` e
   `search_polling_places` (ADR 0012). Sem SQL
   livre em nenhuma entrada.
@@ -602,9 +607,11 @@ opcional; resolução na seção 3.4, linhas C1 a C4).
 `federation {acronym, name}` ou nulo, `coalition {name}` ou nulo, `adjudication_status`,
 `on_ballot`, `occupation`, `photo_url`, `vote_destination` (o destino dos votos como o TSE
 publica: "Válido", "Anulado sub judice", "Nulo técnico", ou nulo; ADR 0008); mais `total`,
-`limit` e `offset`. Nunca inclui
-gênero, cor/raça, estado civil ou grau de instrução: esses campos existem só na ficha
-individual (8.4).
+`limit` e `offset`.
+
+The list also includes `gender: string | null`, directly from the stored `DS_GENERO`
+text, without inference, filtering, sorting or aggregates (ADR 0004, gender-only exception
+approved 2026-09-30). Race/color, marital status and education remain profile-only (8.4).
 
 Avisos possíveis: os de turno da seção 3.4 e o de dado envelhecido (seção 9).
 
@@ -625,7 +632,7 @@ quando ele não existe em turno nenhum; pelo trio, quando nenhum candidato com e
 está na urna, mesmo que exista uma candidatura fora da urna com o número.
 
 `data.candidate`: os campos de 8.3 mais `round`, `social_name`, `nomination_kind`,
-`federation.composition`, `coalition.composition`, `gender`, `race_color`, `marital_status`,
+`federation.composition`, `coalition.composition`, `race_color`, `marital_status`,
 `education` (como o TSE publica, sem inferência), `running_mates[]` (`sq_candidato`,
 `office`, `ballot_name`, `name`, `party`), `social_links[]` e `divulgacandcontas_url`.
 
@@ -680,7 +687,7 @@ entradas compartilhem um turno respondido). Sem seletor, a comparação é de to
 candidaturas `on_ballot` do turno respondido quando são de 2 a 4; fora disso, `InvalidQuery`.
 
 `data`: `round`, `uf`, `office`; `candidates[]`, sempre em ordem de número de urna, com os
-campos de 8.3 mais `social_name`, `nomination_kind`, `federation.composition`,
+campos de 8.3, excluding `gender`, mais `social_name`, `nomination_kind`, `federation.composition`,
 `coalition.composition`, `vote_destination_note` (uma linha em PT-BR que explica
 `vote_destination`, nula para um valor desconhecido), `running_mates[]` (como em 8.4, só nome
 e partido, sem ficha), `social_links[]`, `divulgacandcontas_url` e `assets {state, total}`
@@ -689,8 +696,9 @@ declarado, nulo fora de `declarados`); `missing[]` (`requested`, `reason`:
 `nao_encontrado`, `fora_da_urna` ou `fora_do_turno`), as candidaturas pedidas que ficaram de
 fora; `assets_note`, a ressalva fixa sobre os bens; e `assets_source`, a fonte do arquivo de
 bens no formato de `source` (o envelope tem uma só `source`, a do arquivo de candidatos). Nunca
-inclui gênero, cor/raça, estado civil nem grau de instrução: a comparação tem forma de lista
-(ADR 0004).
+inclui gênero, cor/raça, estado civil nem grau de instrução.
+The gender-only exception for candidate lists does not apply to comparisons (ADR 0004,
+amended 2026-09-30); their shared base model deliberately excludes gender.
 
 Pelo número, conta só a candidatura `on_ballot` do turno, como no trio de 8.4. Por
 `sq_candidato`, uma candidatura de outra UF ou cargo é `InvalidQuery`, com o cargo e a UF do
@@ -742,11 +750,12 @@ dia, então 48 horas significa ao menos dois refreshes perdidos.
   `LocalFilesDownloader`; `validate` com fixtures que violam cada portão, um por teste.
 - **LGPD**: um teste lista as colunas proibidas de `index_schema.py` e falha se qualquer uma
   existir no índice construído ou aparecer em qualquer resposta serializada.
-- **Ficha versus lista**: teste de contrato sobre os modelos de `answers.py`: o modelo do item
-  de lista de `CandidatesAnswer` não declara `gender`, `race_color`, `marital_status` nem
-  `education` (verificado no `outputSchema` gerado), e nenhuma resposta serializada de
-  `list_candidates` sobre o índice de fixtures contém essas chaves, enquanto a resposta de
-  `get_candidate` para o mesmo candidato as contém.
+- **Profile, list and comparison contracts**: `CandidatesAnswer` includes nullable TSE
+  `gender` in its items and generated REST/MCP schemas. Tests cover the published text and
+  null markers through the fixture pipeline. `race_color`, `marital_status` and `education`
+  remain absent from list schemas and serialized answers and present in profiles. Comparison
+  schemas and serialized answers exclude all four fields, including gender (ADR 0004,
+  amended 2026-09-30).
 - **Resolução de turno**: um teste por linha da tabela da seção 3.4, mais um para
   `election` nula com índice do arquivo `ATUAL` e YAML com eleição futura, e um para o trio
   com número compartilhado por um indeferido fora da urna e seu substituto; sobre o índice de

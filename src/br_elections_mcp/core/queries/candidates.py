@@ -28,6 +28,7 @@ class CandidateRow:
     occupation: str | None
     photo_url: str | None
     vote_destination: str | None
+    gender: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +52,7 @@ _COLUMNS = """
     sq_candidato, number, ballot_name, name, office,
     party_number, party_acronym, party_name,
     federation_acronym, federation_name, coalition_name,
-    adjudication_status, on_ballot, occupation, photo_url, vote_destination
+    adjudication_status, on_ballot, occupation, photo_url, vote_destination, gender
 """
 
 
@@ -121,7 +122,6 @@ class CandidateProfileRow(CandidateRow):
     nomination_kind: str
     federation_composition: str | None
     coalition_composition: str | None
-    gender: str | None
     race_color: str | None
     marital_status: str | None
     education: str | None
@@ -144,7 +144,7 @@ _PROFILE_COLUMNS = f"""
     {_COLUMNS},
     round, uf, social_name, nomination_kind,
     federation_composition, coalition_composition,
-    gender, race_color, marital_status, education, election_year, declares_assets
+    race_color, marital_status, education, election_year, declares_assets
 """
 
 

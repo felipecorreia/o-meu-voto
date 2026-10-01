@@ -26,7 +26,7 @@ exatamente essa, decidida pelo capitão no grilling de 2026-09-17; ela vive em
 resposta. Gênero, cor/raça, estado civil e grau de instrução (`DS_GENERO`, `DS_COR_RACA`,
 `DS_ESTADO_CIVIL`, `DS_GRAU_INSTRUCAO`) ficam como o TSE publica, sem inferência nem
 cruzamento, e aparecem só na ficha individual de `get_candidate`, nunca em `list_candidates`
-nem em agregados; os códigos `CD_*` correspondentes são descartados por redundância com as
+nem em agregados, exceto pela emenda sobre gênero abaixo; os códigos `CD_*` correspondentes são descartados por redundância com as
 descrições. Os ZIPs brutos ficam num diretório temporário apagado ao fim do
 run. Não há enriquecimento nem cruzamento com outras bases; fotos e redes sociais entram como o
 TSE publica. Entradas do usuário não são persistidas e os logs não guardam IP completo. Toda
@@ -37,7 +37,7 @@ DivulgaCandContas entra apenas como link para o humano abrir, nunca como fonte d
 
 - O serviço não responde idade nem data de nascimento de candidato, por construção. Gênero,
   cor/raça, estado civil e grau de instrução saem apenas na ficha individual, com o texto do
-  TSE; o serviço não agrega, filtra nem ordena por esses campos.
+  TSE, exceto pela emenda sobre gênero abaixo; o serviço não agrega, filtra nem ordena por esses campos.
 - As fotos, espelhadas por decisão de produto (ADR 0005), são dado pessoal público sob
   custódia do projeto: o pipeline remove do R2 as que o TSE deixar de publicar, a cada
   refresh. O [ADR 0015](0015-publication-aware-photo-cleanup.md) fixa quando: depois do
@@ -46,3 +46,21 @@ DivulgaCandContas entra apenas como link para o humano abrir, nunca como fonte d
   fora deste PR.
 - Se o TSE passar a mascarar as colunas na fonte, nada muda no pipeline: o descarte é
   idempotente.
+
+## Amendment: gender in candidate lists (2026-09-30)
+
+The captain approved a gender-only exception for common election questions in chat
+assistants without MCP (issue #115). `list_candidates` now exposes
+`data.candidates[].gender: string | null` in REST and MCP, directly from the stored
+`DS_GENERO` text as the TSE publishes it. Existing ingestion normalizes TSE null markers
+to null; no gender is inferred from names, photos or other fields. A missing value stays
+null. This avoids an individual-profile request per candidate for the published gender.
+
+Race/color (`DS_COR_RACA`), marital status (`DS_ESTADO_CIVIL`) and education
+(`DS_GRAU_INSTRUCAO`) remain individual-profile-only. The exception does not apply to
+`compare_candidates`: its schema and payload continue to exclude all four fields.
+There are no gender filters, gender sorting or aggregates, and no change to voter
+registration exclusions, ingestion minimization or source attribution.
+
+Contract tests cover list values and nulls, REST/MCP schemas, continued absence of the
+other three fields from lists, and continued absence of all four from comparisons.

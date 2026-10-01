@@ -228,7 +228,7 @@ arquivo principal vem `#NE` em 100% das linhas; a situação útil está só no 
 | `vote_destination` | str ou nulo, PT-BR | `NM_TIPO_DESTINACAO_VOTOS` (complementar), como o TSE publica: "Válido", "Anulado sub judice", "Nulo técnico"; `#NULO` vira nulo (vices e suplentes vêm assim) |
 | `declares_assets` | bool ou nulo | `ST_DECLARAR_BENS` (complementar): `S` verdadeiro, `N` falso (declarou não possuir bens), outro valor ("Não divulgável") nulo |
 | `assets_total` | decimal ou nulo, **derivado** | soma de `VR_BEM_CANDIDATO` por `SQ_CANDIDATO` no dataset de bens, tabela `candidate_assets`; só o total, como declarado (ADR 0008) |
-| `gender` | str, PT-BR | `DS_GENERO`, como o TSE publica; só na ficha individual |
+| `gender` | str or null, PT-BR | `DS_GENERO`, as published by the TSE; individual profiles and candidate lists only (ADR 0004, amended 2026-09-30) |
 | `race_color` | str, PT-BR | `DS_COR_RACA`, como o TSE publica; só na ficha individual |
 | `marital_status` | str, PT-BR | `DS_ESTADO_CIVIL`, como o TSE publica; só na ficha individual |
 | `education` | str, PT-BR | `DS_GRAU_INSTRUCAO`, como o TSE publica; só na ficha individual |
@@ -256,9 +256,10 @@ Invariantes:
   exatamente um titular (seção 7). Uma candidatura substituída sai da urna mesmo quando o TSE
   ainda a marca `SIM`: no arquivo de 2026, 280 das 282 substituídas vêm com `NÃO` e 2 com
   `SIM`, uma delas ao lado da substituta de mesmo número (SP, deputado federal 3660).
-- `gender`, `race_color`, `marital_status` e `education` aparecem só na ficha individual
-  (`get_candidate`), nunca em `list_candidates` nem em agregados; entram como o TSE publica,
-  sem inferência nem cruzamento (seção 5).
+- `gender` appears in individual profiles and candidate lists as the stored TSE text or
+  null (ADR 0004, gender-only exception approved 2026-09-30). `race_color`, `marital_status`
+  and `education` remain individual-profile-only. None of these fields appears in comparisons
+  or aggregates, or supports filtering, sorting, inference or cross-referencing (section 5).
 - A resposta nunca contém os campos descartados da seção 5, e a suíte de testes garante que
   eles não existem no índice.
 
@@ -340,11 +341,14 @@ qualquer coisa; elas não existem no índice, e um teste falha se voltarem.
 
 A lista é a decidida pelo capitão no grilling de 2026-09-17, mais `DS_BEM_CANDIDATO`
 (ADR 0009, 2026-09-25). A ADR 0009 também admite o título como chave de junção só em memória,
-para o crescimento patrimonial da v1.1; ele continua descartado em toda gravação. Gênero, cor/raça,
-estado civil e grau de instrução (`DS_GENERO`, `DS_COR_RACA`, `DS_ESTADO_CIVIL`,
-`DS_GRAU_INSTRUCAO`) ficam no índice como o TSE publica, sem inferência nem cruzamento, e
-aparecem só na ficha individual de `get_candidate`, nunca em `list_candidates` nem em
-agregados. Os códigos correspondentes (`CD_*`) são descartados por redundância (3.5).
+para o crescimento patrimonial da v1.1; ele continua descartado em toda gravação.
+
+Gender, race/color, marital status and education (`DS_GENERO`, `DS_COR_RACA`,
+`DS_ESTADO_CIVIL`, `DS_GRAU_INSTRUCAO`) remain in the index as published by the TSE, without
+inference or cross-referencing. All four appear in individual profiles. Only `gender`
+also appears in candidate lists, as nullable TSE text, under the 2026-09-30 amendment to
+ADR 0004. None appears in comparisons or aggregates or supports filtering or sorting.
+The corresponding `CD_*` codes are discarded as redundant (3.5).
 
 Regras complementares (detalhadas no ADR 0004):
 

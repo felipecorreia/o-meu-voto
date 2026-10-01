@@ -8,11 +8,14 @@ LLM connected through MCP and for a static web page, without touching any person
 
 Copy this message into your assistant:
 
-> Busque e siga as instruções em https://omeuvoto.pages.dev/prompt-llm.md para configurar o O meu voto neste assistente.
+> Busque e siga as instruções em https://omeuvoto.pages.dev/prompt-llm para configurar o O meu voto neste assistente.
 
-The [setup instructions](https://omeuvoto.pages.dev/prompt-llm.md) cover MCP agents,
-chat apps with custom connectors, and a public REST fallback. Their source is
-[`web-next/public/prompt-llm.md`](web-next/public/prompt-llm.md), served as a static Pages asset.
+The [setup instructions](https://omeuvoto.pages.dev/prompt-llm) open with a short menu for the
+voter, then cover MCP agents, chat apps with custom connectors, and a public REST fallback that
+works without a connector in ChatGPT and Claude. Their source is
+[`web-next/public/prompt-llm.md`](web-next/public/prompt-llm.md), served as a static Pages asset
+and also as plain text at `/prompt-llm.md` and `/prompt-llm.txt`. The link above is the HTML
+copy because ChatGPT follows only links it sees on a page (`web-next/README.md`).
 
 ## What it answers
 

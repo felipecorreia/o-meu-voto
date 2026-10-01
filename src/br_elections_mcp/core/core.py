@@ -1015,6 +1015,7 @@ def _candidate_list_item(row: CandidateRow) -> CandidateListItem:
         occupation=row.occupation,
         photo_url=row.photo_url,
         vote_destination=row.vote_destination,
+        gender=row.gender,
     )
 
 

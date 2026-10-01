@@ -192,8 +192,15 @@ def test_the_edge_caches_rest_gets_briefly_but_never_the_voters_coordinates():
         edge_request("GET", "/api/v1/polling-places?uf=ac&lat=-9.97&lon=-67.81"),
         edge_request("GET", "/api/v1/polling-places?uf=ac&lat=-9.97"),
     )
+    escaped_both, escaped_lat = run_edge_function(
+        edge_request("GET", "/api/v1/polling-places?uf=ac&amp;lat=-9.97&amp;lon=-67.81"),
+        edge_request("GET", "/api/v1/polling-places?uf=ac&AMP;LAT=1&Amp;lat=-9.97"),
+    )
     assert cached["forwarded"]["url"] == ORIGIN + by_city
     assert cached["forwarded"]["cf"] == {"cacheTtl": 60, "cacheEverything": True}
     # ADR 0004: a query carrying the voter's location must not be kept in the edge cache.
     assert near["forwarded"]["cf"] is None
     assert only_lat["forwarded"]["cf"] is None
+    assert escaped_both["forwarded"]["cf"] is None
+    assert escaped_lat["forwarded"]["cf"] is None
+    assert escaped_both["forwarded"]["url"].endswith("uf=ac&amp;lat=-9.97&amp;lon=-67.81")

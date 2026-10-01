@@ -29,8 +29,9 @@ LIST_ITEM_FIELDS = {
     "occupation",
     "photo_url",
     "vote_destination",
+    "gender",
 }
-PROFILE_ONLY_FIELDS = {"gender", "race_color", "marital_status", "education"}
+PROFILE_ONLY_FIELDS = {"race_color", "marital_status", "education"}
 
 
 def numbers(answer: CandidatesAnswer) -> list[int]:
@@ -66,6 +67,7 @@ def test_scenario_9_president_is_asked_with_uf_br_and_lists_only_the_heads(core:
         "occupation": "ECONOMISTA",
         "photo_url": None,
         "vote_destination": "Válido",
+        "gender": "MASCULINO",
     }
     forty_five = data.candidates[2]
     assert forty_five.federation is None
@@ -309,5 +311,27 @@ def test_no_serialized_list_answer_contains_a_profile_only_key(core: Core):
         for field in PROFILE_ONLY_FIELDS:
             assert f'"{field}"' not in serialized
         # The values the TSE publishes in those columns never leak through another key either.
-        assert "MASCULINO" not in serialized
         assert "SUPERIOR COMPLETO" not in serialized
+
+
+@pytest.mark.parametrize(
+    "published, expected", [("#NULO", None), ("NÃO DIVULGÁVEL", "NÃO DIVULGÁVEL")]
+)
+def test_list_gender_preserves_tse_text_and_null_markers(tmp_path: Path, published, expected):
+    from tests.conftest import ACRE_CANDIDATES, with_fields
+
+    candidates = with_fields(
+        ACRE_CANDIDATES,
+        tmp_path,
+        ("SQ_CANDIDATO",),
+        {("10000000001",): {"DS_GENERO": published}},
+    )
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, candidates=candidates)
+    core = open_core(index_dir)
+    try:
+        answer = core.list_candidates("AC", "governador", party="PSDB")
+        assert answer.data is not None
+        assert answer.data.candidates[0].model_dump()["gender"] == expected
+    finally:
+        core.close()

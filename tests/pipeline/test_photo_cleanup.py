@@ -283,13 +283,18 @@ def test_a_superseded_photo_outlives_the_previous_pair_by_the_whole_grace(tmp_pa
 
 
 def test_a_refresh_that_published_without_cleaning_up_restarts_the_clocks(tmp_path: Path):
-    r2 = _r2((SQ1, b"new"), (SQ5, b"x"))
+    r2 = _r2((SQ1, b"new"), (SQ2, b"b"), (SQ3, b"c"), (SQ4, b"d"), (SQ5, b"x"))
     runs = _Refreshes(tmp_path, r2)
+    # Each pair references a different set of photos, so the four indexes never share a
+    # SHA-256 (the build alone is not guaranteed to produce different bytes for the same
+    # content, and the ledger tells pairs apart by that digest).
     runs.publish(runs.pair({SQ1: b"new"}))
-    runs.refresh(runs.pair({SQ1: b"new"}), T0)
-    runs.publish(runs.pair({SQ1: b"new"}))  # a photo stage failed: no clean-photos
+    runs.refresh(runs.pair({SQ1: b"new", SQ2: b"b"}), T0)
+    runs.publish(runs.pair({SQ1: b"new", SQ2: b"b", SQ3: b"c"}))  # a photo stage failed
 
-    result = runs.refresh(runs.pair({SQ1: b"new"}), T0 + 2 * CLEANUP_GRACE)
+    result = runs.refresh(
+        runs.pair({SQ1: b"new", SQ2: b"b", SQ3: b"c", SQ4: b"d"}), T0 + 2 * CLEANUP_GRACE
+    )
 
     assert not result.plan.chain_intact
     assert result.deleted == ()
@@ -347,7 +352,9 @@ def test_a_live_manifest_other_than_the_published_pair_is_refused(tmp_path: Path
     r2 = _r2((SQ1, b"new"), (SQ5, b"x"))
     runs = _Refreshes(tmp_path, r2)
     previous = runs.pair({SQ1: b"new"})
-    published = runs.pair({SQ1: b"new"})
+    # Different photo URLs, so the two indexes never share a SHA-256 (the build alone is not
+    # guaranteed to produce different bytes for the same content).
+    published = runs.pair({SQ1: b"new", SQ2: b"b"})
     runs.publish(previous)
 
     with pytest.raises(PhotoCleanupError, match="live manifest"):

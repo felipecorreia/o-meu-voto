@@ -17,12 +17,14 @@ export async function onRequest({ request, env }) {
   const init = { method: request.method, headers, redirect: "manual" };
   if (!["GET", "HEAD"].includes(request.method)) init.body = request.body;
   // Short edge cache for REST GETs, except requests carrying the voter's coordinates,
-  // which must not be kept anywhere (ADR 0004).
+  // which must not be kept anywhere (ADR 0004). The origin reads a literal "&amp;" as a
+  // separator (issue #115), so the coordinates are looked up the same way here.
+  const query = new URLSearchParams(url.search.replace(/&amp;/gi, "&"));
   const cacheable =
     request.method === "GET" &&
     url.pathname.startsWith("/api/v1/") &&
-    !url.searchParams.has("lat") &&
-    !url.searchParams.has("lon");
+    !query.has("lat") &&
+    !query.has("lon");
   if (cacheable) init.cf = { cacheTtl: 60, cacheEverything: true };
   return fetch(target, init);
 }

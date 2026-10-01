@@ -219,12 +219,8 @@ class Coalition(_Model):
     name: str
 
 
-class CandidateListItem(_Model):
-    """One candidate as ``list_candidates`` shows it (codebase-design 8.3).
-
-    Deliberately without ``gender``, ``race_color``, ``marital_status`` and
-    ``education``: those exist only in the individual profile of ``get_candidate``.
-    """
+class _CandidateFields(_Model):
+    """Fields shared by lists, profiles and comparisons, excluding demographics."""
 
     sq_candidato: int = Field(description="Número sequencial da candidatura no TSE")
     number: int = Field(description="Número que o eleitor digita na urna")
@@ -246,6 +242,15 @@ class CandidateListItem(_Model):
         description="Destino dos votos, como o TSE publica ('Válido', 'Anulado sub judice', "
         "'Nulo técnico'); nulo quando o TSE não informa"
     )
+
+
+class CandidateListItem(_CandidateFields):
+    """A listed candidate, including the gender-only exception in ADR 0004.
+
+    Race/color, marital status and education remain profile-only.
+    """
+
+    gender: str | None = Field(description="Como o TSE publica, sem inferência")
 
 
 class CandidatesData(_Model):
@@ -295,7 +300,6 @@ class CandidateProfile(CandidateListItem):
     nomination_kind: Literal["partido_isolado", "federacao", "coligacao"]
     federation: FederationDetail | None
     coalition: CoalitionDetail | None
-    gender: str | None = Field(description="Como o TSE publica, sem inferência")
     race_color: str | None = Field(description="Como o TSE publica, sem inferência")
     marital_status: str | None = Field(description="Como o TSE publica, sem inferência")
     education: str | None = Field(description="Como o TSE publica, sem inferência")
@@ -429,12 +433,12 @@ class ComparedAssets(_Model):
     )
 
 
-class ComparedCandidate(CandidateListItem):
+class ComparedCandidate(_CandidateFields):
     """One candidacy of ``compare_candidates`` (codebase-design 8.7): the list fields, the
     alliance with its composition, the vote destination with its explanation, the ticket by
     name and party, the links and the declared-assets total. Deliberately without
     ``gender``, ``race_color``, ``marital_status`` and ``education``: a comparison is
-    list-shaped (ADR 0004)."""
+    outside the gender-only list exception (ADR 0004)."""
 
     social_name: str | None = Field(description="Nome social, quando declarado")
     nomination_kind: Literal["partido_isolado", "federacao", "coligacao"]
