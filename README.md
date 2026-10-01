@@ -1,8 +1,9 @@
 # br-elections-mcp
 
 MCP server and REST API over the open data of the Tribunal Superior Eleitoral (TSE), the
-Brazilian electoral court. It answers the questions a voter asks before election day, for any
-LLM connected through MCP and for a static web page, without touching any personal data.
+Brazilian electoral court. It answers the questions a voter asks before election day through
+MCP, the public REST API used by chat assistants, and a static web page, without touching any
+personal data.
 
 ## Connect your AI assistant
 
@@ -196,7 +197,8 @@ partial upload. The final photo chain is checked again before `publish`.
 The full-load marker is written only after all photos and the temporary index have been
 verified; refreshes that overlap the first load skip their own mirror and still publish.
 
-After this change is merged, run the first full load once from `main`:
+The first production full load completed on 2026-09-30. For a new deployment, run the full load
+once from `main`:
 
 ```sh
 gh workflow run photo-full-load.yml --ref main
@@ -222,8 +224,8 @@ PY
 ```
 
 The count must be positive. Fetch the printed sample `*.r2.dev` URL and confirm HTTP 200
-and `Content-Type: image/jpeg` (for example, `curl -I '<sample URL>'`). Do not publish
-Cloudflare Pages as part of this load.
+and `Content-Type: image/jpeg` (for example, `curl -I '<sample URL>'`). For a new deployment,
+publish Cloudflare Pages after verifying the photo URLs.
 
 #### Removing photos the TSE no longer publishes
 

@@ -88,8 +88,8 @@ Pointers only; the content lives in the files below.
   index records it in `photo_sha256`, and `validate` has the gate `photo_chain` (ADR 0013,
   ADR 0014). `refresh.yml` runs them only once the five `R2_*` secrets exist and the manual
   `photo-full-load.yml` has written the R2 completion marker; a photo-stage failure never blocks
-  `publish` but fails the run after it. Until then every `photo_url` is null in
-  production (README, "Mirroring candidate photos to R2"; issue #43).
+  `publish` but fails the run after it. The load procedure is in README, "Mirroring candidate
+  photos to R2".
 
 ## Agent skills
 
