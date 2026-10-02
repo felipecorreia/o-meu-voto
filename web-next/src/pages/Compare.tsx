@@ -249,7 +249,7 @@ export function ComparePage({params}: {params: URLSearchParams}) {
     const round = data?.round ?? comparison?.election?.round.number ?? null;
     const shareUrl = `${location.origin}${location.pathname}${location.search}${href('/', {uf, office, sq: compareKey, pair: pair?.join(','), tab})}`;
     const share = {
-      title: `Compare o voto · ${OFFICE[office]} · ${placeName(uf)}`,
+      title: `O meu voto · ${OFFICE[office]} · ${placeName(uf)}`,
       text: `Compare as candidaturas a ${OFFICE[office]} (${uf}) lado a lado, com os dados abertos do TSE: ${shareUrl}`,
       url: shareUrl,
     };

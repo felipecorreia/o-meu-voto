@@ -103,7 +103,7 @@ export function CandidatePage({sq, backHref}: {sq: number; backHref: string}) {
   useEffect(() => {
     if (!c) return;
     const previous = document.title;
-    document.title = `${toTitleCase(c.ballot_name)} (${c.number}) · Compare o voto`;
+    document.title = `${toTitleCase(c.ballot_name)} (${c.number}) · O meu voto`;
     return () => { document.title = previous; };
   }, [c]);
   const nav = c ? profileNavigation(c, params) : null;

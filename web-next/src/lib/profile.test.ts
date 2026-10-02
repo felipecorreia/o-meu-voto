@@ -48,7 +48,7 @@ describe('profile sharing', () => {
   it('shares exact text with a direct link, without comparison or review parameters', () => {
     const shared = profileShare(c, 'Maria Silva', 'Governador', 'AC', 'https://example.com/?theme=butter#/candidato/2?cmp=3,2&tab=ocupacao');
     expect(shared.url).toBe('https://example.com/#/candidato/2');
-    expect(shared.title).toBe('Maria Silva (11) · Compare o voto');
+    expect(shared.title).toBe('Maria Silva (11) · O meu voto');
     expect(shared.text).toBe('Ficha de Maria Silva (11), candidatura a Governador (AC), com os dados abertos do TSE: https://example.com/#/candidato/2');
   });
 });

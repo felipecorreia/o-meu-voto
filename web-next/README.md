@@ -232,7 +232,7 @@ from the bottom, and a hover border (fine pointers only) on unmarked cards.
 ## The shell (Tela 8)
 
 `src/App.tsx` is the frame of every screen (package 8, `casca-spec.md`): `SkipLink`, the
-sticky `SiteHeader` (60 px at every width: the three dots, "Compare o voto", the "não oficial"
+sticky `SiteHeader` (60 px at every width: the three dots, "O meu voto", the "não oficial"
 pill, a 44 px menu button below 1024 px and the inline `NavLinks` pills and a repository icon link from 1024 px), the
 screen inside `<main id="conteudo" tabIndex={-1}>`, the `SiteFooter` and the `NavMenu`. The
 menu is a modal dialog in a portal on `body`: it opens from the right with focus on the current
@@ -242,7 +242,7 @@ the menu button unless the page moved focus. At 1024 px the drawer closes immedi
 focus moves to the current inline link, falling back to `<main>`. Its state never reaches the
 URL. `lib/routes.ts` holds
 `NAV_ITEMS`, `currentNavId` (`candidato/*` and unknown paths count as Comparar) and
-`routeTitle`, which sets `document.title` as "{título} · Compare o voto"; a change of path focuses
+`routeTitle`, which sets `document.title` as "{título} · O meu voto"; a change of path focuses
 `<main>` without scrolling and announces the title in a polite live region, unless the screen
 moves focus afterwards (Telas 4, 5, 7).
 The footer says "Projeto independente e não oficial" once for the whole site, with "Dúvidas",

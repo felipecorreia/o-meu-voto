@@ -7,7 +7,7 @@ import type {LucideIcon} from 'lucide-react';
 import {Calendar, CircleHelp, Columns2, Map as MapIcon, MapPin} from 'lucide-react';
 import type {Route} from '../router';
 
-export const SITE_NAME = 'Compare o voto';
+export const SITE_NAME = 'O meu voto';
 
 export type NavItemId = 'comparar' | 'onde-voto' | 'locais' | 'quando' | 'duvidas';
 
@@ -38,7 +38,7 @@ export function currentNavId(path: string): NavItemId {
   }
 }
 
-/** The tab title of a route, "{título} · Compare o voto" (spec 5.4). The profile page replaces
+/** The tab title of a route, "{título} · O meu voto" (spec 5.4). The profile page replaces
  *  "Ficha da candidatura" by the name once it loads. */
 export function routeTitle(route: Route): string {
   const title = route.path.startsWith('/candidato/') ? 'Ficha da candidatura'

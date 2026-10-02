@@ -23,15 +23,15 @@ const go = (hash: string) => act(async () => { location.hash = hash; window.disp
 const viewport = (width: number, height: number) => (window as unknown as {happyDOM: {setViewport: (v: {width: number; height: number}) => void}}).happyDOM.setViewport({width, height});
 
 describe('routes.ts', () => {
-  it('titles every route "{título} · Compare o voto" (spec 5.4)', () => {
-    expect(routeTitle(route('/'))).toBe('Comparar candidaturas · Compare o voto');
-    expect(routeTitle(route('/', 'uf=SP&office=governador&sq=1,2'))).toBe('Comparação · Compare o voto');
-    expect(routeTitle(route('/candidato/250002541303', 'uf=SP'))).toBe('Ficha da candidatura · Compare o voto');
-    expect(routeTitle(route('/onde-voto'))).toBe('Onde voto · Compare o voto');
-    expect(routeTitle(route('/locais'))).toBe('Locais de votação · Compare o voto');
-    expect(routeTitle(route('/quando'))).toBe('Quando é a eleição · Compare o voto');
-    expect(routeTitle(route('/duvidas', 'abrir=cpf'))).toBe('Dúvidas frequentes · Compare o voto');
-    expect(routeTitle(route('/nada'))).toBe('Comparar candidaturas · Compare o voto');
+  it('titles every route "{título} · O meu voto" (spec 5.4)', () => {
+    expect(routeTitle(route('/'))).toBe('Comparar candidaturas · O meu voto');
+    expect(routeTitle(route('/', 'uf=SP&office=governador&sq=1,2'))).toBe('Comparação · O meu voto');
+    expect(routeTitle(route('/candidato/250002541303', 'uf=SP'))).toBe('Ficha da candidatura · O meu voto');
+    expect(routeTitle(route('/onde-voto'))).toBe('Onde voto · O meu voto');
+    expect(routeTitle(route('/locais'))).toBe('Locais de votação · O meu voto');
+    expect(routeTitle(route('/quando'))).toBe('Quando é a eleição · O meu voto');
+    expect(routeTitle(route('/duvidas', 'abrir=cpf'))).toBe('Dúvidas frequentes · O meu voto');
+    expect(routeTitle(route('/nada'))).toBe('Comparar candidaturas · O meu voto');
   });
   it('maps the profile and unknown paths to Comparar (spec 5.3)', () => {
     expect(currentNavId('/candidato/250002541303')).toBe('comparar');
@@ -82,7 +82,7 @@ describe('SiteFooter and NavLinks markup', () => {
     expect(html).toContain('Projeto independente e não oficial');
     expect(html).toContain('Feito com os dados abertos do TSE. Sem cadastro, sem CPF, sem título: nada é guardado.');
     expect(html).toContain('Dados do TSE sob licença CC-BY. Este serviço não acessa o cadastro eleitoral. Código sob licença MIT.');
-    expect(html).toContain('Compare o voto · Eleições 2026');
+    expect(html).toContain('O meu voto · Eleições 2026');
     expect(html).toContain('href="#/duvidas"');
     expect(html).not.toContain('Código aberto');
     expect(html).toContain('Feito por <a href="https://github.com/felipecorreia" target="_blank" rel="noopener noreferrer">Felipe Correia</a>');
@@ -131,7 +131,7 @@ describe('the shell in a document', () => {
     expect(document.activeElement?.id).toBe('conteudo');
     expect(document.activeElement?.tagName).toBe('MAIN');
     expect(location.hash).toBe('#/onde-voto');
-    expect(document.title).toBe('Onde voto · Compare o voto');
+    expect(document.title).toBe('Onde voto · O meu voto');
   });
 
   it('opens the menu on the current item, traps Tab, closes on Esc and gives focus back (criteria 2, 4)', async () => {
@@ -180,13 +180,13 @@ describe('the shell in a document', () => {
     await act(() => { quando.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); });
     expect(menuButton()!.getAttribute('aria-expanded')).toBe('false');
     await go('#/quando');
-    expect(document.title).toBe('Quando é a eleição · Compare o voto');
+    expect(document.title).toBe('Quando é a eleição · O meu voto');
     expect(document.activeElement?.id).toBe('conteudo');
-    expect(document.querySelector('.cv-shell > [aria-live="polite"]')?.textContent).toBe('Quando é a eleição · Compare o voto');
+    expect(document.querySelector('.cv-shell > [aria-live="polite"]')?.textContent).toBe('Quando é a eleição · O meu voto');
     await wait(250);
     expect(dialog()).toBeNull();
     await go('#/candidato/250002541303?uf=SP');
-    expect(document.title).toBe('Ficha da candidatura · Compare o voto');
+    expect(document.title).toBe('Ficha da candidatura · O meu voto');
     await act(() => { menuButton()!.click(); });
     expect(dialog()!.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('#/');
   });

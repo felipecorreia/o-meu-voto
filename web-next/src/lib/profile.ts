@@ -39,7 +39,7 @@ export function profileShare(c: CandidateProfile, name: string, office: string, 
   const url = new URL(pageUrl);
   url.search = '';
   url.hash = `/candidato/${c.sq_candidato}`;
-  return {title: `${name} (${c.number}) · Compare o voto`, url: url.toString(),
+  return {title: `${name} (${c.number}) · O meu voto`, url: url.toString(),
     text: `Ficha de ${name} (${c.number}), candidatura a ${office}${uf ? ` (${uf})` : ''}, com os dados abertos do TSE: ${url}`};
 }
 
