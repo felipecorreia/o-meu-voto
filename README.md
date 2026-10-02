@@ -18,6 +18,7 @@ data.
 
 - [Try it in 30 seconds](#try-it-in-30-seconds)
 - [What it answers](#what-it-answers)
+- [API](#api)
 - [The server is the only source of truth](#the-server-is-the-only-source-of-truth)
 - [Architecture](#architecture)
 - [Data and privacy](#data-and-privacy)
@@ -57,6 +58,23 @@ Then ask, for example, "Quem são os candidatos a senador em SP?" or "Compare os
   one.
 - **Polling places by city and neighborhood**, for voters who do not know their section.
 - **Election date and voting hours**, from the official electoral calendar.
+
+## API
+
+The same answers are open to any program, no key or sign-in. MCP for AI assistants at
+`https://omeuvoto.pages.dev/mcp`; REST under `https://omeuvoto.pages.dev/api/v1`, GET only:
+
+```sh
+curl -s 'https://omeuvoto.pages.dev/api/v1/candidates/compare?uf=SP&office=senador&number=180,400'
+```
+
+Every answer carries `data`, `warnings` and the TSE `source` it came from.
+
+- [`docs/api.md`](docs/api.md): the guide, with the seven MCP tools and their REST routes, how to
+  connect, more `curl` examples, the answer envelope and the error codes.
+- [OpenAPI](https://omeuvoto.pages.dev/api/v1/openapi.json) and the
+  [interactive page](https://omeuvoto.pages.dev/api/v1/docs): the generated reference.
+- [`docs/README.md`](docs/README.md): start here for every document, in reading order.
 
 ## The server is the only source of truth
 
@@ -154,6 +172,7 @@ uv run pytest
 
 Where to go next:
 
+- [`docs/README.md`](docs/README.md): every document in reading order.
 - [`docs/local-run.md`](docs/local-run.md): start the server on localhost, connect Claude
   Desktop, or serve an index built from the real TSE files in the service image.
 - [`docs/pipeline.md`](docs/pipeline.md): the refresh pipeline, its stages, the index bucket
