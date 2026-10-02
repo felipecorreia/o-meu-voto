@@ -1,0 +1,51 @@
+name: Retorno / Feedback
+description: Dado errado ou faltando, erro no site ou sugestão. (Wrong or missing data, bug or suggestion.)
+title: "[Retorno] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por ajudar a melhorar o O Meu Voto.
+        (Thanks for helping improve O Meu Voto.)
+
+        **Não cole CPF, número do título de eleitor, endereço ou qualquer outro dado pessoal.** Esta página é pública.
+        (Never paste a CPF, voter title number or any other personal data. This page is public.)
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Tipo
+      description: O que você quer relatar? (What are you reporting?)
+      options:
+        - Dado errado ou faltando (wrong or missing data)
+        - Erro no site ou no assistente (bug)
+        - Sugestão (suggestion)
+    validations:
+      required: true
+  - type: textarea
+    id: asked
+    attributes:
+      label: O que você perguntou ou fez
+      description: A pergunta ou o caminho no site. (What you asked or did.)
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: O que você recebeu
+      description: A resposta que apareceu e o que esperava no lugar. (What you got and what you expected.)
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Fonte mostrada
+      description: A fonte ou link exibido junto da resposta, se houver. (The source shown with the answer, if any.)
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacidade (privacy)
+      options:
+        - label: Não incluí CPF, título de eleitor nem outro dado pessoal. (I included no personal data.)
+          required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Consultar o site O Meu Voto
+    url: https://omeuvoto.pages.dev
+    about: Veja onde você vota e compare candidatos. (Look up where you vote and compare candidates.)
+  - name: Dúvidas sobre seu título ou cadastro - e-Título (TSE)
+    url: https://www.tse.jus.br/servicos-eleitorais/e-titulo
+    about: Situação eleitoral e cadastro são tratados no app oficial do TSE. (Voter registration questions go to the official TSE e-Título.)
