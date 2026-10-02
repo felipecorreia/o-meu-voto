@@ -1,5 +1,5 @@
 import {CircleHelp, CodeXml, Shield} from 'lucide-react';
-import {REPO_URL} from '../../lib/links';
+import {AUTHOR_URL, REPO_URL} from '../../lib/links';
 import {SITE_NAME} from '../../lib/routes';
 import {BrandDots} from './BrandDots';
 
@@ -7,7 +7,8 @@ import {BrandDots} from './BrandDots';
  * The global footer (casca spec 5.5), after `<main>` on every screen: the one place that says
  * "projeto independente e não oficial", the licences line and the signature. "Código aberto"
  * appears only with a real `REPO_URL`. `html.cv-has-floating-bar` (lib/floatingBar.ts) adds the
- * clearance that keeps the last lines above a floating bar.
+ * clearance that keeps the last lines above a floating bar. The credit line links the author and,
+ * with a `repoUrl`, the public repository.
  */
 export function SiteFooter({repoUrl = REPO_URL}: {repoUrl?: string | null}) {
   return (
@@ -28,6 +29,10 @@ export function SiteFooter({repoUrl = REPO_URL}: {repoUrl?: string | null}) {
         </div>
         <div className="cv-sitefooter-side">
           <p className="cv-sitefooter-licenses">Dados do TSE sob licença CC-BY. Este serviço não acessa o cadastro eleitoral. Código sob licença MIT.</p>
+          <p className="cv-sitefooter-credit">
+            Feito por <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer">Felipe Correia</a>
+            {repoUrl ? <> · <a href={repoUrl} target="_blank" rel="noopener noreferrer">Código aberto no GitHub</a></> : null}
+          </p>
           <div className="cv-sitefooter-sign"><BrandDots size={6} />{SITE_NAME} · Eleições 2026</div>
         </div>
       </div>

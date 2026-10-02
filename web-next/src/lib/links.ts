@@ -11,10 +11,7 @@ export function mapsUrl(place: {latitude: number | null; longitude: number | nul
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-/**
- * The "Código aberto" link of the shell footer (casca spec, 5.5). The spec allows only a URL
- * the project already publishes (package.json `repository`, the web-next README or the old
- * footer) and forbids a provisional one; none exists while the repository is private, so the
- * button stays hidden until a public repository URL goes here.
- */
-export const REPO_URL: string | null = null;
+/** The public mirror of this repository: the footer's "Código aberto" and the menu item. */
+export const REPO_URL: string | null = 'https://github.com/felipecorreia/o-meu-voto';
+/** The author's GitHub profile, linked from the footer credit. */
+export const AUTHOR_URL = 'https://github.com/felipecorreia';

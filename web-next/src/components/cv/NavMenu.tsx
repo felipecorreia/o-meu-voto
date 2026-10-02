@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState, type CSSProperties, type RefObject} from 'react';
 import {createPortal} from 'react-dom';
-import {X} from 'lucide-react';
+import {CodeXml, X} from 'lucide-react';
+import {REPO_URL} from '../../lib/links';
 import type {NavItemId} from '../../lib/routes';
 import {prefersReducedMotion} from '../../lib/scroll';
 import {useFocusTrap} from '../../lib/useFocusTrap';
@@ -81,6 +82,15 @@ export function NavMenu({open, wide, current, onClose, returnFocusTo}: NavMenuPr
           <button type="button" className="cv-navmenu-close" aria-label="Fechar menu" onClick={onClose}><X size={18} strokeWidth={2.2} aria-hidden /></button>
         </div>
         <NavLinks variant="drawer" current={current} onPick={onClose} />
+        {REPO_URL ? (
+          <a className="cv-navitem cv-navmenu-repo" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+            <span className="cv-navitem-icon" aria-hidden><CodeXml size={19} strokeWidth={2} /></span>
+            <span className="cv-navitem-text">
+              <span className="cv-navitem-label">Código no GitHub</span>
+              <span className="cv-navitem-sub">Repositório público, abre em nova aba</span>
+            </span>
+          </a>
+        ) : null}
         <div className="cv-navmenu-foot">
           <span className="cv-unofficial">não oficial</span>
           <span>Projeto independente, feito com os dados abertos do TSE. Eleições 2026.</span>

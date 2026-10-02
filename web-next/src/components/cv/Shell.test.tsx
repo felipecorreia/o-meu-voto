@@ -85,11 +85,13 @@ describe('SiteFooter and NavLinks markup', () => {
     expect(html).toContain('Compare o voto · Eleições 2026');
     expect(html).toContain('href="#/duvidas"');
     expect(html).not.toContain('Código aberto');
+    expect(html).toContain('Feito por <a href="https://github.com/felipecorreia" target="_blank" rel="noopener noreferrer">Felipe Correia</a>');
   });
   it('shows "Código aberto" in a new tab only with a real REPO_URL (criterion 8)', () => {
     const html = renderToStaticMarkup(<SiteFooter repoUrl="https://example.org/repo" />);
     expect(html).toContain('href="https://example.org/repo" target="_blank" rel="noopener noreferrer"');
     expect(html).toContain('Código aberto');
+    expect(html).toContain('<a href="https://example.org/repo" target="_blank" rel="noopener noreferrer">Código aberto no GitHub</a>');
   });
   it('marks the current item with aria-current in both variants; only the drawer has subtitles', () => {
     const drawer = renderToStaticMarkup(<NavLinks variant="drawer" current="onde-voto" />);
@@ -147,6 +149,10 @@ describe('the shell in a document', () => {
     expect(current.textContent).toContain('Onde voto');
     expect(document.activeElement).toBe(current);
     expect(document.querySelectorAll('nav[aria-label="Principal"]')).toHaveLength(1);
+    const repo = [...menu.querySelectorAll<HTMLAnchorElement>('a')].find(a => a.textContent?.includes('Código no GitHub'))!;
+    expect(repo.getAttribute('href')).toBe('https://github.com/felipecorreia/o-meu-voto');
+    expect(repo.getAttribute('target')).toBe('_blank');
+    expect(repo.getAttribute('rel')).toBe('noopener noreferrer');
     // Tab from the last focusable element wraps to the first one; Shift+Tab the other way.
     const focusables = menu.querySelectorAll<HTMLElement>('a[href], button');
     focusables[focusables.length - 1].focus();
@@ -194,6 +200,11 @@ describe('the shell in a document', () => {
     expect(nav[0].closest('header')).not.toBeNull();
     expect(nav[0].querySelectorAll('a')).toHaveLength(5);
     expect(nav[0].querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('#/onde-voto');
+    const repo = document.querySelector<HTMLAnchorElement>('header a[aria-label^="Código no GitHub"]')!;
+    expect(repo.getAttribute('href')).toBe('https://github.com/felipecorreia/o-meu-voto');
+    expect(repo.getAttribute('target')).toBe('_blank');
+    expect(repo.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(nav[0].contains(repo)).toBe(false);
     expect(text().split(NOTICE)).toHaveLength(2);
   });
 

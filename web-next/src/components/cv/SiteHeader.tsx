@@ -1,5 +1,6 @@
 import type {RefObject} from 'react';
-import {Menu} from 'lucide-react';
+import {CodeXml, Menu} from 'lucide-react';
+import {REPO_URL} from '../../lib/links';
 import {SITE_NAME, type NavItemId} from '../../lib/routes';
 import {BrandDots} from './BrandDots';
 import {NavLinks} from './NavLinks';
@@ -26,7 +27,14 @@ export function SiteHeader({current, wide, menuOpen, onMenuOpen, menuButtonRef}:
           <span className="cv-unofficial">não oficial</span>
         </a>
         {wide
-          ? <NavLinks variant="inline" current={current} />
+          ? <div className="cv-siteheader-nav">
+              <NavLinks variant="inline" current={current} />
+              {REPO_URL ? (
+                <a className="cv-siteheader-repo" href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Código no GitHub (repositório público, abre em nova aba)" title="Código no GitHub">
+                  <CodeXml size={20} strokeWidth={2} aria-hidden />
+                </a>
+              ) : null}
+            </div>
           : <button ref={menuButtonRef} type="button" className="cv-menubtn" aria-label="Abrir menu" aria-expanded={menuOpen} aria-controls="menu" onClick={onMenuOpen}>
               <Menu size={22} strokeWidth={1.8} aria-hidden />
             </button>}

@@ -217,7 +217,7 @@ The pieces the next screens reuse are separate components and utilities, not pag
 | `NAV_ITEMS`, `currentNavId`, `routeTitle` | `src/lib/routes.ts` | the menu destinations, the current one per path and the tab title per route |
 | `useFocusTrap` | `src/lib/useFocusTrap.ts` | Tab and Shift+Tab kept inside an open dialog |
 | `markFloatingBar`, `FLOATING_BAR_CLASS` | `src/lib/floatingBar.ts` | the `html.cv-has-floating-bar` mark a mounted `FloatingBar` leaves for the footer's clearance |
-| `REPO_URL` | `src/lib/links.ts` | the "Código aberto" link; null hides the button |
+| `REPO_URL` | `src/lib/links.ts` | the public mirror: the footer's "Código aberto" links, the menu item and the wide header icon; null hides them |
 
 The slot colours (and so the tray avatars, and the comparison screen when it reuses them) follow
 the order of marking, never the candidacy or the party (ADR 0008); `sq` in the exit URL keeps
@@ -233,7 +233,7 @@ from the bottom, and a hover border (fine pointers only) on unmarked cards.
 
 `src/App.tsx` is the frame of every screen (package 8, `casca-spec.md`): `SkipLink`, the
 sticky `SiteHeader` (60 px at every width: the three dots, "Compare o voto", the "não oficial"
-pill, a 44 px menu button below 1024 px and the inline `NavLinks` pills from 1024 px), the
+pill, a 44 px menu button below 1024 px and the inline `NavLinks` pills and a repository icon link from 1024 px), the
 screen inside `<main id="conteudo" tabIndex={-1}>`, the `SiteFooter` and the `NavMenu`. The
 menu is a modal dialog in a portal on `body`: it opens from the right with focus on the current
 item (`useFocusTrap` keeps Tab inside). The close button, scrim, Esc, a chosen item or a route
@@ -246,8 +246,9 @@ URL. `lib/routes.ts` holds
 `<main>` without scrolling and announces the title in a polite live region, unless the screen
 moves focus afterwards (Telas 4, 5, 7).
 The footer says "Projeto independente e não oficial" once for the whole site, with "Dúvidas",
-the licences line and the signature; "Código aberto" renders only with a real `REPO_URL`
-(`lib/links.ts`, null while the repository is private). `FloatingBar` marks
+the licences line, a credit line ("Feito por Felipe Correia · Código aberto no GitHub") and the
+signature; "Código aberto", the menu item "Código no GitHub" and the header icon (same label, outside `nav[aria-label=Principal]`) render only with a real
+`REPO_URL` (`lib/links.ts`, the public mirror). `FloatingBar` marks
 `html.cv-has-floating-bar` while mounted (`lib/floatingBar.ts`), and the footer gets 120 px of
 bottom padding plus the bottom safe area, so the end of the page stays above the bar. The skip link handles
 its own click because the router is hash-based: `#conteudo` would be read as a route. The
