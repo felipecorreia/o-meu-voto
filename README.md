@@ -2,6 +2,8 @@
   <img src="assets/readme/hero.svg" width="100%" alt="O meu voto, unofficial: what a Brazilian voter asks before election day - compare candidates, where I vote, polling places and when.">
 </p>
 
+https://github.com/user-attachments/assets/4c3f1212-3ebb-40a5-b045-db1b7ba841f6
+
 # O meu voto
 
 Answers to the questions a Brazilian voter asks before election day, from the open data of the
