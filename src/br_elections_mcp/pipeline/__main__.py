@@ -183,6 +183,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--previous-manifest", type=Path, help="manifest.json of the previously published index"
     )
     validate_parser.add_argument(
+        "--previous-index-dir", type=Path, help="previously published index for per-round counts"
+    )
+    validate_parser.add_argument(
         "--photo-public-domain",
         help="require photo_url to use this exact public base URL and its content-addressed key",
     )
@@ -391,7 +394,10 @@ def _run_build(args: argparse.Namespace) -> int:
 
 def _run_validate(args: argparse.Namespace) -> int:
     polling_dataset = POLLING_PLACES_CURRENT if args.monthly else POLLING_PLACES_2026
-    previous_manifest = read_manifest(args.previous_manifest) if args.previous_manifest else None
+    previous_manifest_path = args.previous_manifest or (
+        args.previous_index_dir / MANIFEST_FILE_NAME if args.previous_index_dir else None
+    )
+    previous_manifest = read_manifest(previous_manifest_path) if previous_manifest_path else None
     try:
         report = validate(
             SourceFile(polling_dataset, args.polling_places),
@@ -404,6 +410,7 @@ def _run_validate(args: argparse.Namespace) -> int:
             args.elections,
             args.output_dir,
             previous_manifest=previous_manifest,
+            previous_index_dir=args.previous_index_dir,
             photo_public_domain=args.photo_public_domain,
         )
     except ValidationError as exc:

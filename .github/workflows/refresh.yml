@@ -169,18 +169,18 @@ jobs:
             --candidate-assets "$CANDIDATE_ASSETS_CSV" \
             --output-dir "$WORK/index"
 
-      - name: Download the manifest currently published
-        # The previous manifest feeds the count-stability gate of validate; the first run has none.
+      - name: Download the currently published index
+        id: current_index
         run: |
-          uv run python -m br_elections_mcp.pipeline current-manifest \
+          timeout --signal=TERM --kill-after=30s 5m uv run python -m br_elections_mcp.pipeline current-index \
             --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
-            --output "$WORK/previous/manifest.json"
+            --output-dir "$WORK/previous"
 
       - name: Validate the index
         run: |
           ARGS=()
           if [ -f "$WORK/previous/manifest.json" ]; then
-            ARGS+=(--previous-manifest "$WORK/previous/manifest.json")
+            ARGS+=(--previous-index-dir "$WORK/previous")
           fi
           if [ "$MIRROR_PHOTOS" = true ]; then
             ARGS+=(--photo-public-domain "")
@@ -196,15 +196,6 @@ jobs:
             --elections data/elections.yaml \
             --output-dir "$WORK/index" \
             "${ARGS[@]}"
-
-      - name: Download the currently published index for photo carry-forward
-        id: current_index
-        if: env.MIRROR_PHOTOS == 'true' && steps.fetch_photos.outcome == 'success'
-        continue-on-error: true
-        run: |
-          timeout --signal=TERM --kill-after=30s 5m uv run python -m br_elections_mcp.pipeline current-index \
-            --bucket "$INDEX_BUCKET" --prefix "$INDEX_BUCKET_PREFIX" \
-            --output-dir "$WORK/previous"
 
       - name: Retain verified published photo URLs
         id: retain_photos

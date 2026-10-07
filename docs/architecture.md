@@ -60,8 +60,8 @@ reads and writes files, so any one of them runs alone:
 - **build** writes `index.duckdb`. It drops CPF, voter title number, birth date, e-mail and
   asset free text, so they never reach the published index or any answer (ADR 0004, ADR 0009).
   Display casing of names and addresses is applied once here.
-- **validate** runs the gates that block publication, including count stability against the
-  manifest published before.
+- **validate** runs the gates that block publication; see the count stability contract in
+  [`codebase-design.md`](codebase-design.md), section 5.
 - **publish** uploads the index and its `manifest.json` (dataset generation timestamps, counts,
   election, SHA-256). Every version is kept under `versions/{version}/`; the current pair is
   written index first, manifest last, so rolling back is copying an older pair over it.

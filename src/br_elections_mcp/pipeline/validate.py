@@ -1,9 +1,10 @@
 """Pipeline stage ``validate``: the gate between ``build`` and ``publish``.
 
 Reads the raw CSVs ``build`` reads, the index ``build`` already wrote (``index.duckdb`` and
-``manifest.json``), the curated calendar and, when there is one, the manifest of the previously
-published index; writes a validation report and raises loudly when any gate fails, so a bad index
-is never published (docs/codebase-design.md, section 5; docs/domain-model.md, section 7).
+``manifest.json``), the curated calendar and, when there is one, the previously published
+index pair for per-round counts; writes a validation report and raises loudly when any gate
+fails, so a bad index is never published (docs/codebase-design.md, section 5;
+docs/domain-model.md, section 7).
 
 Every gate re-derives its invariant directly from the raw CSVs or the built index, independent of
 whatever ``build`` already happens to enforce internally (a primary key, a hard-coded mapping):
@@ -143,6 +144,7 @@ def validate(
     output_dir: Path,
     *,
     previous_manifest: Manifest | None = None,
+    previous_index_dir: Path | None = None,
     photo_public_domain: str | None = None,
     now: Callable[[], dt.datetime] = _utcnow,
 ) -> ValidationReport:
@@ -179,7 +181,15 @@ def validate(
                 "forbidden_columns_absent",
                 lambda: _gate_forbidden_columns_absent(index_dir / INDEX_FILE_NAME),
             ),
-            _run("count_stability", lambda: _gate_count_stability(manifest, previous_manifest)),
+            _run(
+                "count_stability",
+                lambda: _gate_count_stability(
+                    manifest,
+                    previous_manifest,
+                    index_dir / INDEX_FILE_NAME,
+                    previous_index_dir / INDEX_FILE_NAME if previous_index_dir else None,
+                ),
+            ),
             _run(
                 "election_date_matches_calendar",
                 lambda: _gate_election_date_matches_calendar(
@@ -310,12 +320,28 @@ def _gate_forbidden_columns_absent(index_path: Path) -> GateResult:
     return GateResult("forbidden_columns_absent", "pass", "no forbidden column reached the index")
 
 
-# Gate 4: table counts did not move more than COUNT_TOLERANCE from the previous manifest.
+# Gate 4: table counts stay within COUNT_TOLERANCE; compare place and section rounds
+# individually when the previous index belongs to the same election.
 
 
-def _gate_count_stability(manifest: Manifest, previous: Manifest | None) -> GateResult:
+def _gate_count_stability(
+    manifest: Manifest,
+    previous: Manifest | None,
+    index_path: Path | None = None,
+    previous_index_path: Path | None = None,
+) -> GateResult:
     if previous is None:
         return GateResult("count_stability", "pass", "no previous manifest; first run")
+    if (
+        index_path is not None
+        and previous_index_path is None
+        and previous.election_year == manifest.election_year
+        and previous.election_year is not None
+        and any(table in previous.counts for table in ("polling_places", "polling_sections"))
+    ):
+        return GateResult(
+            "count_stability", "fail", "previous index required for per-round count comparison"
+        )
     problems = []
     for table, count in manifest.counts.items():
         if table in COUNT_STABILITY_EXCLUDED_TABLES:
@@ -323,11 +349,29 @@ def _gate_count_stability(manifest: Manifest, previous: Manifest | None) -> Gate
         old = previous.counts.get(table)
         if old is None:
             continue
-        change = (
-            0.0 if old == count == 0 else (float("inf") if old == 0 else abs(count - old) / old)
-        )
-        if change > COUNT_TOLERANCE:
-            problems.append(f"{table}: {old} -> {count} ({change:.1%})")
+        if (
+            table in {"polling_places", "polling_sections"}
+            and index_path is not None
+            and previous_index_path is not None
+            and previous.election_year == manifest.election_year
+            and previous.election_year is not None
+        ):
+            round_counts = _round_counts(index_path, table)
+            previous_round_counts = _round_counts(previous_index_path, table)
+            new_round_baseline = old / len(previous_round_counts) if previous_round_counts else 0
+            for round_number in sorted(previous_round_counts.keys() | round_counts.keys()):
+                round_count = round_counts.get(round_number, 0)
+                baseline = previous_round_counts.get(round_number, new_round_baseline)
+                change = _count_change(baseline, round_count)
+                if change > COUNT_TOLERANCE:
+                    problems.append(
+                        f"{table} round {round_number}: {baseline:g} -> {round_count} "
+                        f"({change:.1%})"
+                    )
+        else:
+            change = _count_change(old, count)
+            if change > COUNT_TOLERANCE:
+                problems.append(f"{table}: {old} -> {count} ({change:.1%})")
     skipped_note = (
         f"; skipped {sorted(COUNT_STABILITY_EXCLUDED_TABLES)}"
         if COUNT_STABILITY_EXCLUDED_TABLES
@@ -342,6 +386,18 @@ def _gate_count_stability(manifest: Manifest, previous: Manifest | None) -> Gate
             + skipped_note,
         )
     return GateResult("count_stability", "pass", "every count is within tolerance" + skipped_note)
+
+
+def _count_change(old: float, current: int) -> float:
+    return 0.0 if old == current == 0 else (float("inf") if old == 0 else abs(current - old) / old)
+
+
+def _round_counts(index_path: Path, table: str) -> dict[int, int]:
+    conn = duckdb.connect(str(index_path), read_only=True)
+    try:
+        return dict(conn.execute(f"SELECT round, count(*) FROM {table} GROUP BY round").fetchall())
+    finally:
+        conn.close()
 
 
 # Gate 5: DT_ELEICAO of the index matches the curated calendar (election files only).
@@ -387,7 +443,7 @@ def _gate_election_date_matches_calendar(
     )
 
 
-# Gate 6: a polling place's identity (uf, zone, municipality, number) carries one name and
+# Gate 6: a polling place's identity (uf, zone, municipality, number, round) carries one name and
 # address. The number alone is unique per municipality within a zone, not per zone: the real
 # 2026 file has 12,212 (uf, zone, number) keys spanning more than one municipality.
 
@@ -396,9 +452,9 @@ def _gate_polling_place_identity(conn: duckdb.DuckDBPyConnection) -> GateResult:
     rows = conn.execute(
         """
         SELECT upper(trim(SG_UF)), CAST(NR_ZONA AS INTEGER), lpad(trim(CD_MUNICIPIO), 5, '0'),
-               CAST(NR_LOCAL_VOTACAO AS INTEGER)
+               CAST(NR_LOCAL_VOTACAO AS INTEGER), CAST(NR_TURNO AS INTEGER)
         FROM raw_polling_places
-        GROUP BY 1, 2, 3, 4
+        GROUP BY 1, 2, 3, 4, 5
         HAVING count(DISTINCT trim(NM_LOCAL_VOTACAO)) > 1 OR count(DISTINCT trim(DS_ENDERECO)) > 1
         """
     ).fetchall()
@@ -406,7 +462,8 @@ def _gate_polling_place_identity(conn: duckdb.DuckDBPyConnection) -> GateResult:
         return GateResult(
             "polling_place_identity",
             "fail",
-            f"place (uf, zone, municipality, number) with more than one name or address: {rows}",
+            "place (uf, zone, municipality, number, round) with more than one name or "
+            f"address: {rows}",
         )
     return GateResult(
         "polling_place_identity", "pass", "every polling place has one name and address"

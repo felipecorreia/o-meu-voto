@@ -30,8 +30,9 @@ what the tests do: no test touches the network.
 The whole pipeline is `fetch -> extract -> build -> validate -> publish`, each a subcommand of
 `python -m br_elections_mcp.pipeline` that reads and writes files, so any one of them runs
 alone. `extract` takes the `_BRASIL` CSV (or the only CSV) out of a fetched ZIP;
-`current-manifest` downloads the manifest currently published, which `validate` takes as
-`--previous-manifest` for its count-stability gate; `publish` sends `index.duckdb` and
+`current-index` downloads and verifies the published index pair. The refresh passes it to
+`validate` as `--previous-index-dir` for the count-stability gate; a first publication has no
+previous pair. `publish` sends `index.duckdb` and
 `manifest.json` to the index bucket. A local run against a directory standing in for the
 bucket, which `LocalDirectoryIndexSource` can then serve:
 

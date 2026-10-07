@@ -45,6 +45,7 @@ from tests.conftest import (
     build_fixture_index,
     with_fields,
     with_section_fields,
+    without_round_2,
 )
 
 
@@ -61,6 +62,7 @@ def run_validate(
     output_dir: Path | None = None,
     elections_path: Path = ELECTIONS_FILE,
     previous_manifest: Manifest | None = None,
+    previous_index_dir: Path | None = None,
     photo_public_domain: str | None = None,
 ) -> ValidationReport:
     return validate(
@@ -74,6 +76,7 @@ def run_validate(
         elections_path,
         output_dir or index_dir,
         previous_manifest=previous_manifest,
+        previous_index_dir=previous_index_dir,
         photo_public_domain=photo_public_domain,
     )
 
@@ -246,8 +249,76 @@ def test_count_stability_gate_fails_when_a_count_moves_more_than_five_percent(
     current = read_manifest(acre_index_dir / MANIFEST_FILE_NAME)
     previous = current.model_copy(update={"counts": {**current.counts, "candidates": 1}})
     with pytest.raises(ValidationError) as excinfo:
-        run_validate(acre_index_dir, output_dir=tmp_path, previous_manifest=previous)
+        run_validate(
+            acre_index_dir,
+            output_dir=tmp_path,
+            previous_manifest=previous,
+            previous_index_dir=acre_index_dir,
+        )
     assert "count_stability" in str(excinfo.value)
+
+
+def test_count_stability_gate_accepts_new_round_with_stable_counts(
+    acre_round_1_index_dir: Path, tmp_path: Path
+):
+    candidates = acre_round_1_index_dir / "round-1-sources" / ACRE_CANDIDATES.name
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, candidates=candidates)
+    previous = read_manifest(acre_round_1_index_dir / MANIFEST_FILE_NAME)
+    report = run_validate(
+        index_dir,
+        candidates=candidates,
+        output_dir=tmp_path,
+        previous_manifest=previous,
+        previous_index_dir=acre_round_1_index_dir,
+    )
+    assert _gate(report, "count_stability").status == "pass"
+
+
+def test_count_stability_uses_place_rounds_when_previous_candidates_have_two_rounds(
+    acre_index_dir: Path, tmp_path: Path
+):
+    previous_dir = tmp_path / "previous"
+    previous_dir.mkdir()
+    places = without_round_2(ACRE_POLLING_PLACES, previous_dir)
+    previous = build_fixture_index(previous_dir, polling_places=places)
+    assert set(previous.election_dates) == {1, 2}
+    report = run_validate(
+        acre_index_dir,
+        output_dir=tmp_path,
+        previous_manifest=previous,
+        previous_index_dir=previous_dir,
+    )
+    assert _gate(report, "count_stability").status == "pass"
+
+
+def test_count_stability_gate_rejects_a_round_change_hidden_by_stable_total(
+    acre_index_dir: Path, tmp_path: Path
+):
+    lines = ACRE_POLLING_PLACES.read_bytes().splitlines()
+    rows = [line.split(b";") for line in lines]
+    round_1_section = (b'"1"', b'"150"')
+    round_2_section = (b'"2"', b'"150"')
+    assert sum((row[5], row[10]) == round_1_section for row in rows[1:]) == 1
+    moved = [row for row in rows[1:] if (row[5], row[10]) != round_1_section]
+    extra = next(row.copy() for row in moved if (row[5], row[10]) == round_2_section)
+    extra[10] = b'"999"'
+    changed = tmp_path / "eleitorado_local_votacao_2026_AC.csv"
+    changed.write_bytes(
+        b"\n".join([lines[0], *(b";".join(row) for row in moved), b";".join(extra)]) + b"\n"
+    )
+    index_dir = tmp_path / "index"
+    build_fixture_index(index_dir, polling_places=changed)
+    previous = read_manifest(acre_index_dir / MANIFEST_FILE_NAME)
+    with pytest.raises(ValidationError) as excinfo:
+        run_validate(
+            index_dir,
+            polling_places=changed,
+            output_dir=tmp_path,
+            previous_manifest=previous,
+            previous_index_dir=acre_index_dir,
+        )
+    assert "polling_sections" in _gate(excinfo.value, "count_stability").message
 
 
 def test_count_stability_gate_skips_candidate_social_links():
@@ -321,24 +392,17 @@ def test_polling_place_identity_gate_fails_on_an_inconsistent_name(
     assert "polling_place_identity" in str(excinfo.value)
 
 
-def test_polling_place_identity_gate_fails_on_an_inconsistency_across_rounds(
+def test_polling_place_identity_gate_accepts_a_name_change_across_rounds(
     acre_index_dir: Path, tmp_path: Path
 ):
-    # Identity is (uf, zone, municipality, number), not with round added: a name that changes
-    # between round 1 and round 2 at the same place must still be caught.
-    data = _patch_field(
-        ACRE_POLLING_PLACES.read_bytes(),
-        match_index=10,
-        match_value=b'"422"',
-        set_index=15,
-        new_value=b'"OUTRO NOME"',
-        also_match=(5, b'"2"'),
+    changed = with_fields(
+        ACRE_POLLING_PLACES,
+        tmp_path,
+        ("NR_TURNO", "NR_ZONA", "NR_LOCAL_VOTACAO"),
+        {("2", "9", "1000"): {"NM_LOCAL_VOTACAO": "OUTRO NOME"}},
     )
-    broken = tmp_path / "eleitorado_local_votacao_2026_AC.csv"
-    broken.write_bytes(data)
-    with pytest.raises(ValidationError) as excinfo:
-        run_validate(acre_index_dir, polling_places=broken, output_dir=tmp_path)
-    assert "polling_place_identity" in str(excinfo.value)
+    report = run_validate(acre_index_dir, polling_places=changed, output_dir=tmp_path)
+    assert _gate(report, "polling_place_identity").status == "pass"
 
 
 @pytest.mark.parametrize(
