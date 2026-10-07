@@ -135,7 +135,7 @@ Invariantes:
   por município dentro da zona, não por zona: na primeira ingestão real (arquivo de 2026,
   gerado em 23/09/2026) 12.212 chaves (`uf`, `zone`, `number`) abrangem mais de um município,
   e a chave com o município dá 95.601 locais com nome e endereço constantes. O pipeline valida
-  essa constância (seção 7).
+  essa constância dentro de cada turno; nome e endereço podem mudar entre turnos (seção 7).
 - O índice só inclui em `polling_places` o prédio que tem ao menos uma seção principal no
   turno, ou seja, uma urna. Um local com apenas seções agregadas (1.233 dos 95.601 na chave
   com o município, arquivo de 2026) fica fora da busca; as seções continuam em
@@ -186,8 +186,8 @@ Invariantes:
   responde o local da principal; o pipeline valida que a principal existe na mesma zona e
   turno e é ela mesma principal (seção 7). Esses locais sem principal não entram em
   `polling_places` (3.3), e a resposta de "onde voto" nunca depende deles.
-- Em 2026-09-17 o dataset só tem `NR_TURNO = 1`. Quando o TSE publicar o 2º turno, o índice
-  carrega os dois e a chave passa a incluir o turno de fato (§2.1).
+- Em 2026-09-17 o dataset só tinha `NR_TURNO = 1`. O arquivo de 2026-10-06 já inclui os dois
+  turnos, e a chave do índice inclui o turno (§2.1).
 - Entrada humana é normalizada antes da busca: "zona 009" e "seção 0422" viram 9 e 422.
 
 Descartadas: `CD_TIPO_SECAO_AGREGADA`, `CD_SITU_SECAO`, `CD_SITU_ZONA`, `DS_SITU_ZONA`,
@@ -416,7 +416,8 @@ do pipeline, viram validações que bloqueiam a publicação do índice.
 
 - Identidade de PollingPlace como (`uf`, `zone`, `number`), com nome e endereço constantes
   dentro da chave. **Refutada na primeira ingestão (2026-09-24):** a chave inclui o município
-  (3.3).
+  (3.3). O arquivo de 2026-10-06 trouxe também o 2º turno: a constância vale dentro de cada
+  turno, não entre turnos.
 - Seção principal de uma agregada sempre no mesmo local da agregada. **Refutada na primeira
   ingestão (2026-09-24):** a validação agora exige só que a principal exista e seja principal,
   e a resposta usa o local dela (3.4).

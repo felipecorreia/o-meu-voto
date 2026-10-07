@@ -31,9 +31,11 @@ The whole pipeline is `fetch -> extract -> build -> validate -> publish`, each a
 `python -m br_elections_mcp.pipeline` that reads and writes files, so any one of them runs
 alone. `extract` takes the `_BRASIL` CSV (or the only CSV) out of a fetched ZIP;
 `current-index` downloads and verifies the published index pair. The refresh passes it to
-`validate` as `--previous-index-dir` for the count-stability gate; a first publication has no
-previous pair. `publish` sends `index.duckdb` and
-`manifest.json` to the index bucket. A local run against a directory standing in for the
+`validate` as `--previous-index-dir` for the count-stability gate. For polling places and
+sections of the same election, the gate compares each round separately; when a round first
+appears, its baseline is the previous index's mean count per published round. Other table
+counts use the previous manifest. A first publication has no previous pair. `publish` sends
+`index.duckdb` and `manifest.json` to the index bucket. A local run can use a directory as the
 bucket, which `LocalDirectoryIndexSource` can then serve:
 
 ```sh
