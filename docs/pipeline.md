@@ -53,13 +53,13 @@ the SHA-256 of the index next to it, and it only ever knows those two files: the
 and CSVs stay in the runner's temporary directory and are removed at the end of the run
 (ADR 0004).
 
-The workflow [`refresh.yml`](../.github/workflows/refresh.yml) runs the chain on the cadences
-the TSE declares (daily after 06:25 for polling places, four times a day after 08:30, 12:30,
-16:30 and 19:30 for candidates, all America/Sao_Paulo), started through `workflow_dispatch`
-by Cloud Scheduler, since GitHub's own cron fired hours late ([`ops/README.md`](../ops/README.md),
-section 6), or by hand; index stages stop at the first failure, while photo failures are reported
-after a valid index is published. The job summary writes the fetch statuses, the
-manifest (generation timestamp per dataset, counts, election, SHA-256), the validation gates
+The workflow [`refresh.yml`](../.github/workflows/refresh.yml) runs the chain on the schedule
+in [`architecture.md`](architecture.md#refresh-cadence), started through `workflow_dispatch` by
+Cloud Scheduler, since GitHub's own cron fired hours late
+([`ops/README.md`](../ops/README.md), section 6), or by hand; index stages stop at the first
+failure, while photo failures are reported after a valid index is published. The job summary
+writes the fetch statuses, the manifest (generation timestamp per dataset, counts, election,
+SHA-256), the validation gates
 and the published version to the job summary. It reaches Google Cloud without a stored key,
 through Workload Identity Federation: each run trades its GitHub OIDC token for a short-lived
 token of the publisher service account, and the provider accepts only this repository's
@@ -236,9 +236,9 @@ fingerprint. We state this openly rather than hide it
 ([ADR 0003](adr/0003-curl-cffi-for-tse-downloads.md)):
 
 - **Volume.** Each refresh downloads the six dataset ZIPs in `DATASETS`, once per file. When
-  photo mirroring is enabled, it also downloads up to 28 candidate photo ZIPs. Refreshes run
-  at most a few times a day, aligned with the TSE's stated cadence for each dataset. The
-  service never calls the TSE at request time; only the pipeline does.
+  photo mirroring is enabled, it also downloads up to 28 candidate photo ZIPs. Scheduled
+  refreshes follow [`architecture.md`](architecture.md#refresh-cadence). The service never
+  calls the TSE at request time; only the pipeline does.
 - **Data.** The datasets are open data under CC-BY. Every answer attributes the TSE and cites
   the dataset, file and generation timestamp.
 - **Contact.** We are asking the TSE (`estatistica@tse.jus.br`, the contact named in each

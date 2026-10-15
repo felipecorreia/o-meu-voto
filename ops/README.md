@@ -202,7 +202,7 @@ Manager and calls `workflow_dispatch` for
 
 ```mermaid
 flowchart LR
-  S["Cloud Scheduler<br/>polling places: 07:05<br/>candidates: 09:10, 13:10, 17:10, 20:10"]
+  S["Cloud Scheduler<br/>polling places job<br/>candidates job"]
   W["Workflows refresh-dispatch"]
   SM[("Secret Manager<br/>GitHub token")]
   GH["GitHub Actions<br/>refresh.yml on main"]
@@ -215,8 +215,9 @@ flowchart LR
   GCS -->|manifest check| CR
 ```
 
-The two Scheduler jobs are `refresh-dispatch-polling-places` (07:05) and
-`refresh-dispatch-candidates` (09:10, 13:10, 17:10 and 20:10). The workflow definition is
+The two Scheduler jobs are `refresh-dispatch-polling-places` and `refresh-dispatch-candidates`;
+their times are in
+[`docs/architecture.md`](../docs/architecture.md#refresh-cadence). The workflow definition is
 [`ops/refresh-dispatch/workflow.yaml`](refresh-dispatch/workflow.yaml); a change to that file
 requires a manual Workflows deploy (runbook step G2). The GitHub token is held in Secret
 Manager, not in a Scheduler job, and the workflow is deployed without call-argument logs or

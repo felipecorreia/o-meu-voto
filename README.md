@@ -108,10 +108,10 @@ flowchart LR
   AI["AI assistants"] --> EDGE
 ```
 
-A scheduled pipeline downloads the TSE files several times a day, on the cadence the TSE
-declares, and publishes one read-only DuckDB file with a manifest. A single Python service on
-Cloud Run loads it, swaps in new versions without a restart, and exposes the same core through
-MCP and REST. Cloudflare Pages serves the site and proxies the API and MCP on the same domain.
+A scheduled pipeline downloads the TSE files and publishes one read-only DuckDB file with a
+manifest. A single Python service on Cloud Run loads it, swaps in new versions without a
+restart, and exposes the same core through MCP and REST. Cloudflare Pages serves the site and
+proxies the API and MCP on the same domain.
 Details, the refresh cadence and a one-line summary of every architecture decision:
 [`docs/architecture.md`](docs/architecture.md).
 

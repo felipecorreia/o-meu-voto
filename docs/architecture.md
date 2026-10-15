@@ -77,16 +77,22 @@ operational detail is in [`pipeline.md`](pipeline.md).
 
 The workflow has no GitHub `schedule:`: GitHub's cron fired hours late or skipped runs, so Cloud
 Scheduler starts it through `workflow_dispatch` (Cloud Scheduler -> Workflows -> the workflow
-on `main`; [`ops/README.md`](../ops/README.md), section 6). The times follow the cadence the TSE
-declares for each dataset, about forty minutes after each publication so the CDN has the new
-file (America/Sao_Paulo):
+on `main`; [`ops/README.md`](../ops/README.md), section 6). The current schedule waits forty
+minutes after the polling-place publication and the last candidate publication of the day
+so the CDN has the new files (America/Sao_Paulo):
 
 | Dataset | TSE publishes | Refresh starts |
 |---|---|---|
 | Polling places | daily at 06:25 | 07:05 |
-| Candidates | 08:30, 12:30, 16:30 and 19:30 | 09:10, 13:10, 17:10 and 20:10 |
+| Candidates | 08:30, 12:30, 16:30 and 19:30 | 20:10 |
 
-A run can also be started by hand. One refresh runs at a time.
+The TSE publishes candidates four times a day, but the refresh starts only after the last
+publication, so the index refreshes twice a day through the round 2 election on 2026-10-25.
+Both Scheduler jobs are planned to be paused manually on 2026-10-26. Cloud Scheduler has no end
+date, so they keep dispatching until someone pauses them. After the pause, answers built from
+TSE datasets start carrying the staleness warning about 48 hours after the last refresh. See
+[the answer envelope](api.md#the-answer-envelope) for field details. A run can also be started
+by hand. One refresh runs at a time.
 
 ### Service: one core, two doors
 

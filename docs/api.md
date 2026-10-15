@@ -183,8 +183,10 @@ unavailable index is a JSON-RPC internal error.
   deployment settings, not part of the contract. Back off on `429`.
 - REST answers are cached at the edge for 60 seconds, except requests that carry coordinates
   (`lat`/`lon`), which are never cached.
-- The data refreshes several times a day; `source.generated_at` and `source.stale` say how
-  fresh an answer is.
+- The index's [refresh cadence](architecture.md#refresh-cadence) includes a planned manual pause.
+  Cloud Scheduler keeps dispatching until the jobs are paused. After the pause, answers built
+  from TSE datasets start carrying the staleness warning about 48 hours after the last refresh.
+  See [the answer envelope](#the-answer-envelope) for field details.
 - No answer carries a candidate's CPF, voter title number, birth date or e-mail, and the
   comparison never ranks, scores or recommends. [Data and privacy](../README.md#data-and-privacy)
   in the README has the details.
